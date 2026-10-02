@@ -1,5 +1,5 @@
-// Ruedas del buggy sobre el esqueleto SKM_Offroad (port de UHYBuggyWheelFront/Rear de HellYeah): radio 51 cm y ancho
-// 35 cm, suspensión blanda y con rebote, tracción trasera; el derrape largo es del freno de mano.
+// Ruedas del buggy sobre SK_TN_BuggyChassis (port de UHYBuggyWheelFront/Rear de HellYeah): radio y ancho de
+// SM_TN_BuggyTire, suspensión blanda y con rebote, tracción trasera; el derrape largo es del freno de mano.
 #pragma once
 
 #include "CoreMinimal.h"

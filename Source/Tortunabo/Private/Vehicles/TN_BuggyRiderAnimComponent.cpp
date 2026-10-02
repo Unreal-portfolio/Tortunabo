@@ -140,6 +140,15 @@ namespace TNRiderAnimPose
 		int32 LeftHand = INDEX_NONE;
 		int32 RightArm = INDEX_NONE;
 		int32 RightHand = INDEX_NONE;
+		/** Postura sentada: hombros (raíz de cada brazo), antebrazos y piernas. */
+		int32 LeftShoulder = INDEX_NONE;
+		int32 RightShoulder = INDEX_NONE;
+		int32 LeftForeArm = INDEX_NONE;
+		int32 RightForeArm = INDEX_NONE;
+		int32 LeftUpLeg = INDEX_NONE;
+		int32 RightUpLeg = INDEX_NONE;
+		int32 LeftLeg = INDEX_NONE;
+		int32 RightLeg = INDEX_NONE;
 	};
 
 	FRiderBones ResolveBones(const FReferenceSkeleton& Ref)
@@ -153,7 +162,51 @@ namespace TNRiderAnimPose
 		B.LeftHand = Ref.FindBoneIndex(TEXT("LeftHand"));
 		B.RightArm = Ref.FindBoneIndex(TEXT("RightArm"));
 		B.RightHand = Ref.FindBoneIndex(TEXT("RightHand"));
+		B.LeftShoulder = Ref.FindBoneIndex(TEXT("LeftShoulder"));
+		B.RightShoulder = Ref.FindBoneIndex(TEXT("RightShoulder"));
+		B.LeftForeArm = Ref.FindBoneIndex(TEXT("LeftForeArm"));
+		B.RightForeArm = Ref.FindBoneIndex(TEXT("RightForeArm"));
+		B.LeftUpLeg = Ref.FindBoneIndex(TEXT("LeftUpLeg"));
+		B.RightUpLeg = Ref.FindBoneIndex(TEXT("RightUpLeg"));
+		B.LeftLeg = Ref.FindBoneIndex(TEXT("LeftLeg"));
+		B.RightLeg = Ref.FindBoneIndex(TEXT("RightLeg"));
 		return B;
+	}
+
+	/** Si Bone cuelga de Root (o es él). En el esqueleto de referencia el padre siempre va antes que el hijo. */
+	bool IsInSubtree(const FReferenceSkeleton& Ref, int32 Bone, int32 Root)
+	{
+		for (int32 Index = Bone; Index != INDEX_NONE; Index = Ref.GetParentIndex(Index))
+		{
+			if (Index == Root)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Locales de la pose evaluada con brazos y piernas en la postura de referencia (en T): la postura sentada se
+	 * construye desde ella, como en Art/Source/Vehicles/Buggy/turtle_pose.py, y no desde la animación de espera.
+	 */
+	TArray<FTransform> SeatedBaseLocals(TArrayView<const FTransform> Locals, const FReferenceSkeleton& Ref, const FRiderBones& B)
+	{
+		TArray<FTransform> Out(Locals.GetData(), Locals.Num());
+		const TArray<FTransform>& RefPose = Ref.GetRefBonePose();
+		const int32 Roots[] = { B.LeftShoulder, B.RightShoulder, B.LeftUpLeg, B.RightUpLeg };
+		for (int32 Bone = 0; Bone < Out.Num() && Bone < RefPose.Num(); ++Bone)
+		{
+			for (const int32 Root : Roots)
+			{
+				if (Root != INDEX_NONE && IsInSubtree(Ref, Bone, Root))
+				{
+					Out[Bone] = RefPose[Bone];
+					break;
+				}
+			}
+		}
+		return Out;
 	}
 
 	/** Pose en el espacio de la malla con los huesos que se han tocado (los hijos siguen a su padre). */
@@ -239,6 +292,34 @@ namespace TNRiderAnimPose
 			const FVector Reach = Space.IsValidIndex(Hand) ? Space[Hand].GetLocation() - Space[Arm].GetLocation() : FVector::ZeroVector;
 			const FVector Axis = Reach ^ MeshUp;
 			Rotate(Arm, Axis.IsNearlyZero(1e-3) ? MeshLeft : Axis, Degrees);
+		}
+
+		/**
+		 * Postura sentada de turtle_pose.py (giros en los ejes de la malla, en el mismo orden): muslos hacia delante y
+		 * espinillas hacia abajo; la conductora con las manos al volante y la artillera con el brazo derecho arriba.
+		 */
+		void Sit(const FRiderBones& B, bool bDriver)
+		{
+			Rotate(B.LeftUpLeg, MeshLeft, 90.f);
+			Rotate(B.LeftLeg, MeshLeft, -90.f);
+			Rotate(B.RightUpLeg, MeshLeft, 90.f);
+			Rotate(B.RightLeg, MeshLeft, -90.f);
+			if (bDriver)
+			{
+				for (const float Sign : { 1.f, -1.f })
+				{
+					const bool bLeft = Sign > 0.f;
+					Rotate(bLeft ? B.LeftArm : B.RightArm, MeshForward, Sign * 10.f);
+					Rotate(bLeft ? B.LeftArm : B.RightArm, MeshUp, Sign * 60.f);
+					Rotate(bLeft ? B.LeftForeArm : B.RightForeArm, MeshUp, Sign * 50.f);
+					Rotate(bLeft ? B.LeftForeArm : B.RightForeArm, MeshLeft, 25.f);
+				}
+				return;
+			}
+			Rotate(B.LeftArm, MeshUp, 80.f);
+			Rotate(B.LeftArm, MeshLeft, 25.f);
+			Rotate(B.RightArm, MeshForward, 95.f);
+			Rotate(B.RightArm, MeshLeft, -20.f);
 		}
 	};
 }
@@ -540,7 +621,8 @@ void UTN_BuggyRiderAnimComponent::ApplyPose()
 		// La clase de animación ha cambiado (ATN_Buggy::ApplySeatLook): se limpia la anterior.
 		ClearBoneOverrides();
 	}
-	if (IsAtRest())
+	// Con la postura sentada, los huesos se escriben también en reposo: si no, la tortuga se queda de pie.
+	if (IsAtRest() && (!Anim || !bSeatedPose))
 	{
 		ClearBoneOverrides();
 		RestoreComponentPose();
@@ -563,16 +645,31 @@ void UTN_BuggyRiderAnimComponent::ApplyBonePose(UTN_ProcAnimInstance& Anim)
 {
 	const USkeletalMesh* Mesh = RiderMesh->GetSkeletalMeshAsset();
 	const FReferenceSkeleton& Ref = Mesh->GetRefSkeleton();
+	const TNRiderAnimPose::FRiderBones B = TNRiderAnimPose::ResolveBones(Ref);
+	const TArray<FTransform> Locals = bSeatedPose
+		? TNRiderAnimPose::SeatedBaseLocals(RiderMesh->GetBoneSpaceTransformsView(), Ref, B)
+		: TArray<FTransform>(RiderMesh->GetBoneSpaceTransformsView().GetData(), RiderMesh->GetBoneSpaceTransformsView().Num());
 	TNRiderAnimPose::FRiderPose Pose;
-	if (!Pose.Build(RiderMesh->GetBoneSpaceTransformsView(), Ref))
+	if (!Pose.Build(Locals, Ref))
 	{
 		ClearBoneOverrides();
 		return;
 	}
-	const TNRiderAnimPose::FRiderBones B = TNRiderAnimPose::ResolveBones(Ref);
+	const bool bDriver = Role == ETNBuggyRiderRole::Driver;
+	if (bSeatedPose)
+	{
+		Pose.Sit(B, bDriver);
+		// Las piernas y los brazos salen de la postura de referencia: se escriben aunque la postura no los gire.
+		for (const int32 Root : { B.LeftShoulder, B.RightShoulder, B.LeftUpLeg, B.RightUpLeg })
+		{
+			if (Root != INDEX_NONE)
+			{
+				Pose.ForSubtree(Root, [](FTransform&) {});
+			}
+		}
+	}
 	// Los cm del ajuste pasan a unidades de la malla (ATN_Buggy::FitTurtle la escala).
 	const float ToMesh = 1.f / FMath::Max(0.01f, static_cast<float>(RiderMesh->GetComponentScale().Z));
-	const bool bDriver = Role == ETNBuggyRiderRole::Driver;
 	Pose.Translate(B.Hips, TNRiderAnimPose::MeshUp * (-Crouch.Value * CrouchDropCm * ToMesh));
 	Pose.Translate(B.Spine, RecoilDirMesh * (Recoil.Value * ToMesh));
 	Pose.Rotate(B.Spine, TNRiderAnimPose::MeshForward, LeanRoll.Value);

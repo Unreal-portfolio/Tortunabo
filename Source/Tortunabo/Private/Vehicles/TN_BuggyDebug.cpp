@@ -8,6 +8,7 @@
 //   TN.Rally.LocalFire [especial] [espera] [veces]   (cliente o anfitrión) la jugadora local pide disparos al servidor
 //   TN.Rally.StatusLater <espera> [veces] [intervalo]  TN.Rally.Status diferido (en un cliente, lo replicado)
 //   TN.Rally.DebugSwapSeats [espera]          (servidor) en cada buggy biplaza, la artillera pasa a conducir y viceversa
+//   TN.Rally.DebugPhotos <espera> <carpeta> [quieto] [veces] [intervalo]  fotos del buggy sin interfaz (lámina o persecución)
 // LocalFire, StatusLater y DebugQuitAfter esperan con el ticker del motor, no con el del mundo: en un cliente, -ExecCmds
 // corre antes de conectarse y el mundo de entonces se destruye al viajar al mapa del servidor.
 
@@ -25,6 +26,10 @@
 #include "GameFramework/PlayerController.h"
 #include "HAL/IConsoleManager.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "Camera/CameraActor.h"
+#include "Camera/CameraComponent.h"
+#include "Misc/Paths.h"
+#include "UnrealClient.h"
 #include "TimerManager.h"
 
 #if !UE_BUILD_SHIPPING
@@ -395,6 +400,97 @@ namespace TNBuggyDebug
 						*GetNameSafe(It->GetSeatController(ETNRallySeat::Driver)), *GetNameSafe(It->GetSeatController(ETNRallySeat::Gunner)),
 						bSeated ? TEXT("cambio hecho") : TEXT("la torreta no acepta a la antigua conductora"));
 				}
+			});
+		}));
+
+	/** Un encuadre de las fotos: guiñada respecto al morro (0 = de frente), distancia y altura de la cámara (cm). */
+	struct FPhotoAngle
+	{
+		float YawDeg;
+		float DistanceCm;
+		float HeightCm;
+	};
+
+	/** Encuadres de la lámina del buggy: tres cuartos delante, lado, tres cuartos detrás, cabina desde arriba y frente. */
+	const FPhotoAngle StillAngles[] = { { 35.f, 700.f, 260.f }, { 90.f, 650.f, 170.f }, { 145.f, 700.f, 260.f },
+		{ 60.f, 380.f, 420.f }, { 0.f, 650.f, 150.f } };
+	/** Persecución para los efectos: detrás y a un lado, a la altura del polvo. */
+	const FPhotoAngle ChaseAngles[] = { { 150.f, 900.f, 250.f }, { 115.f, 750.f, 180.f } };
+
+	/** Pone la cámara de fotos mirando al buggy (a la altura de los asientos) desde Angle. */
+	void AimPhotoCamera(AActor* Camera, const ATN_Buggy* Buggy, const FPhotoAngle& Angle)
+	{
+		const FVector Center = Buggy->GetActorLocation() + Buggy->GetActorUpVector() * 100.f;
+		const FRotator Around(0.f, Buggy->GetActorRotation().Yaw + Angle.YawDeg, 0.f);
+		const FVector Eye = Center + Around.Vector() * Angle.DistanceCm + FVector(0.f, 0.f, Angle.HeightCm);
+		Camera->SetActorLocationAndRotation(Eye, (Center - Eye).Rotation());
+	}
+
+	/**
+	 * Fotos del buggy de la jugadora local (o el primero) con una cámara propia, sin interfaz, en Folder/buggy_<n>.png.
+	 * Quieto: se frena el buggy (servidor) y se hacen los encuadres de la lámina; si no, persecución cada Interval s.
+	 */
+	void TakePhotos(UWorld* World, const FString& Folder, bool bStill, int32 Count, float Interval)
+	{
+		ATN_Buggy* Buggy = FindBuggy(World);
+		APlayerController* PC = World->GetFirstPlayerController();
+		if (!Buggy || !PC)
+		{
+			UE_LOG(LogTNBuggy, Warning, TEXT("[Fotos] sin buggy o sin jugadora local"));
+			return;
+		}
+		if (bStill && Buggy->HasAuthority())
+		{
+			Buggy->SetEngineLocked(true);
+			Buggy->SetRaceBrakeHeld(true);
+		}
+		ACameraActor* Camera = World->SpawnActor<ACameraActor>();
+		if (!Camera)
+		{
+			return;
+		}
+		Camera->GetCameraComponent()->SetFieldOfView(50.f);
+		const int32 Shots = bStill ? UE_ARRAY_COUNT(StillAngles) : FMath::Max(1, Count);
+		TWeakObjectPtr<ATN_Buggy> WeakBuggy(Buggy);
+		TWeakObjectPtr<ACameraActor> WeakCamera(Camera);
+		TWeakObjectPtr<APlayerController> WeakPC(PC);
+		for (int32 Shot = 0; Shot < Shots; ++Shot)
+		{
+			const FPhotoAngle Angle = bStill ? StillAngles[Shot] : ChaseAngles[Shot % UE_ARRAY_COUNT(ChaseAngles)];
+			const float At = Interval * Shot;
+			After(World, At, [WeakBuggy, WeakCamera, WeakPC, Angle](UWorld*)
+			{
+				if (WeakBuggy.IsValid() && WeakCamera.IsValid() && WeakPC.IsValid())
+				{
+					AimPhotoCamera(WeakCamera.Get(), WeakBuggy.Get(), Angle);
+					WeakPC->SetViewTargetWithBlend(WeakCamera.Get(), 0.f);
+				}
+			});
+			// La captura, un poco después: el suavizado temporal se asienta con la cámara quieta.
+			const FString File = FPaths::Combine(Folder, FString::Printf(TEXT("buggy_%d.png"), Shot));
+			After(World, At + FMath::Min(0.4f, Interval * 0.6f), [File, WeakBuggy, WeakCamera, Angle](UWorld*)
+			{
+				if (WeakBuggy.IsValid() && WeakCamera.IsValid())
+				{
+					AimPhotoCamera(WeakCamera.Get(), WeakBuggy.Get(), Angle);
+				}
+				FScreenshotRequest::RequestScreenshot(File, false, false);
+				UE_LOG(LogTNBuggy, Log, TEXT("[Fotos] %s"), *File);
+			});
+		}
+	}
+
+	FAutoConsoleCommandWithWorldAndArgs CmdDebugPhotos(TEXT("TN.Rally.DebugPhotos"),
+		TEXT("Rally: TN.Rally.DebugPhotos <espera> <carpeta> [quieto 1|0] [veces] [intervalo]: fotos del buggy sin interfaz (lámina con el buggy frenado, o persecución)."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+		{
+			const FString Folder = Args.IsValidIndex(1) ? Args[1] : FPaths::ScreenShotDir();
+			const bool bStill = FloatArg(Args, 2, 1.f) != 0.f;
+			const int32 Count = FMath::Clamp(static_cast<int32>(FloatArg(Args, 3, 6.f)), 1, 60);
+			const float Interval = FMath::Max(0.2f, FloatArg(Args, 4, 0.8f));
+			AfterGlobal(FloatArg(Args, 0, 1.5f), [Folder, bStill, Count, Interval](UWorld* Alive)
+			{
+				TakePhotos(Alive, Folder, bStill, Count, Interval);
 			});
 		}));
 

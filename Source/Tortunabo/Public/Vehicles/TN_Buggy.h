@@ -9,7 +9,6 @@
 
 class APlayerState;
 class ATN_BuggyGunnerPawn;
-class UAnimInstance;
 class UCameraComponent;
 class UChaosWheeledVehicleMovementComponent;
 class UMaterialInstanceDynamic;
@@ -31,10 +30,11 @@ class UTN_BuggyTurretComponent;
 struct FInputActionValue;
 
 /**
- * Vehículo Chaos sobre el esqueleto SKM_Offroad (oculto: solo física y huesos de rueda) con la carrocería y los
- * neumáticos low poly de HellYeah. La conductora posee el buggy; la artillera posee un ATN_BuggyGunnerPawn sujeto al
- * asiento trasero y maneja la torreta (UTN_BuggyTurretComponent). Si va sola, la conductora dispara con apuntado
- * automático.
+ * Vehículo Chaos con el modelo de Art/Source/Vehicles/Buggy (#290): SK_TN_BuggyChassis (oculto: solo el cuerpo físico,
+ * copia del PhysicsAsset del template, y los huesos de rueda), la carrocería SM_TN_BuggyBody con sus sockets de asientos
+ * y de la boca de la torreta, y los neumáticos SM_TN_BuggyTire, que se mueven en C++ con el estado de cada rueda Chaos
+ * (sin AnimBP). La conductora posee el buggy; la artillera posee un ATN_BuggyGunnerPawn sujeto al asiento trasero y
+ * maneja la torreta (UTN_BuggyTurretComponent). Si va sola, la conductora dispara con apuntado automático.
  *
  * Red: el servidor tiene la autoridad (movimiento replicado de Chaos con PredictiveInterpolation). Los clientes solo
  * mandan entradas: conducción por el movimiento de Chaos, y enderezado, reaparición y disparo por RPC validada. Los
@@ -46,14 +46,25 @@ class TORTUNABO_API ATN_Buggy : public AWheeledVehiclePawn, public ITN_RallyVehi
 	GENERATED_BODY()
 
 public:
-	/** Slot de SM_BuggyBody que lleva M_PlayerTint y su parámetro de color. */
-	static const FName TintSlotName;
+	/** Parámetro de M_TN_Buggy (zona de pintura) que lleva el color del equipo. */
 	static const FName TintParameterName;
 
-	/** Asiento de la artillera relativo al chasis (Seat_Gunner): allí van la torreta y su tortuga. */
+	/** Sockets de SM_TN_BuggyBody: caderas de las tortugas sentadas y boca de la torreta. */
+	static const FName DriverSeatSocket;
+	static const FName GunnerSeatSocket;
+	static const FName MuzzleSocket;
+
+	/**
+	 * Los mismos sockets relativos al chasis (la carrocería va en su origen), copiados del manifest de Art/Source para
+	 * el constructor y los peones que no tienen la malla a mano. El test Tortunabo.Rally.Buggy.Assets los compara con
+	 * los sockets de la malla importada.
+	 */
 	static const FVector GunnerSeatLocal;
-	/** Asiento de la conductora relativo al chasis. */
 	static const FVector DriverSeatLocal;
+	static const FVector MuzzleLocal;
+
+	/** Huesos de rueda de SK_TN_BuggyChassis en el orden de WheelSetups (delanteras 0 y 1, traseras 2 y 3). */
+	static const FName WheelBoneNames[4];
 
 	ATN_Buggy();
 
@@ -188,12 +199,9 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Buggy")
 	TObjectPtr<UTN_BuggyData> Data;
 
-	// Rutas de los assets (copiados de HellYeah con sus rutas /Game). El constructor pone los de por defecto.
+	// Rutas de los assets (Art/Source/Vehicles/Buggy importado en /Game). El constructor pone los de por defecto.
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Assets")
 	TSoftObjectPtr<USkeletalMesh> ChassisMeshAsset;
-
-	UPROPERTY(EditDefaultsOnly, Category = "Rally|Assets")
-	TSoftClassPtr<UAnimInstance> ChassisAnimClass;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Assets")
 	TSoftObjectPtr<UStaticMesh> BodyMeshAsset;
@@ -204,9 +212,17 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Assets")
 	TSoftObjectPtr<USkeletalMesh> TurtleMeshAsset;
 
-	/** Altura a la que se escala la tortuga sentada (cm, de la caja de la malla). */
+	/** Skins de la carrocería y las ruedas (Mar, Alga, Medusa): cada equipo lleva la de su índice, en ciclo. */
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Assets")
-	float SeatedTurtleHeightCm = 90.f;
+	TArray<TSoftObjectPtr<UMaterialInterface>> SkinMaterials;
+
+	/** La zona de pintura de la skin toma el color del equipo (el mismo del HUD y del mapa de la artillera). */
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Assets")
+	bool bPaintWithTeamColor = true;
+
+	/** Escala de la tortuga sentada: la de BP_TortugaCharacter, para la que están medidos los asientos de Art/Source. */
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Assets", meta = (ClampMin = "0.1"))
+	float SeatedTurtleScale = 2.5f;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Buggy")
 	TSubclassOf<ATN_BuggyGunnerPawn> GunnerPawnClass;
@@ -223,9 +239,9 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Turbo")
 	TObjectPtr<USoundBase> BoostStartSound;
 
-	/** Escape relativo a la carrocería (cm): de ahí salen la llama y el sonido. */
+	/** Escape relativo a la carrocería (cm, entre los dos tubos de SM_TN_BuggyBody): de ahí salen la llama y el sonido. */
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Turbo")
-	FVector BoostEffectOffset = FVector(-190.f, 0.f, 70.f);
+	FVector BoostEffectOffset = FVector(-200.f, 0.f, 111.f);
 
 private:
 	// ── Física ─────────────────────────────────────────────────────────────────
@@ -271,7 +287,8 @@ private:
 	void DestroyGunnerPawn();
 	void RefreshSeatVisuals(bool bForce);
 	void ApplySeatLook(int32 SeatIndex, bool bForce);
-	void FitTurtle(USkeletalMeshComponent* Turtle) const;
+	/** Escala la tortuga y la coloca con la cadera (hueso Hips) en el socket de su asiento. */
+	void FitTurtle(int32 SeatIndex);
 	/** Tortuga de la artillera caída hacia atrás mientras está noqueada (cosmético, en cada máquina con pantalla). */
 	void UpdateGunnerKnockPose(float DeltaSeconds);
 
@@ -280,7 +297,16 @@ private:
 
 	UFUNCTION()
 	void OnRep_TeamIndex();
+	/** Skin del equipo en la carrocería y las ruedas, con la pintura del color del equipo (TN_Buggy_Visuals.cpp). */
 	void ApplyTint();
+
+	// ── Modelo (TN_Buggy_Visuals.cpp) ──────────────────────────────────────────
+	/** Mallas, sockets y posiciones de reposo de los neumáticos según los assets de Rally|Assets. */
+	void ApplyModelAssets();
+	/** Neumáticos en el eje de su rueda Chaos: suspensión, giro de la dirección y rodadura (solo con pantalla). */
+	void UpdateWheelVisuals();
+	/** Socket de la carrocería relativo al chasis, o Fallback si la malla no lo tiene. */
+	FVector GetBodySocketLocal(FName Socket, const FVector& Fallback) const;
 
 	UFUNCTION()
 	void OnRep_Ghost();
@@ -472,6 +498,14 @@ private:
 
 	/** Aspecto aplicado a cada tortuga (para no reaplicarlo cada vez). */
 	TArray<FString> AppliedLookKeys;
+
+	/** Sitio de cada tortuga relativo al chasis (cadera en su socket), lo calcula FitTurtle. */
+	FVector SeatTurtleBase[2] = { FVector::ZeroVector, FVector::ZeroVector };
+
+	/** Eje de cada neumático en reposo relativo al chasis (hueso de su rueda). */
+	TArray<FVector> TireRestLocal;
+	/** Skin aplicada (índice en SkinMaterials) para no recrear el material dinámico. */
+	int32 AppliedSkinIndex = INDEX_NONE;
 
 	TArray<FVector> PrevContactPoint;
 	TArray<bool> bPrevWheelContact;

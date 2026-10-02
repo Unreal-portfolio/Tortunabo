@@ -44,7 +44,7 @@ Cajas de munición: filas en las puertas pares y a mitad de tramo; reaparecen a 
 | Pieza | Carpeta | Qué hace |
 |---|---|---|
 | `ITN_RallyVehicle` | `Rally/TN_RallyVehicle.h` | Contrato buggy ↔ carrera (plazas, reaparición, motor, munición, mando IA) |
-| `ATN_Buggy` | `Vehicles/` | Port de `AHYBuggy` sin `Cargo` ni fichas: Chaos Vehicles, derrape, enderezado, cámara, tinte por equipo, asientos y tortugas visuales |
+| `ATN_Buggy` | `Vehicles/` | Port de `AHYBuggy` sin `Cargo` ni fichas: Chaos Vehicles, derrape, enderezado, cámara, asientos y tortugas sentadas. Modelo de `Art/Source/Vehicles/Buggy` (#290): chasis de física `SK_TN_BuggyChassis` (PhysicsAsset copiado del template, sin AnimBP), carrocería y ruedas con sockets `Seat_*` y `Muzzle_Gunner`, skins Mar, Alga y Medusa con la pintura del equipo; lo importa `Scripts/tools/import_buggy_rally.py` |
 | `ATN_BuggyGunnerPawn` | `Vehicles/` | Peón de la artillera, sujeto a `Seat_Gunner`, con cámara y apuntado replicado |
 | `UTN_BuggyTurretComponent` | `Vehicles/` | Apuntado, calentamiento, munición especial, disparo con retroceso |
 | `ATN_RallyProjectile` y efectos | `Vehicles/` | Proyectiles replicados, charco de alga, burbuja, explosión, tinta |

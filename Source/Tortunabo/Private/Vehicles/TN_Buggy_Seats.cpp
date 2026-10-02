@@ -10,6 +10,7 @@
 #include "ChaosWheeledVehicleMovementComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "AnimationRuntime.h"
 #include "Engine/SkeletalMesh.h"
 #include "Engine/World.h"
 #include "GameFramework/Controller.h"
@@ -23,6 +24,9 @@ namespace TNBuggySeats
 
 	/** Giro de la tortuga sentada (el del constructor): su malla mira a +Y y así mira al morro. */
 	const FRotator SeatedTurtleRotation(0.f, -90.f, 0.f);
+	/** Hueso de la cadera de TotugaDemo_Rig y su sitio en la postura de referencia si faltara (unidades de malla). */
+	const FName HipsBone(TEXT("Hips"));
+	const FVector FallbackHipsMesh(0.f, -0.39f, 24.566f);
 	/** Artillera noqueada: grados que cae hacia atrás, cm que se desliza hacia la cola y velocidades de caída y vuelta (1/s). */
 	constexpr float KnockBackPitchDeg = 65.f;
 	constexpr float KnockSlideBackCm = 15.f;
@@ -258,7 +262,7 @@ void ATN_Buggy::ApplySeatLook(int32 SeatIndex, bool bForce)
 			Turtle->SetSkeletalMesh(Wanted);
 		}
 		Turtle->SetAnimInstanceClass(UTN_TurtleAnimInstance::StaticClass());
-		FitTurtle(Turtle);
+		FitTurtle(SeatIndex);
 		bForce = true;
 	}
 	const FTN_TurtleLook Look = TNBuggySeats::LookOf(bDriver ? DriverPlayerState.Get() : GunnerPlayerState.Get());
@@ -273,18 +277,26 @@ void ATN_Buggy::ApplySeatLook(int32 SeatIndex, bool bForce)
 	UTN_CosmeticLook::ApplyLook(this, Turtle, Helmet, Look, Defaults);
 }
 
-void ATN_Buggy::FitTurtle(USkeletalMeshComponent* Turtle) const
+void ATN_Buggy::FitTurtle(int32 SeatIndex)
 {
+	USkeletalMeshComponent* Turtle = SeatTurtles.IsValidIndex(SeatIndex) ? SeatTurtles[SeatIndex].Get() : nullptr;
 	const USkeletalMesh* TurtleMesh = Turtle ? Turtle->GetSkeletalMeshAsset() : nullptr;
-	if (!TurtleMesh)
+	if (!TurtleMesh || SeatIndex < 0 || SeatIndex >= UE_ARRAY_COUNT(SeatTurtleBase))
 	{
 		return;
 	}
-	const float Height = static_cast<float>(TurtleMesh->GetBounds().BoxExtent.Z) * 2.f;
-	if (Height > KINDA_SMALL_NUMBER)
-	{
-		Turtle->SetRelativeScale3D(FVector(SeatedTurtleHeightCm / Height));
-	}
+	const bool bDriver = SeatIndex == TNBuggySeats::DriverIndex;
+	const FVector Seat = bDriver ? GetBodySocketLocal(DriverSeatSocket, DriverSeatLocal) : GetBodySocketLocal(GunnerSeatSocket, GunnerSeatLocal);
+	// La cadera de la malla (postura de referencia) cae en el socket del asiento, que está medido en la tortuga sentada
+	// (Art/Source/Vehicles/Buggy/turtle_pose.py); UTN_BuggyRiderAnimComponent dobla las piernas sobre ella.
+	const FReferenceSkeleton& Ref = TurtleMesh->GetRefSkeleton();
+	const int32 Hips = Ref.FindBoneIndex(TNBuggySeats::HipsBone);
+	const FVector HipsMesh = Hips != INDEX_NONE ? FAnimationRuntime::GetComponentSpaceTransformRefPose(Ref, Hips).GetLocation()
+		: TNBuggySeats::FallbackHipsMesh;
+	const FVector HipsLocal = TNBuggySeats::SeatedTurtleRotation.RotateVector(HipsMesh * SeatedTurtleScale);
+	SeatTurtleBase[SeatIndex] = Seat - HipsLocal;
+	Turtle->SetRelativeScale3D(FVector(SeatedTurtleScale));
+	Turtle->SetRelativeLocationAndRotation(SeatTurtleBase[SeatIndex], TNBuggySeats::SeatedTurtleRotation);
 }
 
 void ATN_Buggy::UpdateGunnerKnockPose(float DeltaSeconds)
@@ -303,9 +315,11 @@ void ATN_Buggy::UpdateGunnerKnockPose(float DeltaSeconds)
 	const float Speed = Target > GunnerKnockLean01 ? TNBuggySeats::KnockFallPerSecond : TNBuggySeats::KnockRecoverPerSecond;
 	GunnerKnockLean01 = FMath::FInterpConstantTo(GunnerKnockLean01, Target, DeltaSeconds, Speed);
 	const float Ease = FMath::InterpEaseOut(0.f, 1.f, GunnerKnockLean01, 2.f);
-	// Cabeceo positivo en el marco del chasis: la cabeza va hacia la cola. Gira sobre el origen de la malla (el asiento).
+	// Cabeceo positivo en el marco del chasis: la cabeza va hacia la cola. Gira sobre la cadera (el socket del asiento).
 	// UTN_BuggyRiderAnimComponent anima los huesos (UTN_TurtleAnimInstance), no el componente: no se pisan.
 	const FQuat Fall = FRotator(TNBuggySeats::KnockBackPitchDeg * Ease, 0.f, 0.f).Quaternion();
-	Turtle->SetRelativeLocationAndRotation(GunnerSeatLocal - FVector(TNBuggySeats::KnockSlideBackCm * Ease, 0.f, 0.f),
+	const FVector Base = SeatTurtleBase[TNBuggySeats::GunnerIndex];
+	const FVector Hip = GetBodySocketLocal(GunnerSeatSocket, GunnerSeatLocal);
+	Turtle->SetRelativeLocationAndRotation(Hip + Fall.RotateVector(Base - Hip) - FVector(TNBuggySeats::KnockSlideBackCm * Ease, 0.f, 0.f),
 		Fall * TNBuggySeats::SeatedTurtleRotation.Quaternion());
 }

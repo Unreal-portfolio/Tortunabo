@@ -1,6 +1,7 @@
 // ATN_Buggy: construcción, física de conducción (fricción, derrape, golpe de rueda, charco, motor cortado),
 // enderezado, tinte y contrato con la carrera. Asientos y tortugas en TN_Buggy_Seats.cpp; input en TN_Buggy_Input.cpp;
-// impactos en TN_Buggy_Effects.cpp; estabilidad y turbo en TN_Buggy_Drive.cpp; cámara en TN_Buggy_Camera.cpp.
+// impactos en TN_Buggy_Effects.cpp; estabilidad y turbo en TN_Buggy_Drive.cpp; cámara en TN_Buggy_Camera.cpp; modelo, skins y
+// neumáticos en TN_Buggy_Visuals.cpp.
 
 #include "Vehicles/TN_Buggy.h"
 #include "Vehicles/TN_BuggyData.h"
@@ -11,7 +12,6 @@
 #include "Vehicles/TN_BuggyTurretComponent.h"
 #include "Vehicles/TN_BuggyWheel.h"
 #include "Vehicles/TN_RallyTurretLogic.h"
-#include "Animation/AnimInstance.h"
 #include "Camera/CameraComponent.h"
 #include "ChaosVehicleWheel.h"
 #include "ChaosWheeledVehicleMovementComponent.h"
@@ -22,27 +22,48 @@
 #include "Engine/World.h"
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/SpringArmComponent.h"
-#include "Materials/MaterialInstanceDynamic.h"
 #include "Net/UnrealNetwork.h"
 #include "Sound/SoundBase.h"
 #include "UObject/ConstructorHelpers.h"
 
-const FName ATN_Buggy::TintSlotName(TEXT("M_PlayerTint"));
-const FName ATN_Buggy::TintParameterName(TEXT("Tint"));
-const FVector ATN_Buggy::GunnerSeatLocal(-80.f, 0.f, 127.4f);
-const FVector ATN_Buggy::DriverSeatLocal(25.f, -35.f, 67.f);
+const FName ATN_Buggy::TintParameterName(TEXT("PaintColor"));
+const FName ATN_Buggy::DriverSeatSocket(TEXT("Seat_Driver"));
+const FName ATN_Buggy::GunnerSeatSocket(TEXT("Seat_Gunner"));
+const FName ATN_Buggy::MuzzleSocket(TEXT("Muzzle_Gunner"));
+// Art/Source/Vehicles/Buggy/manifest.json (sockets_cm).
+const FVector ATN_Buggy::GunnerSeatLocal(-80.f, 0.f, 127.38f);
+const FVector ATN_Buggy::DriverSeatLocal(22.f, 0.f, 92.38f);
+const FVector ATN_Buggy::MuzzleLocal(-15.42f, 0.f, 169.38f);
+const FName ATN_Buggy::WheelBoneNames[4] = {
+	FName(TEXT("PhysWheel_FL")), FName(TEXT("PhysWheel_FR")), FName(TEXT("PhysWheel_BL")), FName(TEXT("PhysWheel_BR")) };
 
 namespace TNBuggyDetail
 {
-	const TCHAR* const ChassisMeshPath = TEXT("/Game/Vehicles/OffroadCar/SKM_Offroad.SKM_Offroad");
-	const TCHAR* const ChassisAnimPath = TEXT("/Game/Vehicles/OffroadCar/Offroad_AnimBP.Offroad_AnimBP_C");
-	const TCHAR* const BodyMeshPath = TEXT("/Game/Generated/Meshes/Buggy/SM_BuggyBody.SM_BuggyBody");
-	const TCHAR* const TireMeshPath = TEXT("/Game/Generated/Meshes/Buggy/SM_BuggyTire.SM_BuggyTire");
+	const TCHAR* const ChassisMeshPath = TEXT("/Game/Art/Source/Vehicles/Buggy/export/SK_TN_BuggyChassis.SK_TN_BuggyChassis");
+	const TCHAR* const BodyMeshPath = TEXT("/Game/Art/Source/Vehicles/Buggy/export/SM_TN_BuggyBody.SM_TN_BuggyBody");
+	const TCHAR* const TireMeshPath = TEXT("/Game/Art/Source/Vehicles/Buggy/export/SM_TN_BuggyTire.SM_TN_BuggyTire");
 	const TCHAR* const TurtleMeshPath = TEXT("/Game/Meshses/Characters/Player/TotugaDemo_Rig.TotugaDemo_Rig");
+	const TCHAR* const SkinPaths[] = {
+		TEXT("/Game/Art/Source/Vehicles/Buggy/export/MI_TN_Buggy_Mar.MI_TN_Buggy_Mar"),
+		TEXT("/Game/Art/Source/Vehicles/Buggy/export/MI_TN_Buggy_Alga.MI_TN_Buggy_Alga"),
+		TEXT("/Game/Art/Source/Vehicles/Buggy/export/MI_TN_Buggy_Medusa.MI_TN_Buggy_Medusa"),
+	};
+
+	/** Ejes de las ruedas en SK_TN_BuggyChassis (los de SKM_Offroad), para el constructor; en juego se leen los huesos. */
+	const FVector WheelRestLocal[] = {
+		FVector(168.3f, -124.1f, 51.1f), FVector(168.3f, 124.1f, 51.1f), FVector(-135.2f, -139.8f, 50.8f), FVector(-135.2f, 139.8f, 50.8f) };
 
 	/** Ruedas en el orden de WheelSetups: delanteras 0 y 1, traseras 2 y 3. */
 	constexpr int32 FirstRearWheel = 2;
 	constexpr int32 WheelCount = 4;
+
+	/** Cadera (hueso Hips) de TotugaDemo_Rig a escala 2,5 respecto al origen de la tortuga sentada, ya girada al morro. */
+	const FVector DefaultHipsAboveTurtleOrigin(-1.f, 0.f, 61.4f);
+
+	/** Cañón visible (cm): largo, grosor y desplazamiento a la derecha de la artillera, para no atravesarle la cabeza. */
+	constexpr float BarrelLengthCm = 40.f;
+	constexpr float BarrelDiameterCm = 12.f;
+	constexpr float BarrelSideCm = 26.f;
 
 	/** Cámara de persecución de HellYeah: pivote sobre el centro, cabeceo fijo en mundo, se abre con la velocidad. */
 	const FVector CameraPivotLocal(0.f, 0.f, 120.f);
@@ -87,44 +108,43 @@ ATN_Buggy::ATN_Buggy()
 	bReplicates = true;
 
 	ChassisMeshAsset = TSoftObjectPtr<USkeletalMesh>(FSoftObjectPath(ChassisMeshPath));
-	ChassisAnimClass = TSoftClassPtr<UAnimInstance>(FSoftObjectPath(ChassisAnimPath));
 	BodyMeshAsset = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(BodyMeshPath));
 	TireMeshAsset = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(TireMeshPath));
 	TurtleMeshAsset = TSoftObjectPtr<USkeletalMesh>(FSoftObjectPath(TurtleMeshPath));
+	for (const TCHAR* SkinPath : SkinPaths)
+	{
+		SkinMaterials.Add(TSoftObjectPtr<UMaterialInterface>(FSoftObjectPath(SkinPath)));
+	}
 	GunnerPawnClass = ATN_BuggyGunnerPawn::StaticClass();
 
+	// Mallas pequeñas (la de física es una caja de 12 triángulos): se cargan con la clase, como el resto del buggy.
 	static ConstructorHelpers::FObjectFinder<USkeletalMesh> ChassisFinder(ChassisMeshPath);
-	static ConstructorHelpers::FClassFinder<UAnimInstance> AnimFinder(TEXT("/Game/Vehicles/OffroadCar/Offroad_AnimBP"));
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> BodyFinder(BodyMeshPath);
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> TireFinder(TireMeshPath);
 	static ConstructorHelpers::FObjectFinder<USkeletalMesh> TurtleFinder(TurtleMeshPath);
 
 	USkeletalMeshComponent* Chassis = GetMesh();
 	Chassis->SetSkeletalMesh(ChassisFinder.Object);
-	Chassis->SetAnimInstanceClass(AnimFinder.Class);
 	Chassis->SetSimulatePhysics(true);
-	// El esqueleto solo aporta física y huesos de rueda: se oculta sin ocultar a sus hijos y refresca huesos siempre.
+	// El esqueleto solo aporta el cuerpo físico y los huesos de rueda (sin animación): se oculta sin ocultar a sus hijos.
 	Chassis->SetVisibility(false, false);
-	Chassis->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+	Chassis->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::OnlyTickPoseWhenRendered;
 
 	Body = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Body"));
 	Body->SetupAttachment(Chassis);
 	Body->SetStaticMesh(BodyFinder.Object);
 	Body->SetCollisionProfileName(TEXT("NoCollision"));
 
-	const TCHAR* const TireSockets[] = { TEXT("VisWheel_FL"), TEXT("VisWheel_FR"), TEXT("VisWheel_BL"), TEXT("VisWheel_BR") };
+	const TCHAR* const TireNames[] = { TEXT("Tire_FL"), TEXT("Tire_FR"), TEXT("Tire_BL"), TEXT("Tire_BR") };
 	for (int32 Index = 0; Index < WheelCount; ++Index)
 	{
-		const FName Socket(TireSockets[Index]);
-		UStaticMeshComponent* Tire = CreateDefaultSubobject<UStaticMeshComponent>(Socket);
-		Tire->SetupAttachment(Chassis, Socket);
+		UStaticMeshComponent* Tire = CreateDefaultSubobject<UStaticMeshComponent>(TireNames[Index]);
+		// En el chasis, no en un hueso: UpdateWheelVisuals los pone cada fotograma en el eje de su rueda Chaos.
+		Tire->SetupAttachment(Chassis);
 		Tire->SetStaticMesh(TireFinder.Object);
 		Tire->SetCollisionProfileName(TEXT("NoCollision"));
 		// Neumáticos derechos girados para que la cara exterior mire afuera.
-		if (Index % 2 == 1)
-		{
-			Tire->SetRelativeRotation(FRotator(0.f, 180.f, 0.f));
-		}
+		Tire->SetRelativeLocationAndRotation(WheelRestLocal[Index], FRotator(0.f, Index % 2 == 1 ? 180.f : 0.f, 0.f));
 		Tires.Add(Tire);
 	}
 
@@ -136,15 +156,18 @@ ATN_Buggy::ATN_Buggy()
 	BoostStartSound = BoostStartFinder.Object;
 	Turret = CreateDefaultSubobject<UTN_BuggyTurretComponent>(TEXT("Turret"));
 	Turret->SetupAttachment(Chassis);
+	// Pivote a la altura de la boca (Muzzle_Gunner) sobre el asiento: apuntando al frente, la boca cae en el socket.
 	Turret->SetRelativeLocation(GunnerSeatLocal + FVector(0.f, 0.f, UTN_BuggyTurretComponent::PivotAboveSeatCm));
 
-	// Cañón: cilindro básico de 100 cm tumbado sobre X (excepción aceptada: no hay malla de torreta todavía).
+	// Cañón: tubo junto a la cabeza de la artillera que acaba a la altura de la boca (cilindro básico de 100 cm tumbado
+	// sobre X; excepción aceptada: el modelo de Art/Source no trae torreta).
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> BarrelFinder(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
 	TurretBarrel = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("TurretBarrel"));
 	TurretBarrel->SetupAttachment(Turret);
 	TurretBarrel->SetStaticMesh(BarrelFinder.Object);
-	TurretBarrel->SetRelativeLocationAndRotation(FVector(UTN_BuggyTurretComponent::MuzzleDistanceCm * 0.5f, 0.f, 0.f), FRotator(-90.f, 0.f, 0.f));
-	TurretBarrel->SetRelativeScale3D(FVector(0.22f, 0.22f, UTN_BuggyTurretComponent::MuzzleDistanceCm / 100.f));
+	TurretBarrel->SetRelativeLocationAndRotation(
+		FVector(UTN_BuggyTurretComponent::MuzzleDistanceCm - BarrelLengthCm * 0.5f, BarrelSideCm, 0.f), FRotator(-90.f, 0.f, 0.f));
+	TurretBarrel->SetRelativeScale3D(FVector(BarrelDiameterCm / 100.f, BarrelDiameterCm / 100.f, BarrelLengthCm / 100.f));
 	TurretBarrel->SetCollisionProfileName(TEXT("NoCollision"));
 	TurretBarrel->SetCastShadow(false);
 
@@ -154,7 +177,10 @@ ATN_Buggy::ATN_Buggy()
 	{
 		USkeletalMeshComponent* Turtle = CreateDefaultSubobject<USkeletalMeshComponent>(SeatNames[Seat]);
 		Turtle->SetupAttachment(Chassis);
-		Turtle->SetRelativeLocation(SeatLocations[Seat]);
+		// Provisional: FitTurtle la recoloca con la cadera medida en la malla de la tortuga y el socket de la carrocería.
+		SeatTurtleBase[Seat] = SeatLocations[Seat] - DefaultHipsAboveTurtleOrigin;
+		Turtle->SetRelativeLocation(SeatTurtleBase[Seat]);
+		Turtle->SetRelativeScale3D(FVector(SeatedTurtleScale));
 		// La malla de la tortuga mira a su +Y (como en BP_TortugaCharacter): -90 la pone mirando al morro.
 		Turtle->SetRelativeRotation(FRotator(0.f, -90.f, 0.f));
 		Turtle->SetCollisionProfileName(TEXT("NoCollision"));
@@ -199,13 +225,12 @@ ATN_Buggy::ATN_Buggy()
 	Move->CenterOfMassOverride = FVector(0.f, 0.f, 40.f);
 	Move->bLegacyWheelFrictionPosition = false;
 	Move->WheelSetups.SetNum(WheelCount);
-	const TCHAR* const WheelBones[] = { TEXT("PhysWheel_FL"), TEXT("PhysWheel_FR"), TEXT("PhysWheel_BL"), TEXT("PhysWheel_BR") };
 	for (int32 Index = 0; Index < WheelCount; ++Index)
 	{
 		Move->WheelSetups[Index].WheelClass = Index < FirstRearWheel
 			? UTN_BuggyWheelFront::StaticClass()
 			: UTN_BuggyWheelRear::StaticClass();
-		Move->WheelSetups[Index].BoneName = FName(WheelBones[Index]);
+		Move->WheelSetups[Index].BoneName = WheelBoneNames[Index];
 	}
 	// Provisional: PostInitializeComponents recrea el motor con el ajuste de Data.
 	const UTN_BuggyData* Defaults = GetDefault<UTN_BuggyData>();
@@ -245,30 +270,7 @@ void ATN_Buggy::PostInitializeComponents()
 {
 	Super::PostInitializeComponents();
 
-	// Un hijo en Blueprint puede cambiar las rutas: se cargan si no coinciden con las del constructor.
-	USkeletalMeshComponent* Chassis = GetMesh();
-	if (USkeletalMesh* Wanted = ChassisMeshAsset.LoadSynchronous(); Wanted && Chassis->GetSkeletalMeshAsset() != Wanted)
-	{
-		Chassis->SetSkeletalMesh(Wanted);
-	}
-	if (UClass* WantedAnim = ChassisAnimClass.LoadSynchronous(); WantedAnim && Chassis->GetAnimClass() != WantedAnim)
-	{
-		Chassis->SetAnimInstanceClass(WantedAnim);
-	}
-	if (UStaticMesh* WantedBody = BodyMeshAsset.LoadSynchronous(); WantedBody && Body->GetStaticMesh() != WantedBody)
-	{
-		Body->SetStaticMesh(WantedBody);
-	}
-	if (UStaticMesh* WantedTire = TireMeshAsset.LoadSynchronous())
-	{
-		for (UStaticMeshComponent* Tire : Tires)
-		{
-			if (Tire && Tire->GetStaticMesh() != WantedTire)
-			{
-				Tire->SetStaticMesh(WantedTire);
-			}
-		}
-	}
+	ApplyModelAssets();
 
 	UChaosWheeledVehicleMovementComponent* Move = GetWheeledMovement();
 	if (!Move)
@@ -362,6 +364,7 @@ void ATN_Buggy::Tick(float DeltaSeconds)
 	if (GetNetMode() != NM_DedicatedServer)
 	{
 		UpdateGunnerKnockPose(DeltaSeconds);
+		UpdateWheelVisuals();
 	}
 
 	SeatLookCheckAccumulator += DeltaSeconds;
@@ -697,24 +700,6 @@ void ATN_Buggy::SetRallyTeamIndex(int32 Index)
 void ATN_Buggy::OnRep_TeamIndex()
 {
 	ApplyTint();
-}
-
-void ATN_Buggy::ApplyTint()
-{
-	if (!TintMaterial)
-	{
-		const int32 Slot = Body->GetMaterialIndex(TintSlotName);
-		if (Slot == INDEX_NONE)
-		{
-			UE_LOG(LogTNBuggy, Warning, TEXT("%s: la carrocería no tiene el slot %s"), *GetName(), *TintSlotName.ToString());
-			return;
-		}
-		TintMaterial = Body->CreateAndSetMaterialInstanceDynamic(Slot);
-	}
-	if (TintMaterial)
-	{
-		TintMaterial->SetVectorParameterValue(TintParameterName, TNBuggy::TeamColor(TeamIndex));
-	}
 }
 
 void ATN_Buggy::OnRep_Ghost()

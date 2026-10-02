@@ -9,7 +9,8 @@ namespace
 	 */
 	void ApplySharedWheelSetup(UChaosVehicleWheel& Wheel)
 	{
-		Wheel.WheelRadius = 51.f;
+		// Medidas de SM_TN_BuggyTire (caja de 100,85 × 35 cm); lo comprueba Tortunabo.Rally.Buggy.Assets.
+		Wheel.WheelRadius = 50.4f;
 		Wheel.WheelWidth = 35.f;
 		Wheel.CorneringStiffness = 750.f;
 		Wheel.SuspensionMaxRaise = 25.f;

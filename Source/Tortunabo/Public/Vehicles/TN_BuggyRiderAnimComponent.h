@@ -184,6 +184,14 @@ protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
+	/**
+	 * Postura sentada de base (#290): piernas dobladas 90° en la cadera y la rodilla y brazos al volante (conductora) o
+	 * listos para lanzar (artillera), los de Art/Source/Vehicles/Buggy/turtle_pose.py con los que se midieron los
+	 * asientos. Las reacciones van encima.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Ocupantes")
+	bool bSeatedPose = true;
+
 	// ── Reacciones ──────────────────────────────────────────────────────────────
 
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Ocupantes")

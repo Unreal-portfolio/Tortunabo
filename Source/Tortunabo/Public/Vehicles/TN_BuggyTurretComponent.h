@@ -22,10 +22,16 @@ class TORTUNABO_API UTN_BuggyTurretComponent : public USceneComponent
 	GENERATED_BODY()
 
 public:
-	/** Altura del pivote de la torreta sobre el asiento de la artillera (cm). */
-	static constexpr float PivotAboveSeatCm = 70.f;
-	/** Distancia de la boca del cañón al pivote (cm): el proyectil sale de ahí. */
-	static constexpr float MuzzleDistanceCm = 140.f;
+	/**
+	 * Altura del pivote de la torreta sobre el asiento de la artillera (cm): la de la boca, Muzzle_Gunner (169,38) menos
+	 * Seat_Gunner (127,38) en SM_TN_BuggyBody. Lo comprueba Tortunabo.Rally.Buggy.Assets.
+	 */
+	static constexpr float PivotAboveSeatCm = 42.f;
+	/**
+	 * Distancia de la boca al pivote (cm): apuntando al frente, la boca cae en Muzzle_Gunner (64,58 cm por delante del
+	 * asiento, 10 cm por delante del hocico de la artillera). El proyectil sale de ahí.
+	 */
+	static constexpr float MuzzleDistanceCm = 64.58f;
 
 	UTN_BuggyTurretComponent();
 
