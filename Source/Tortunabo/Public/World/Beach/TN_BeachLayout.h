@@ -89,6 +89,14 @@ namespace TNBeachLayout
 	constexpr double EggLaunchUp = 650.0;
 	/** Se lanza a quien esté en la salida al abrirse (por delante del muro de detrás y hasta aquí, a lo largo). */
 	constexpr double EggLaunchReachX = 1500.0;
+	/** Margen (cm) del nido del sprint que se despeja alrededor de los huevos (el SprintClearMargin del GameMode). */
+	constexpr double SprintNestClear = 1500.0;
+	/**
+	 * En una ronda de sprint, la huella del castillo con salas principal queda fuera de [SprintLineX − SprintCastleBehind,
+	 * SprintLineX + SprintCastleAhead]: ni el castillo ni sus alas tocan el nido de los huevos.
+	 */
+	constexpr double SprintCastleBehind = 8000.0;
+	constexpr double SprintCastleAhead = 3000.0;
 
 	// ── Reparto ──
 	/** Nada a menos de 15 m por delante de la línea de salida (23 m de los huevos; el salto de los huevos cae a ~7 m). */
@@ -1201,6 +1209,21 @@ namespace TNBeachLayout
 		return FVector(X, Y, GroundZ(X, Y));
 	}
 
+	/**
+	 * Nido del sprint en planta: el centro de sus MaxStartEggs huevos y el radio que despeja el GameMode al poner a las
+	 * finalistas (ATN_BeachRaceGameMode::PlaceSprintFinalists: el huevo más lejano más SprintNestClear, su
+	 * SprintClearMargin). El reparto de una ronda de sprint lo deja vacío: así ese despeje no quita nada.
+	 */
+	inline void SprintNestCircle(FVector2D& OutCenter, double& OutRadius)
+	{
+		FVector2D Sum = FVector2D::ZeroVector;
+		for (int32 Index = 0; Index < MaxStartEggs; ++Index) { Sum += FVector2D(SprintSpot(Index)); }
+		OutCenter = Sum / static_cast<double>(MaxStartEggs);
+		double Reach = 0.0;
+		for (int32 Index = 0; Index < MaxStartEggs; ++Index) { Reach = FMath::Max(Reach, FVector2D::Distance(FVector2D(SprintSpot(Index)), OutCenter)); }
+		OutRadius = Reach + SprintNestClear;
+	}
+
 	/** Agua de meta (P local, los pies de la tortuga): más allá del filo y a ras del agua o por debajo. */
 	inline bool IsFinishWaterLocal(const FVector& P)
 	{
@@ -2216,6 +2239,8 @@ namespace TNBeachLayout
 	struct FRoundLayout
 	{
 		int32 Seed = 0;
+		/** Ronda del sprint final: el nido de los huevos (SprintNestCircle) vacío y el castillo principal lejos de él. */
+		bool bSprint = false;
 		/** Dificultad con la que se ha repartido (va replicada con la semilla) y sus multiplicadores. */
 		ETNProcDifficulty Difficulty = ETNProcDifficulty::Normal;
 		FDifficultyProfile Profile;
@@ -2270,7 +2295,7 @@ namespace TNBeachLayout
 				Bands += FString::Printf(TEXT("%s%.0f"), Bands.IsEmpty() ? TEXT("") : TEXT(" "), Cover * 100.0f);
 			}
 			const TCHAR* DifficultyName = Difficulty == ETNProcDifficulty::Easy ? TEXT("fácil") : (Difficulty == ETNProcDifficulty::Hard ? TEXT("difícil") : TEXT("normal"));
-			return FString::Printf(TEXT("semilla %d, dificultad %s (ayudas x%.1f, trampas x%.1f, enemigos x%.1f) · %d elementos (%d decorado, %d trampas —%d de ellas ayudas—, %d enemigos: %d cangrejos, %d erizos, %d lagartos, %d ermitaños, %d pulpos, %d enjambres de pulgas, %d tanques, %d pasos de quads, %d zonas de gaviotas) · %d castillos con salas y %d enormes · %d fortalezas (%d colosales) · %d cofres · %d filas · %d piezas militares · %d lanzadores · %d rincones · %d tapones · %d asientos · %d puntos interesantes · %d tramos de pasarela guía · castillo principal a %.0f m (se rodea por %s) · paso libre de %.0f m %s · ocupación por banda de 50 m desde %.0f m (%%): %s · media %.0f %%, primer tercio %.0f %%"),
+			return FString(bSprint ? TEXT("sprint final (nido vacío), ") : TEXT("")) + FString::Printf(TEXT("semilla %d, dificultad %s (ayudas x%.1f, trampas x%.1f, enemigos x%.1f) · %d elementos (%d decorado, %d trampas —%d de ellas ayudas—, %d enemigos: %d cangrejos, %d erizos, %d lagartos, %d ermitaños, %d pulpos, %d enjambres de pulgas, %d tanques, %d pasos de quads, %d zonas de gaviotas) · %d castillos con salas y %d enormes · %d fortalezas (%d colosales) · %d cofres · %d filas · %d piezas militares · %d lanzadores · %d rincones · %d tapones · %d asientos · %d puntos interesantes · %d tramos de pasarela guía · castillo principal a %.0f m (se rodea por %s) · paso libre de %.0f m %s · ocupación por banda de 50 m desde %.0f m (%%): %s · media %.0f %%, primer tercio %.0f %%"),
 				Seed, DifficultyName, Profile.Aids, Profile.Traps, Profile.Enemies, Items.Num(), NumDecor, NumTraps, NumAids, NumEnemies, NumCrabs, NumUrchins, NumLizards,
 				NumHermitCrabs, NumOctopuses, NumSandFleas, NumToyTanks, NumQuadLanes, NumGullZones, NumDungeons, NumCastles, NumFortresses, NumColossal, NumChests, NumRows,
 				NumMilitary, NumLaunchers, NumNooks, NumPlugs, Stamps.Num(), Interest.Num(), NumGuidePaths, DungeonPos.X / 100.0,
@@ -2501,6 +2526,10 @@ namespace TNBeachLayout
 		int32 BucketsY = 0;
 		/** Centros de los campos de minas (en medio de cada uno, a veces, un cofre). */
 		TArray<FVector2D> MinefieldCenters;
+		/** Ronda de sprint: nada toca el nido de los huevos (SprintNestCircle), ni lo que va por encima. */
+		bool bSprint = false;
+		FVector2D SprintNestCenter = FVector2D::ZeroVector;
+		double SprintNestRadius = 0.0;
 		/** Lo ocupado por casillas de 1 m (el relleno prueba en las libres). */
 		FOccupancy Occupancy;
 		static constexpr double BucketSize = 2500.0;
@@ -2636,7 +2665,7 @@ namespace TNBeachLayout
 		bool TryAdd(const FItem& Item, double Pad)
 		{
 			// De lo más barato y lo que más falla (pisar algo, con la playa llena) a lo más caro.
-			if (!InBounds(Item) || !Fits(Item, Pad) || !TerrainAllows(Item) || !SeatIsGentle(Item)) { return false; }
+			if (!InBounds(Item) || TouchesSprintNest(Item) || !Fits(Item, Pad) || !TerrainAllows(Item) || !SeatIsGentle(Item)) { return false; }
 			const int32 Index = Out.Items.Add(Item);
 			Alive.Add(static_cast<uint8>(1));
 			VisitMark.Add(0);
@@ -2660,6 +2689,17 @@ namespace TNBeachLayout
 				}
 			}
 			return true;
+		}
+
+		/**
+		 * En una ronda de sprint, si la huella entera de Item (con ItemPad de margen) toca el nido de los huevos: el GameMode
+		 * lo despeja al poner a las finalistas y lo cortaría (con lo que lleve encima flotando).
+		 */
+		bool TouchesSprintNest(const FItem& Item) const
+		{
+			if (!bSprint) { return false; }
+			double T = 0.0;
+			return TNProcMap::DistPointSegment(SprintNestCenter, Item.EndA(), Item.EndB(), T) < SprintNestRadius + Item.Radius + ItemPad;
 		}
 
 		void Remove(int32 Index)
@@ -2893,12 +2933,20 @@ namespace TNBeachLayout
 			const FElementRule& Rule = CachedRule(ETNBeachElement::SandDungeon);
 			FItem Castle;
 			bool bPlaced = false;
-			for (int32 Try = 0; Try < 24 && !bPlaced; ++Try)
+			const int32 Tries = bSprint ? SprintCastleTriesAhead + SprintCastleTriesBehind : 24;
+			for (int32 Try = 0; Try < Tries && !bPlaced; ++Try)
 			{
 				Castle = MakeItem(Rng, ETNBeachElement::SandDungeon, Rule, Rng.Range(Rule.SizeMin, Rule.SizeMax), 0.0);
 				Castle.Role = EItemRole::Dungeon;
-				const double CastleX = XOfProgress(Rng.Range(0.42, 0.58));
-				Castle.Pos = FVector2D(CastleX, Rng.Range(-1.0, 1.0) * HalfWidth * 0.28);
+				if (bSprint)
+				{
+					Castle.Pos = SprintCastleSpot(Try, Castle.Radius);
+				}
+				else
+				{
+					const double CastleX = XOfProgress(Rng.Range(0.42, 0.58));
+					Castle.Pos = FVector2D(CastleX, Rng.Range(-1.0, 1.0) * HalfWidth * 0.28);
+				}
 				bPlaced = TryAdd(Castle, ItemPad);
 			}
 			if (!bPlaced) { return; }
@@ -2935,6 +2983,25 @@ namespace TNBeachLayout
 			}
 			RestorePassage(WallStart);
 			AddSummit(Castle, 1150.0 * Castle.Spec.SizeScale);
+		}
+
+		/** Intentos del castillo principal en una ronda de sprint: primero por delante del nido y, si no cabe, por detrás. */
+		static constexpr int32 SprintCastleTriesAhead = 60;
+		static constexpr int32 SprintCastleTriesBehind = 40;
+
+		/**
+		 * Sitio del castillo principal (de huella Radius) en una ronda de sprint, intento Try: con su huella fuera de
+		 * [SprintLineX − SprintCastleBehind, SprintLineX + SprintCastleAhead]. El terreno fijo solo le deja sitio hacia los
+		 * 335-450 m (donde está la línea del sprint), los 565-720 m y los 100-160 m: primero por delante (lo corren las
+		 * finalistas; a lo ancho hasta el 70 % del semiancho, que ahí los huecos son pocos) y luego por detrás. Sus alas bajan
+		 * hacia la salida desde el castillo: por delante tampoco llegan al nido.
+		 */
+		FVector2D SprintCastleSpot(int32 Try, double Radius)
+		{
+			const bool bAhead = Try < SprintCastleTriesAhead;
+			const double X = bAhead ? Rng.Range(SprintLineX() + SprintCastleAhead + Radius, XOfProgress(0.95))
+				: Rng.Range(ItemsStartX + Radius, SprintLineX() - SprintCastleBehind - Radius);
+			return FVector2D(X, Rng.Range(-0.7, 0.7) * HalfWidth);
 		}
 
 		/** Otro castillo con salas (sin alas) entre T0 y T1. */
@@ -4342,14 +4409,23 @@ namespace TNBeachLayout
 	 * catapultas que falten y tapones de las líneas rectas. Lo que cierra
 	 * el paso se comprueba al ponerlo (en una ventana de ±60 m; los tapones, en toda la playa) y, en toda la playa, tras
 	 * cada fila, cada banda y cada pasada que cierra.
+	 * bSprint: ronda del sprint final. Nada toca el nido de los huevos de la línea del sprint (SprintNestCircle, lo que el
+	 * GameMode despeja al poner a las finalistas) y el castillo principal va por delante del nido o, si no cabe, por detrás
+	 * (SprintCastleSpot). Sin bSprint, el reparto es el mismo de siempre (la misma secuencia de la semilla).
 	 */
-	inline void GenerateRound(int32 Seed, ETNProcDifficulty Difficulty, FRoundLayout& Out)
+	inline void GenerateRound(int32 Seed, ETNProcDifficulty Difficulty, FRoundLayout& Out, bool bSprint = false)
 	{
 		Out = FRoundLayout();
 		Out.Seed = Seed;
+		Out.bSprint = bSprint;
 		Out.Difficulty = Difficulty;
 		Out.Profile = DifficultyProfileOf(Difficulty);
 		FBuilder Builder(Out, Seed, Out.Profile);
+		if (bSprint)
+		{
+			Builder.bSprint = true;
+			SprintNestCircle(Builder.SprintNestCenter, Builder.SprintNestRadius);
+		}
 		Builder.PlaceMainDungeon();
 		Builder.PlaceColossalFortresses();
 		Builder.PlaceExtraDungeons();
