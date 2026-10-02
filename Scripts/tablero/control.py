@@ -176,16 +176,18 @@ def cmd_colisiones(args: argparse.Namespace) -> None:
         print(f"- #{numero} resuelta: {motivo}")
     if not args.aplicar:
         return
+    proyecto = cargar_proyecto() if nuevos or resueltas else None
     if nuevos:
         objetos.crear_etiqueta_si_falta(gh, REPO, colisiones.ETIQUETA, colisiones.COLOR, colisiones.DESCRIPCION_ETIQUETA)
-        proyecto = cargar_proyecto()
         for a, b, ficheros in nuevos:
             crear_issue_colision(proyecto, prs[a], prs[b], ficheros)
     for numero, motivo in resueltas:
         comentar(numero, memoria.texto_resumen("dos PR abiertas chocaban al mezclarse",
                                                f"ya no hace falta mezclarlas: {motivo} (`tablero.py colisiones`)"))
         gh("issue", "close", str(numero), "--repo", REPO, "--reason", "completed")
-        print(f"#{numero} cerrada: {motivo}")
+        if numero in proyecto["items"]:  # sin esperar al sync: que no siga en Revisiones
+            poner_campo(proyecto, numero, "Status", "Done")
+        print(f"#{numero} cerrada y en Done: {motivo}")
 
 
 def objeto_y_area(proyecto: dict, pr: dict) -> tuple[int | None, str | None]:
