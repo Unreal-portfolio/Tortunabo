@@ -17,7 +17,7 @@ Notas de uso:
 - Solo compilaciones que no son Shipping. Código en `Source/Tortunabo/{Public,Private}/Testing/`.
 - El monkey sube el tope de 4 jugadores locales del motor (`MaxSplitscreenPlayers`) para poder llegar a 8.
 - Pausa/reanudar solo actúa con interfaz real: en `-nullrhi` se cuenta como `pause_skipped_no_ui`.
-- Red local con dos procesos: ambos con `-NetDriverOverrides=/Script/OnlineSubsystemUtils.IpNetDriver -ini:Engine:[OnlineSubsystem]:DefaultPlatformService=Null -NoSteam`; servidor con mapa `?listen`, cliente con `127.0.0.1`.
+- Red local con varios procesos: `Scripts/tools/red_local.py` ([`Pruebas_Red_Local.md`](Pruebas_Red_Local.md)). A mano, todos con `-NetDriverOverrides=/Script/OnlineSubsystemUtils.IpNetDriver -ini:Engine:[OnlineSubsystem]:DefaultPlatformService=Null -NoSteam`; servidor con mapa `?listen`, cliente con `127.0.0.1`.
 
 ## Resultados del monkey (3 × 60 s)
 
