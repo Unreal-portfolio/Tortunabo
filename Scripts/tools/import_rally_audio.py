@@ -21,7 +21,11 @@ ATTENUATION_NAME = "ATT_Rally"
 # pitidos del semáforo son de interfaz (PlaySound2D) y van sin ella.
 ATTENUATION_INNER_RADIUS_CM = 600.0
 ATTENUATION_FALLOFF_CM = 6000.0
-UI_PREFIXES = ("SFX_Rally_Light_",)
+# Interfaz sin atenuación: el semáforo (PlaySound2D) y las señales del copiloto, que espacializa UTN_RallyCopilotComponent
+# sin atenuar para que suenen al lado de la curva.
+UI_PREFIXES = ("SFX_Rally_Light_", "SFX_Rally_Call_")
+# TN_RALLY_AUDIO_ONLY="SFX_Rally_Call_,..." importa solo los sonidos con esos prefijos (los demás .uasset no se tocan).
+ONLY_ENV = "TN_RALLY_AUDIO_ONLY"
 SOURCE_DIR = os.path.join(unreal.Paths.project_dir(), "Art", "Source", "Audio", "Rally")
 MANIFEST_PATH = os.path.join(SOURCE_DIR, "manifest.json")
 
@@ -73,6 +77,9 @@ def ensure_attenuation(asset_tools):
 
 def main():
     entries = load_manifest()
+    only = tuple(p for p in os.environ.get(ONLY_ENV, "").split(",") if p)
+    if only:
+        entries = [entry for entry in entries if entry["name"].startswith(only)]
     asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
     attenuation = ensure_attenuation(asset_tools)
     failures = []

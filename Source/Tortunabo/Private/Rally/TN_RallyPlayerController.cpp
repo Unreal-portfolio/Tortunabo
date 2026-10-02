@@ -1,5 +1,6 @@
 #include "Rally/TN_RallyPlayerController.h"
 
+#include "Components/InputComponent.h"
 #include "Containers/Ticker.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "Engine/Engine.h"
@@ -10,6 +11,19 @@
 #include "Rally/TN_RallyLogic.h"
 #include "Rally/TN_RallyPlayerState.h"
 #include "Rally/UI/TN_RallyCopilotTablet.h"
+#include "Voice/ProximityVoiceComponent.h"
+#include "Rally/UI/TN_RallyDashboard.h"
+#include "Rally/TN_RallyCameraDirector.h"
+#include "Rally/TN_RallyCopilotComponent.h"
+#include "Vehicles/TN_Buggy.h"
+#include "Vehicles/TN_BuggyGunnerPawn.h"
+#include "VR/TN_VRMode.h"
+
+namespace TNRallyPC
+{
+	/** Cada cuánto se comprueba que el buggy local lleva el salpicadero y el cartel del arco (s). */
+	constexpr float DashboardCheckSeconds = 0.5f;
+}
 
 ATN_RallyPlayerController::ATN_RallyPlayerController()
 {
@@ -30,11 +44,23 @@ void ATN_RallyPlayerController::BeginPlay()
 		RallyHUD = CreateWidget<UTN_RallyHUDWidget>(this, HUDWidgetClass);
 		if (RallyHUD)
 		{
-			RallyHUD->AddToViewport(0);
+			// En VR, al panel del mundo como el resto de la interfaz.
+			TNVR::AddToScreen(RallyHUD, 0);
 		}
 	}
 	// Tableta de copiloto: grande para la artillera, compacta para la conductora sola; elige sola por la plaza.
 	UTN_RallyCopilotTablet::FindOrCreateFor(this);
+	// Cámara de llegada, podio y espectador (#306): solo en esta máquina.
+	if (!CameraDirector)
+	{
+		CameraDirector = NewObject<UTN_RallyCameraDirector>(this, TEXT("RallyCameraDirector"));
+		CameraDirector->RegisterComponent();
+	}
+	if (!Copilot)
+	{
+		Copilot = NewObject<UTN_RallyCopilotComponent>(this, TEXT("RallyCopilot"));
+		Copilot->RegisterComponent();
+	}
 	SyncCosmeticsToServer();
 }
 
@@ -46,6 +72,88 @@ void ATN_RallyPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason
 		RallyHUD = nullptr;
 	}
 	Super::EndPlay(EndPlayReason);
+}
+
+void ATN_RallyPlayerController::SetupInputComponent()
+{
+	Super::SetupInputComponent();
+	if (!InputComponent)
+	{
+		return;
+	}
+	const TPair<FKey, int32> Bindings[] = { { EKeys::A, -1 }, { EKeys::Left, -1 }, { EKeys::Gamepad_LeftShoulder, -1 },
+		{ EKeys::D, 1 }, { EKeys::Right, 1 }, { EKeys::Gamepad_RightShoulder, 1 } };
+	for (const TPair<FKey, int32>& Pair : Bindings)
+	{
+		FInputKeyBinding Binding{ FInputChord(Pair.Key), IE_Pressed };
+		// Sin consumirla: la misma tecla sigue llegando al buggy o a la artillera.
+		Binding.bConsumeInput = false;
+		const int32 Delta = Pair.Value;
+		Binding.KeyDelegate.GetDelegateForManualSet().BindWeakLambda(this, [this, Delta]()
+		{
+			if (CameraDirector)
+			{
+				CameraDirector->CycleSpectate(Delta);
+			}
+		});
+		InputComponent->KeyBindings.Add(MoveTemp(Binding));
+	}
+}
+
+void ATN_RallyPlayerController::PlayerTick(float DeltaTime)
+{
+	Super::PlayerTick(DeltaTime);
+	if (!IsLocalController())
+	{
+		return;
+	}
+	DashboardCheckAccumulator += DeltaTime;
+	if (DashboardCheckAccumulator >= TNRallyPC::DashboardCheckSeconds)
+	{
+		DashboardCheckAccumulator = 0.f;
+		// Solo para la conductora: a la artillera, sentada detrás, los paneles le taparían la vista (y ella tiene su HUD).
+		ATN_Buggy* Driven = Cast<ATN_Buggy>(GetPawn());
+		if (Driven)
+		{
+			UTN_RallyDashboardComponent::AttachTo(Driven, this);
+		}
+		else
+		{
+			UTN_RallyDashboardComponent::RemoveFrom(FindLocalBuggy());
+		}
+	}
+}
+
+ATN_Buggy* ATN_RallyPlayerController::FindLocalBuggy() const
+{
+	APawn* MyPawn = GetPawn();
+	if (ATN_Buggy* Driven = Cast<ATN_Buggy>(MyPawn))
+	{
+		return Driven;
+	}
+	const ATN_BuggyGunnerPawn* Gunner = Cast<ATN_BuggyGunnerPawn>(MyPawn);
+	return Gunner ? Gunner->GetBuggy() : nullptr;
+}
+
+void ATN_RallyPlayerController::OnPossess(APawn* InPawn)
+{
+	Super::OnPossess(InPawn);
+	UProximityVoiceComponent::EnsureOn(InPawn);
+}
+
+void ATN_RallyPlayerController::SendVoiceToOwningClient(const TArray<uint8>& CompressedData, int32 SenderSampleRate,
+	AActor* SpeakerActor, bool bIntercom)
+{
+	ClientReceiveVoice(CompressedData, SenderSampleRate, SpeakerActor, bIntercom);
+}
+
+void ATN_RallyPlayerController::ClientReceiveVoice_Implementation(const TArray<uint8>& CompressedData, int32 SenderSampleRate,
+	AActor* SpeakerActor, bool bIntercom)
+{
+	if (UProximityVoiceComponent* Voice = SpeakerActor ? SpeakerActor->FindComponentByClass<UProximityVoiceComponent>() : nullptr)
+	{
+		Voice->PlayRemoteVoice(CompressedData, SenderSampleRate, bIntercom);
+	}
 }
 
 void ATN_RallyPlayerController::AcknowledgePossession(APawn* InPawn)

@@ -127,6 +127,7 @@ void ATN_RallyGameMode::StartPlay()
 	}
 	if (bTrackReady)
 	{
+		SpawnPodium();
 		SpawnBots();
 		RebuildStandings();
 		if (bAutoStart && WarmupEndTime <= 0.0 && Teams.Num() > 0)
@@ -229,7 +230,8 @@ void ATN_RallyGameMode::ApplyWeaponLocks()
 	{
 		if (ITN_RallyVehicle* RallyVehicle = Cast<ITN_RallyVehicle>(Team.Vehicle.Get()))
 		{
-			RallyVehicle->SetWeaponsLocked(!TNRally::AreWeaponsLive(bRunning, Team.bRetired));
+			// Aparcado en el podio cuenta como retirado: no dispara desde allí.
+			RallyVehicle->SetWeaponsLocked(!TNRally::AreWeaponsLive(bRunning, Team.bRetired || Team.bParked));
 		}
 	}
 }
@@ -573,6 +575,7 @@ void ATN_RallyGameMode::Tick(float DeltaSeconds)
 		HoldBuggiesOnGrid();
 	}
 	const bool bRacing = Phase == ETNRallyPhase::Racing || Phase == ETNRallyPhase::Finishing;
+	ParkFinishedTeams();
 	ConsumeRespawnRequests(bRacing);
 	if (bRacing)
 	{
@@ -742,7 +745,7 @@ void ATN_RallyGameMode::SetAllEnginesLocked(bool bLocked)
 	{
 		if (ITN_RallyVehicle* RallyVehicle = Cast<ITN_RallyVehicle>(Team.Vehicle.Get()))
 		{
-			RallyVehicle->SetEngineLocked(bLocked || Team.bRetired);
+			RallyVehicle->SetEngineLocked(bLocked || Team.bRetired || Team.bParked);
 		}
 	}
 }

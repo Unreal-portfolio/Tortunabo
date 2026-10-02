@@ -268,6 +268,54 @@
       "lufs_target": -16.0,
       "uso": "Semáforo de salida: luz verde.",
       "seed": 2074712953
+    },
+    {
+      "name": "SFX_Rally_Call_Beep",
+      "file": "wav/SFX_Rally_Call_Beep.wav",
+      "ue_asset": "/Game/Audio/Rally/SFX_Rally_Call_Beep",
+      "duration_s": 0.09,
+      "loop": false,
+      "peak_dbfs": -5.84,
+      "lufs": -16.0,
+      "lufs_target": -16.0,
+      "uso": "Copiloto: pitido de curva, al lado de la curva y tantas veces como el grado.",
+      "seed": 2122051916
+    },
+    {
+      "name": "SFX_Rally_Call_Crest",
+      "file": "wav/SFX_Rally_Call_Crest.wav",
+      "ue_asset": "/Game/Audio/Rally/SFX_Rally_Call_Crest",
+      "duration_s": 0.3,
+      "loop": false,
+      "peak_dbfs": -11.31,
+      "lufs": -16.0,
+      "lufs_target": -16.0,
+      "uso": "Copiloto: cresta (cambio de rasante).",
+      "seed": 3031244690
+    },
+    {
+      "name": "SFX_Rally_Call_Jump",
+      "file": "wav/SFX_Rally_Call_Jump.wav",
+      "ue_asset": "/Game/Audio/Rally/SFX_Rally_Call_Jump",
+      "duration_s": 0.3,
+      "loop": false,
+      "peak_dbfs": -11.47,
+      "lufs": -16.0,
+      "lufs_target": -16.0,
+      "uso": "Copiloto: salto.",
+      "seed": 1865478363
+    },
+    {
+      "name": "SFX_Rally_Call_Water",
+      "file": "wav/SFX_Rally_Call_Water.wav",
+      "ue_asset": "/Game/Audio/Rally/SFX_Rally_Call_Water",
+      "duration_s": 0.3,
+      "loop": false,
+      "peak_dbfs": -3.05,
+      "lufs": -16.0,
+      "lufs_target": -16.0,
+      "uso": "Copiloto: agua (vadeo).",
+      "seed": 2340294404
     }
   ]
 }

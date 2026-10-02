@@ -61,7 +61,8 @@ void ATN_RallyGameMode::ConsumeRespawnRequests(bool bRacing)
 			Time < Team.ImmuneUntil);
 		if (Reason != ETNRallyRespawnReason::None)
 		{
-			RespawnTeam(Team, Reason);
+			// En el podio no se reaparece en la pista: vuelve a su hueco.
+			Team.bParked ? ParkTeam(Team) : RespawnTeam(Team, Reason);
 		}
 	}
 }
@@ -145,7 +146,9 @@ void ATN_RallyGameMode::HandleGateCrossing(FTeamRuntime& Team, int32 GateIndex, 
 		Team.bFinished = true;
 		Team.FinishSeconds = FMath::Max(0.0, CrossTime - RallyState->StartServerTime);
 		Team.bWrongWay = false;
-		UE_LOG(LogTNRally, Log, TEXT("[RallyGameMode] Equipo %d en meta: %.2f s."), Team.TeamIndex, Team.FinishSeconds);
+		NoteTeamFinished(Team);
+		UE_LOG(LogTNRally, Log, TEXT("[RallyGameMode] Equipo %d en meta: %.2f s (%d.º en llegar)."), Team.TeamIndex, Team.FinishSeconds,
+			Team.FinishOrder);
 		if (RallyState->Phase == ETNRallyPhase::Racing)
 		{
 			StartFinishing();

@@ -197,6 +197,7 @@ bool ATN_RallyTrack::BuildFromGates(const TArray<TNRally::FGateDef>& GateDefs, b
 		BuildSpline(GateDefs);
 	}
 	SpawnGates(GateDefs);
+	AmmoRowArcs = TNRally::AmmoRowArcs(GateArcs, GetTrackLengthCm(), bClosed, RallyAmmoAfterGateCm, NoAmmoBeforeFinishCm);
 	// Los límites del carril los pone ATN_RallyTrackDressing (PrepareTrack); aquí ya no hay rocas con colisión.
 	// Las cajas se replican: solo las crea el servidor. La pista no se replica (cada máquina construye la suya), así que en un
 	// cliente HasAuthority() es true y no sirve para distinguirlo.
@@ -224,6 +225,7 @@ void ATN_RallyTrack::ClearTrack()
 	Gates.Reset();
 	AmmoBoxes.Reset();
 	GateArcs.Reset();
+	AmmoRowArcs.Reset();
 	if (Borders) { Borders->ClearInstances(); }
 	if (Spline) { Spline->ClearSplinePoints(true); }
 	bBuilt = false;
@@ -315,28 +317,9 @@ void ATN_RallyTrack::SpawnGates(const TArray<TNRally::FGateDef>& GateDefs)
 
 void ATN_RallyTrack::SpawnAmmoRows()
 {
-	const int32 Num = GateArcs.Num();
-	const double Length = GetTrackLengthCm();
-	for (int32 Index = 0; Index < Num; ++Index)
+	for (const double Arc : AmmoRowArcs)
 	{
-		double Arc = -1.0;
-		if (Index % 2 == 0 && Index != 0)
-		{
-			Arc = GateArcs[Index] + RallyAmmoAfterGateCm;
-		}
-		else if (Index % 2 == 1 && (bClosed || Index + 1 < Num))
-		{
-			Arc = GateArcs[Index] + 0.5 * GetArcBetweenGates(Index, (Index + 1) % Num);
-		}
-		if (Arc < 0.0)
-		{
-			continue;
-		}
-		if (!bClosed && Length - Arc < NoAmmoBeforeFinishCm)
-		{
-			continue;
-		}
-		SpawnAmmoRow(TNRally::WrapArc(Arc, Length, bClosed));
+		SpawnAmmoRow(Arc);
 	}
 }
 

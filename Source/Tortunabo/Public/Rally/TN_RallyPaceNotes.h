@@ -120,6 +120,13 @@ namespace TNRallyPaceNotes
 	/** Notas que empiezan entre FromArcCm y FromArcCm + RangeCm, de la más cercana a la más lejana. */
 	TORTUNABO_API TArray<FNoteAhead> NotesAhead(const FTrackNotes& Track, double FromArcCm, double RangeCm = DefaultLookAheadCm);
 
+	/**
+	 * Distancias hacia delante desde FromArcCm hasta los arcos ArcsCm que caen en [0, RangeCm] (en circuito, dando la vuelta),
+	 * de la más cercana a la más lejana. La tableta lo usa con las filas de cajas de munición (#299).
+	 */
+	TORTUNABO_API TArray<double> ArcsAhead(TConstArrayView<double> ArcsCm, double LengthCm, bool bClosed, double FromArcCm,
+		double RangeCm = DefaultLookAheadCm);
+
 	/** Lo que canta la copiloto: «izquierda 3», «horquilla derecha», «cresta», «salto», «agua», con «, no cortes». */
 	TORTUNABO_API FText NoteText(const FPaceNote& Note);
 

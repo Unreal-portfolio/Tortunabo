@@ -275,7 +275,12 @@ namespace TNRallyPaceNotes
 		OutStepCm = 0.0;
 		OutLengthCm = 0.0;
 		TArray<FVector> Path = Polyline;
-		if (bClosed && Path.Num() >= 2 && !Path.Last().Equals(Path[0], 1.0)) { Path.Add(Path[0]); }
+		if (bClosed && Path.Num() >= 2 && !Path.Last().Equals(Path[0], 1.0))
+		{
+			// Copia antes de añadir: Add(Path[0]) con el array lleno lee el elemento después de realojarlo (assert en DebugGame).
+			const FVector First = Path[0];
+			Path.Add(First);
+		}
 		if (Path.Num() < 2 || StepCm <= 0.0) { return {}; }
 
 		TArray<double> Cumulative;
@@ -400,6 +405,29 @@ namespace TNRallyPaceNotes
 			}
 		}
 		Out.StableSort([](const FNoteAhead& A, const FNoteAhead& B) { return A.DistanceCm < B.DistanceCm; });
+		return Out;
+	}
+
+	TArray<double> ArcsAhead(TConstArrayView<double> ArcsCm, double LengthCm, bool bClosed, double FromArcCm, double RangeCm)
+	{
+		TArray<double> Out;
+		if (LengthCm <= 0.0)
+		{
+			return Out;
+		}
+		for (const double Arc : ArcsCm)
+		{
+			double Distance = Arc - FromArcCm;
+			if (bClosed)
+			{
+				Distance = FMath::Fmod(FMath::Fmod(Distance, LengthCm) + LengthCm, LengthCm);
+			}
+			if (Distance >= 0.0 && Distance <= RangeCm)
+			{
+				Out.Add(Distance);
+			}
+		}
+		Out.Sort();
 		return Out;
 	}
 

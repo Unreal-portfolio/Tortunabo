@@ -49,6 +49,10 @@ SPEC = {
     "SFX_Impact_Bubble_Pop": (0.3, False, -14.0),
     "SFX_Rally_Light_Beep": (0.35, False, -16.0),
     "SFX_Rally_Light_Go": (0.8, False, -16.0),
+    "SFX_Rally_Call_Beep": (0.09, False, -16.0),
+    "SFX_Rally_Call_Crest": (0.3, False, -16.0),
+    "SFX_Rally_Call_Jump": (0.3, False, -16.0),
+    "SFX_Rally_Call_Water": (0.3, False, -16.0),
 }
 TURRET_RANGE_S = (0.3, 0.6)
 

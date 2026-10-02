@@ -1,5 +1,6 @@
 // Dibujo de la tableta del copiloto (UTN_RallyCopilotTablet::NativePaint): funda de goma coral, pantalla azul marino,
-// mapa cenital con los caparazones, próxima nota en grande, perfil de los próximos metros con las notas y munición.
+// mapa cenital con los caparazones, próxima nota en grande, perfil de los próximos metros con las notas y las cajas de
+// munición, y la munición que lleva.
 
 #include "Rally/UI/TN_RallyCopilotTablet.h"
 
@@ -248,6 +249,31 @@ namespace TNRallyTabletPaint
 		Painter.Lines(Ground, Road, 4.f);
 	}
 
+	/** Una caja de munición: cuadrado de oro con el hueco oscuro, como las cajas de la pista vistas de frente. */
+	void PaintBoxIcon(FTNRallyTabletPainter& Painter, const FVector2f& Center, float Size)
+	{
+		const FVector2f Half(Size * 0.5f);
+		Painter.Box(FBox2f(Center - Half, Center + Half), Brushes().Chip, Highlight);
+		Painter.Box(FBox2f(Center - Half * 0.5f, Center + Half * 0.5f), Brushes().Chip, TNHUDArt::NavyDeep);
+	}
+
+	/** Filas de cajas de los próximos metros (distancias en BoxesAhead), apoyadas en la línea del suelo del perfil. */
+	void PaintProfileBoxes(FTNRallyTabletPainter& Painter, const FTrackNotes& Track, const FProfile& Profile, const FBox2f& Plot,
+		double FromArc, const TArray<double>& BoxesAhead, double LookAhead)
+	{
+		constexpr float BoxSize = 22.f;
+		for (const double Distance : BoxesAhead)
+		{
+			if (Distance > Profile.RangeCm)
+			{
+				continue;
+			}
+			const float X = ProfileX(Plot, Distance, LookAhead);
+			const float GroundY = ProfileY(Plot, Profile, LocationAtArc(Track, FromArc + Distance).Z);
+			PaintBoxIcon(Painter, FVector2f(X, FMath::Min(GroundY, Plot.Max.Y) - BoxSize * 0.5f - 3.f), BoxSize);
+		}
+	}
+
 	/** Marcas de 100 m bajo la gráfica y la meta si cae dentro. */
 	void PaintProfileTicks(FTNRallyTabletPainter& Painter, const FProfile& Profile, const FBox2f& Plot, double LookAhead)
 	{
@@ -276,19 +302,53 @@ int32 UTN_RallyCopilotTablet::NativePaint(const FPaintArgs& Args, const FGeometr
 	{
 		return Layer;
 	}
-	using namespace TNRallyTablet;
 	FTNRallyTabletPainter Painter(OutDrawElements, AllottedGeometry, Layer, InWidgetStyle.GetColorAndOpacityTint().A);
-	if (View == ETNRallyTabletView::Full)
-	{
-		Painter.Fit(FullSize, FullMaxWidthFraction, FullMaxHeightFraction, FVector2f(0.5f, 1.f), FVector2f(0.f, FullBottomMargin));
-		PaintFull(Painter);
-	}
-	else
-	{
-		Painter.Fit(CompactSize, 0.2f, CompactMaxHeightFraction, FVector2f(1.f, 0.f), FVector2f(CompactMargin));
-		PaintCompact(Painter);
-	}
+	Painter.Fit(TNRallyTabletLayout::FitFor(Presentation, View));
+	View == ETNRallyTabletView::Full ? PaintFull(Painter) : PaintCompact(Painter);
 	return Painter.Layer;
+}
+
+// ── Encaje en la pantalla o en un panel del mundo (#334) ───────────────────────────────────────────────────────
+
+FVector2f TNRallyTabletLayout::DesignSize(ETNRallyTabletView View)
+{
+	return View == ETNRallyTabletView::Compact ? TNRallyTablet::CompactSize : TNRallyTablet::FullSize;
+}
+
+TNRallyTabletLayout::FFit TNRallyTabletLayout::FitFor(ETNRallyTabletPresentation Presentation, ETNRallyTabletView View)
+{
+	using namespace TNRallyTablet;
+	FFit Fit;
+	Fit.Design = DesignSize(View);
+	if (Presentation == ETNRallyTabletPresentation::World)
+	{
+		// El panel es la tableta: la ocupa entera, centrada (el dueño del panel le da el tamaño de DesignSize).
+		return Fit;
+	}
+	if (View == ETNRallyTabletView::Compact)
+	{
+		Fit.MaxWidthFraction = CompactMaxWidthFraction;
+		Fit.MaxHeightFraction = CompactMaxHeightFraction;
+		Fit.Anchor = FVector2f(1.f, 0.f);
+		Fit.Margin = FVector2f(CompactMargin);
+		return Fit;
+	}
+	Fit.MaxWidthFraction = FullMaxWidthFraction;
+	Fit.MaxHeightFraction = FullMaxHeightFraction;
+	Fit.Anchor = FVector2f(0.5f, 1.f);
+	Fit.Margin = FVector2f(0.f, FullBottomMargin);
+	return Fit;
+}
+
+TNRallyTabletLayout::FPlacement TNRallyTabletLayout::Place(const FVector2f& LocalSize, const FFit& Fit)
+{
+	FPlacement Placement;
+	const FVector2f Design(FMath::Max(Fit.Design.X, 1.f), FMath::Max(Fit.Design.Y, 1.f));
+	Placement.Scale = FMath::Max(0.1f, FMath::Min(LocalSize.X * Fit.MaxWidthFraction / Design.X,
+		LocalSize.Y * Fit.MaxHeightFraction / Design.Y));
+	const FVector2f Free = LocalSize - Design * Placement.Scale - Fit.Margin * 2.f;
+	Placement.Origin = Fit.Margin + FVector2f(Free.X * Fit.Anchor.X, Free.Y * Fit.Anchor.Y);
+	return Placement;
 }
 
 void UTN_RallyCopilotTablet::PaintFull(FTNRallyTabletPainter& Painter) const
@@ -334,6 +394,45 @@ void UTN_RallyCopilotTablet::PaintCompact(FTNRallyTabletPainter& Painter) const
 	Painter.Box(FBox2f(FVector2f(CompactBumper), CompactSize - FVector2f(CompactBumper)), Brush.ScreenPanel, Screen);
 	PaintMap(Painter, MakeArea(28.f, 28.f, 304.f, 304.f), true);
 	PaintNextNote(Painter, MakeArea(28.f, 344.f, 304.f, 108.f), true);
+	PaintCompactAmmo(Painter, MakeArea(28.f, 464.f, 304.f, 68.f));
+}
+
+FText UTN_RallyCopilotTablet::NextBoxText() const
+{
+	return BoxesAhead.Num() > 0
+		? FText::Format(NSLOCTEXT("Rally", "TabletNextBox", "Caja a {0}"), TNRallyPaceNotes::DistanceText(BoxesAhead[0]))
+		: FText::GetEmpty();
+}
+
+void UTN_RallyCopilotTablet::PaintCompactAmmo(FTNRallyTabletPainter& Painter, const FBox2D& Area) const
+{
+	using namespace TNRallyTablet;
+	using namespace TNRallyTabletPaint;
+	const FBox2f Box = ToBox(Area);
+	Painter.Box(Box, Brushes().CardPanel, Card);
+	const bool bHasSpecial = Ammo.Special != ETNRallyAmmo::None && Ammo.SpecialCharges > 0;
+	const bool bSpecialSelected = bHasSpecial && Ammo.Selected == Ammo.Special;
+	const FText Selected = bSpecialSelected
+		? FText::Format(NSLOCTEXT("Rally", "TabletCharges", "{0} ×{1}"), AmmoName(Ammo.Special), TNLocText::Int(Ammo.SpecialCharges))
+		: AmmoName(ETNRallyAmmo::Coco);
+	const float HalfWidth = Box.GetSize().X * 0.5f - 18.f;
+	Painter.Text(Selected, FitFont(Painter, Selected, 22, 14, HalfWidth), Box.Min + FVector2f(14.f, 8.f), FVector2f::ZeroVector,
+		bSpecialSelected ? Highlight : TNHUDArt::Foam);
+	// Calor de la torreta bajo el nombre.
+	const FBox2f HeatBack(Box.Min + FVector2f(14.f, 44.f), FVector2f(Box.Min.X + 14.f + HalfWidth, Box.Min.Y + 54.f));
+	Painter.Box(HeatBack, Brushes().Chip, Screen);
+	const float Heat = FMath::Clamp(Ammo.Heat01, 0.f, 1.f);
+	if (Heat > 0.01f)
+	{
+		Painter.Box(FBox2f(HeatBack.Min, FVector2f(HeatBack.Min.X + HeatBack.GetSize().X * Heat, HeatBack.Max.Y)), Brushes().Chip,
+			Ammo.bOverheated ? TNHUDArt::CoralC : FMath::Lerp(Highlight, TNHUDArt::CoralC, Heat));
+	}
+	// A la derecha: la especial en reserva o, si no hay, la próxima caja.
+	const FText Right = (bHasSpecial && !bSpecialSelected)
+		? FText::Format(NSLOCTEXT("Rally", "TabletCharges", "{0} ×{1}"), AmmoName(Ammo.Special), TNLocText::Int(Ammo.SpecialCharges))
+		: NextBoxText();
+	Painter.Text(Right, FitFont(Painter, Right, 20, 12, HalfWidth), FVector2f(Box.Max.X - 14.f, Box.GetCenter().Y), FVector2f(1.f, 0.5f),
+		bHasSpecial && !bSpecialSelected ? TNHUDArt::Foam : Highlight);
 }
 
 void UTN_RallyCopilotTablet::PaintMap(FTNRallyTabletPainter& Painter, const FBox2D& Area, bool bSmall) const
@@ -406,6 +505,7 @@ void UTN_RallyCopilotTablet::PaintProfile(FTNRallyTabletPainter& Painter, const 
 	PaintProfileGround(Painter, TrackNotes, Profile, Plot, LookAheadCm);
 	PaintProfileTicks(Painter, Profile, Plot, LookAheadCm);
 	PaintProfileNotes(Painter, Area);
+	PaintProfileBoxes(Painter, TrackNotes, Profile, Plot, MyArcCm, BoxesAhead, LookAheadCm);
 	// El buggy propio al principio de la tira.
 	if (Profile.Heights.Num() > 0)
 	{
@@ -495,6 +595,9 @@ void UTN_RallyCopilotTablet::PaintAmmo(FTNRallyTabletPainter& Painter, const FBo
 	Painter.Box(Box, Brush.CardPanel, Card);
 	Painter.Text(NSLOCTEXT("Rally", "TabletAmmo", "Munición"), TNHUDStyle::Font(TEXT("Bold"), 18),
 		Box.Min + FVector2f(18.f, 12.f), FVector2f::ZeroVector, Dim);
+	// La próxima fila de cajas («la que va a coger»), arriba a la derecha y en el perfil.
+	Painter.Text(NextBoxText(), TNHUDStyle::Font(TEXT("Bold"), 18), FVector2f(Box.Max.X - 18.f, Box.Min.Y + 12.f), FVector2f(1.f, 0.f),
+		Highlight);
 
 	const FBox2f CocoChip(Box.Min + FVector2f(18.f, 44.f), Box.Min + FVector2f(298.f, 122.f));
 	const FBox2f SpecialChip(Box.Min + FVector2f(318.f, 44.f), Box.Max - FVector2f(18.f, 16.f));

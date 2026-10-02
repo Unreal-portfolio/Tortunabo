@@ -11,6 +11,7 @@
 #include "Rendering/DrawElements.h"
 #include "Rendering/SlateRenderer.h"
 #include "Rally/TN_RallyPaceNotes.h"
+#include "Rally/UI/TN_RallyCopilotTablet.h"
 #include "../../UI/HUD/TN_HUDArt.h"
 #include "../../UI/HUD/TN_HUDStyle.h"
 
@@ -27,8 +28,9 @@ namespace TNRallyTablet
 	inline constexpr float FullBumper = 26.f;
 
 	/** Versión de la conductora sola: arriba a la derecha (libre en el HUD del Rally). */
-	inline const FVector2f CompactSize(360.f, 480.f);
-	inline constexpr float CompactMaxHeightFraction = 0.42f;
+	inline const FVector2f CompactSize(360.f, 560.f);
+	inline constexpr float CompactMaxWidthFraction = 0.2f;
+	inline constexpr float CompactMaxHeightFraction = 0.5f;
 	inline constexpr float CompactMargin = 32.f;
 	inline constexpr float CompactBumper = 14.f;
 
@@ -158,14 +160,13 @@ struct FTNRallyTabletPainter
 	{
 	}
 
-	/** Escala la maqueta Design para no pasar de las fracciones del widget y la ancla en Anchor (0..1) con un margen. */
-	void Fit(const FVector2f& Design, float MaxWidthFraction, float MaxHeightFraction, const FVector2f& Anchor, const FVector2f& Margin)
+	/** Coloca y escala la maqueta según el encaje (TNRallyTabletLayout::FitFor: pantalla o panel del mundo). */
+	void Fit(const TNRallyTabletLayout::FFit& InFit)
 	{
-		const FVector2f Local = FVector2f(Geometry.GetLocalSize());
-		DesignSize = Design;
-		Scale = FMath::Max(0.1f, FMath::Min(Local.X * MaxWidthFraction / Design.X, Local.Y * MaxHeightFraction / Design.Y));
-		const FVector2f Free = Local - Design * Scale - Margin * 2.f;
-		Origin = Margin + FVector2f(Free.X * Anchor.X, Free.Y * Anchor.Y);
+		const TNRallyTabletLayout::FPlacement Placement = TNRallyTabletLayout::Place(FVector2f(Geometry.GetLocalSize()), InFit);
+		DesignSize = InFit.Design;
+		Scale = Placement.Scale;
+		Origin = Placement.Origin;
 	}
 
 	FPaintGeometry At(const FVector2f& Position, const FVector2f& Size) const

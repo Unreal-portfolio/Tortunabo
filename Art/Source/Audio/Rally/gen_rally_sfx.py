@@ -27,6 +27,7 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
+import sfx_copilot as cop  # noqa: E402
 import sfx_vehicle as veh  # noqa: E402
 import sfx_weapons as wpn  # noqa: E402
 from sfx_dsp import SR, n_of  # noqa: E402
@@ -91,6 +92,11 @@ SPECS: tuple[SoundSpec, ...] = (
     SoundSpec("SFX_Impact_Bubble_Pop", 0.3, False, LUFS_HIT, "Burbuja que revienta.", wpn.impact_bubble_pop),
     SoundSpec("SFX_Rally_Light_Beep", 0.35, False, LUFS_UI, "Semáforo de salida: luces 3, 2, 1.", wpn.light_beep),
     SoundSpec("SFX_Rally_Light_Go", 0.8, False, LUFS_UI, "Semáforo de salida: luz verde.", wpn.light_go),
+    SoundSpec("SFX_Rally_Call_Beep", cop.BEEP_S, False, LUFS_UI,
+              "Copiloto: pitido de curva, al lado de la curva y tantas veces como el grado.", cop.call_beep),
+    SoundSpec("SFX_Rally_Call_Crest", cop.CUE_S, False, LUFS_UI, "Copiloto: cresta (cambio de rasante).", cop.call_crest),
+    SoundSpec("SFX_Rally_Call_Jump", cop.CUE_S, False, LUFS_UI, "Copiloto: salto.", cop.call_jump),
+    SoundSpec("SFX_Rally_Call_Water", cop.CUE_S, False, LUFS_UI, "Copiloto: agua (vadeo).", cop.call_water),
 )
 
 

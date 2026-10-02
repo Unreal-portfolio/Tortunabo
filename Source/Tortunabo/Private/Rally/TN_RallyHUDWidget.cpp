@@ -13,6 +13,9 @@
 #include "Rally/TN_RallyLogic.h"
 #include "Rally/TN_RallyPlayerState.h"
 #include "Rally/TN_RallyVehicle.h"
+#include "Rally/UI/TN_RallyDashboard.h"
+#include "Rally/TN_RallyCameraDirector.h"
+#include "Rally/TN_RallyPlayerController.h"
 #include "Sound/SoundBase.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Vehicles/TN_Buggy.h"
@@ -34,25 +37,6 @@ namespace TNRallyHUD
 	const FLinearColor LightRed(0.95f, 0.16f, 0.12f, 1.f);
 	const FLinearColor LightGreen(0.2f, 0.9f, 0.35f, 1.f);
 	const FLinearColor InkColor(0.03f, 0.02f, 0.06f, 1.f);
-
-	FText PlaceOfTotal(int32 Place, int32 Total)
-	{
-		return FText::Format(NSLOCTEXT("Rally", "PlaceOfTotal", "{0}.º / {1}"), TNLocText::Int(Place), TNLocText::Int(Total));
-	}
-
-	FText RaceTime(float Seconds)
-	{
-		const float Safe = FMath::Max(0.f, Seconds);
-		const int32 Minutes = FMath::FloorToInt(Safe / 60.f);
-		FNumberFormattingOptions Options;
-		Options.UseGrouping = false;
-		Options.MinimumIntegralDigits = 2;
-		Options.MinimumFractionalDigits = 1;
-		Options.MaximumFractionalDigits = 1;
-		Options.RoundingMode = ERoundingMode::ToZero;
-		return FText::Format(NSLOCTEXT("Rally", "RaceTime", "{0}:{1}"), TNLocText::Int(Minutes),
-			FText::AsNumber(Safe - 60.f * Minutes, &Options));
-	}
 
 	FText AmmoName(ETNRallyAmmo Ammo)
 	{
@@ -151,7 +135,6 @@ void UTN_RallyHUDWidget::PullFromLocalBuggy()
 	GunnerKnockSeconds = Turret ? Turret->GetGunnerKnockSecondsLeft() : 0.f;
 	const UTN_BuggyHealthComponent* Health = Buggy ? Buggy->GetHealthComponent() : nullptr;
 	Health01 = Health ? Health->GetHealth01() : 1.f;
-	bBuggyHasGunner = Buggy && Buggy->HasGunner();
 	SetTurretHeat(Turret ? Turret->GetHeat01() : 0.f);
 	SetInkSeconds(Buggy ? Buggy->GetInkSecondsLeft() : 0.f);
 	BoostCharge = Buggy ? Buggy->GetBoost01() : 0.f;
@@ -197,10 +180,16 @@ void UTN_RallyHUDWidget::BuildTree()
 	WrongWayText = MakeText(Tree, NSLOCTEXT("Rally", "WrongWay", "¡CONTRAMANO!"), TEXT("Bold"), 64, TNHUDArt::CoralC);
 	Place(Canvas, WrongWayText, FVector2D(0.5f, 0.42f), FVector2D::ZeroVector);
 	RespawnText = MakeText(Tree, FText::GetEmpty(), TEXT("Bold"), 36, TNHUDArt::SandC);
-	Place(Canvas, RespawnText, FVector2D(0.5f, 0.56f), FVector2D::ZeroVector);
+	// Por encima y por debajo del buggy: en el centro están el salpicadero y el cartel del arco (#299).
+	Place(Canvas, RespawnText, FVector2D(0.5f, 0.36f), FVector2D::ZeroVector);
 	RespawnHintText = MakeText(Tree, NSLOCTEXT("Rally", "RespawnHint", "Mantén R para volver a la pista"), TEXT("Bold"), 30,
 		TNHUDArt::SandLight);
-	Place(Canvas, RespawnHintText, FVector2D(0.5f, 0.64f), FVector2D::ZeroVector);
+	Place(Canvas, RespawnHintText, FVector2D(0.5f, 0.8f), FVector2D::ZeroVector);
+	SpectateText = MakeText(Tree, FText::GetEmpty(), TEXT("Bold"), 34, FLinearColor::White);
+	Place(Canvas, SpectateText, FVector2D(0.5f, 1.f), FVector2D(0.f, -92.f));
+	SpectateHintText = MakeText(Tree, NSLOCTEXT("Rally", "SpectateHint", "A / D · LB / RB: cambiar de vista"), TEXT("Regular"), 24,
+		TNHUDStyle::TextDim);
+	Place(Canvas, SpectateHintText, FVector2D(0.5f, 1.f), FVector2D(0.f, -54.f));
 	Crosshair = MakeText(Tree, TNLocText::Literal(TEXT("+")), TEXT("Bold"), 48, FLinearColor::White);
 	Place(Canvas, Crosshair, FVector2D(0.5f, 0.5f), FVector2D::ZeroVector);
 
@@ -208,7 +197,7 @@ void UTN_RallyHUDWidget::BuildTree()
 
 	BuildResults();
 
-	for (UWidget* Hidden : TArray<UWidget*>{ WrongWayText, RespawnText, RespawnHintText, Crosshair, AmmoText, CenterText, StatusText,
+	for (UWidget* Hidden : TArray<UWidget*>{ SpectateText, SpectateHintText, WrongWayText, RespawnText, RespawnHintText, Crosshair, AmmoText, CenterText, StatusText,
 		ResultsPanel, BoostLabel, BoostBar ? BoostBar->GetParent() : nullptr, HealthLabel, HealthBar ? HealthBar->GetParent() : nullptr,
 		KnockText })
 	{
@@ -341,26 +330,28 @@ void UTN_RallyHUDWidget::Refresh(const ATN_RallyGameState& RallyState)
 	const ITN_RallyVehicle* Vehicle = Mine ? Cast<ITN_RallyVehicle>(Mine->Vehicle) : nullptr;
 	const bool bRacing = RallyState.Phase == ETNRallyPhase::Racing || RallyState.Phase == ETNRallyPhase::Finishing;
 
-	RefreshPlace(RallyState, Mine);
+	// La conductora no tiene interfaz de pantalla salvo los avisos (semáforo, contramano, reaparición, meta y resultados):
+	// velocidad, turbo y vida van en el salpicadero, y puesto y vuelta en el cartel del arco (UTN_RallyDashboardComponent);
+	// el mapa, las notas y su munición si va sola, en la tableta compacta. La artillera conserva su HUD.
+	const bool bSeatedView = Vehicle != nullptr && RallyState.Phase != ETNRallyPhase::Results && !Mine->bFinished;
+	const bool bGunner = Me && Me->IsGunner();
+	const bool bGunnerView = bSeatedView && bGunner;
+	RefreshPlace(RallyState, Mine, bGunnerView);
 
-	Show(SpeedText, Vehicle != nullptr);
-	Show(SpeedUnitText, Vehicle != nullptr);
-	RefreshBoost(Vehicle != nullptr && RallyState.Phase != ETNRallyPhase::Results);
-	if (Vehicle)
+	Show(SpeedText, bGunnerView);
+	Show(SpeedUnitText, bGunnerView);
+	RefreshBoost(bGunnerView);
+	if (bGunnerView)
 	{
 		SpeedText->SetText(TNLocText::Int(FMath::RoundToInt(static_cast<float>(TNRally::CmsToKmh(FMath::Abs(Vehicle->GetForwardSpeedCms()))))));
 	}
-	// La conductora va casi sin interfaz (velocidad, turbo, vida, puesto, vuelta y avisos; el mapa y las notas, en la
-	// tableta): munición y calor solo para quien dispara, la artillera o la conductora que va sola.
-	const bool bSeatedView = Vehicle != nullptr && RallyState.Phase != ETNRallyPhase::Results;
-	const bool bGunner = Me && Me->IsGunner();
-	const bool bShowWeapon = bSeatedView && (bGunner || !bBuggyHasGunner);
+	const bool bShowWeapon = bGunnerView;
 	RefreshAmmo(bShowWeapon);
-	RefreshHealth(bSeatedView);
+	RefreshHealth(bGunnerView);
 	RefreshKnock(bSeatedView && bGunner);
 	HeatLabel->SetText(bTurretOverheated ? NSLOCTEXT("Rally", "TurretOverheated", "¡Torreta sobrecalentada!")
 		: NSLOCTEXT("Rally", "TurretHeat", "Torreta"));
-	Show(Crosshair, Me && Me->IsGunner() && RallyState.Phase != ETNRallyPhase::Results);
+	Show(Crosshair, bGunnerView);
 	Show(HeatBar ? HeatBar->GetParent() : nullptr, bShowWeapon);
 	Show(HeatLabel, bShowWeapon);
 
@@ -373,6 +364,7 @@ void UTN_RallyHUDWidget::Refresh(const ATN_RallyGameState& RallyState)
 	}
 
 	RefreshRespawnHint(Mine, ServerTime);
+	RefreshSpectate(RallyState);
 	RefreshStatus(RallyState, ServerTime, Mine);
 	RefreshResults(RallyState, ServerTime);
 }
@@ -489,7 +481,7 @@ void UTN_RallyHUDWidget::RefreshResults(const ATN_RallyGameState& RallyState, do
 	const APlayerState* Me = Player ? Player->PlayerState : nullptr;
 	for (const FTNRallyStanding& Entry : RallyState.Standings)
 	{
-		const FText Time = Entry.bFinished ? RaceTime(Entry.FinishSeconds) : NSLOCTEXT("Rally", "NotFinished", "Sin llegar");
+		const FText Time = Entry.bFinished ? TNRallyDashboard::RaceTime(Entry.FinishSeconds) : NSLOCTEXT("Rally", "NotFinished", "Sin llegar");
 		const FText Line = FText::Format(NSLOCTEXT("Rally", "ResultsRow", "{0}.º   {1}   {2}   {3} pts"),
 			TNLocText::Int(Entry.Place), CrewName(Entry), Time, TNLocText::Int(Entry.Points));
 		const bool bMine = Me && (Entry.Driver == Me || Entry.Gunner == Me);
@@ -512,6 +504,25 @@ void UTN_RallyHUDWidget::RefreshBoost(bool bVisible)
 	BoostBar->SetPercent(FMath::Clamp(BoostCharge, 0.f, 1.f));
 	BoostBar->SetFillColorAndOpacity(bBoosting ? TNHUDArt::Gold : TNHUDArt::Foam);
 	BoostLabel->SetColorAndOpacity(FSlateColor(bBoosting ? TNHUDArt::Gold : TNHUDStyle::TextDim));
+}
+
+void UTN_RallyHUDWidget::RefreshSpectate(const ATN_RallyGameState& RallyState)
+{
+	using namespace TNRallyHUD;
+	const ATN_RallyPlayerController* Player = Cast<ATN_RallyPlayerController>(GetOwningPlayer());
+	const UTN_RallyCameraDirector* Director = Player ? Player->GetCameraDirector() : nullptr;
+	const bool bSpectating = Director && Director->IsSpectating();
+	Show(SpectateText, bSpectating);
+	Show(SpectateHintText, bSpectating);
+	if (!bSpectating)
+	{
+		return;
+	}
+	const int32 Team = Director->GetSpectatedTeam();
+	const FTNRallyStanding* Watched = RallyState.Standings.FindByPredicate([Team](const FTNRallyStanding& Entry) { return Entry.TeamIndex == Team; });
+	SpectateText->SetText(Director->IsDroneView() || !Watched
+		? NSLOCTEXT("Rally", "SpectateDrone", "Dron: siguiendo al líder")
+		: FText::Format(NSLOCTEXT("Rally", "SpectateCrew", "Mirando a {0} ({1}.º)"), CrewName(*Watched), TNLocText::Int(Watched->Place)));
 }
 
 void UTN_RallyHUDWidget::RefreshRespawnHint(const FTNRallyStanding* Mine, double ServerTime)
@@ -594,30 +605,15 @@ void UTN_RallyHUDWidget::RefreshKnock(bool bGunner)
 	}
 }
 
-void UTN_RallyHUDWidget::RefreshPlace(const ATN_RallyGameState& RallyState, const FTNRallyStanding* Mine)
+void UTN_RallyHUDWidget::RefreshPlace(const ATN_RallyGameState& RallyState, const FTNRallyStanding* Mine, bool bVisible)
 {
 	using namespace TNRallyHUD;
-	Show(PlaceText, Mine != nullptr);
-	Show(LapText, Mine != nullptr);
-	if (!Mine)
+	Show(PlaceText, bVisible && Mine != nullptr);
+	Show(LapText, bVisible && Mine != nullptr);
+	if (!bVisible || !Mine)
 	{
 		return;
 	}
-	PlaceText->SetText(PlaceOfTotal(Mine->Place, RallyState.Standings.Num()));
-	const int32 GateTotal = RallyState.bCircuit ? RallyState.NumGates : FMath::Max(0, RallyState.NumGates - 1);
-	const int32 GateShown = (RallyState.bCircuit && Mine->NextGate == 0) ? (Mine->Lap > 0 ? GateTotal : 0) : Mine->NextGate;
-	const FText Gate = FText::Format(NSLOCTEXT("Rally", "GateOfTotal", "Puerta {0}/{1}"), TNLocText::Int(GateShown), TNLocText::Int(GateTotal));
-	if (Mine->bFinished)
-	{
-		LapText->SetText(FText::Format(NSLOCTEXT("Rally", "FinishedTime", "¡Meta! {0}"), RaceTime(Mine->FinishSeconds)));
-	}
-	else if (RallyState.Laps > 1)
-	{
-		LapText->SetText(FText::Format(NSLOCTEXT("Rally", "LapAndGate", "Vuelta {0}/{1} · {2}"),
-			TNLocText::Int(FMath::Max(1, Mine->Lap)), TNLocText::Int(RallyState.Laps), Gate));
-	}
-	else
-	{
-		LapText->SetText(Gate);
-	}
+	PlaceText->SetText(TNRallyDashboard::PlaceLine(Mine->Place, RallyState.Standings.Num()));
+	LapText->SetText(TNRallyDashboard::LapLine(*Mine, RallyState.Laps, RallyState.NumGates, RallyState.bCircuit));
 }
