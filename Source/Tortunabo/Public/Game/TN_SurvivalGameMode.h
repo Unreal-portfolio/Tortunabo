@@ -91,15 +91,15 @@ private:
 	/** Estado de los jugadores que siguen en la partida, para TNSurvivalLogic. */
 	TArray<FTNSurvivalPlayer> GatherPlayers() const;
 
-	/** Siguiente nivel: lo genera y devuelve a los vivos a la salida (SendSurvivorsToLevelStart). */
-	void AdvanceLevel();
-
 	/** Espera a que el suelo de la salida del mapa tenga colisión (o LevelReadyTimeoutSeconds) y suelta a los vivos. */
 	void BeginLevelWhenReady();
 	void PollLevelReady();
 
 	/** Lleva a los vivos a la salida del mapa del nivel, con el pawn que tenían o uno nuevo. */
 	void SendSurvivorsToLevelStart();
+
+	/** Siguiente nivel: lo genera y devuelve a los vivos a la salida. */
+	void AdvanceLevel();
 
 	/** Fin de partida: puestos en el marcador y Resultados. */
 	void FinishSurvival(int32 WinnerId);
