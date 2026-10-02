@@ -48,6 +48,18 @@ namespace TNRallyDashboard
 		return Layout;
 	}
 
+	FPanelLayout CallLayout()
+	{
+		// Encima del salpicadero (mismo lado y misma inclinación), para no tapar la velocidad mientras se frena para la curva.
+		FPanelLayout Layout;
+		Layout.OffsetFromDriverSeat = FVector(85.0, 115.0, 152.0);
+		Layout.Rotation = FRotator(12.0, 180.0, 0.0);
+		Layout.DrawSizePx = FIntPoint(480, 230);
+		Layout.CmPerPx = 0.3f;
+		Layout.MainFontPx = 112;
+		return Layout;
+	}
+
 	float MainGlyphCm(const FPanelLayout& Layout)
 	{
 		return Layout.MainFontPx * CapHeightRatio * Layout.CmPerPx;
@@ -108,9 +120,42 @@ void UTN_RallyDashboardWidget::Configure(ATN_Buggy* InBuggy, ETNRallyDashboardPa
 {
 	Buggy = InBuggy;
 	Panel = InPanel;
-	if (WidgetTree && !WidgetTree->RootWidget)
+	if (!WidgetTree || WidgetTree->RootWidget)
 	{
-		Panel == ETNRallyDashboardPanel::Dash ? BuildDash() : BuildRollBar();
+		return;
+	}
+	switch (Panel)
+	{
+	case ETNRallyDashboardPanel::Dash: BuildDash(); break;
+	case ETNRallyDashboardPanel::RollBar: BuildRollBar(); break;
+	default: BuildCall(); break;
+	}
+}
+
+void UTN_RallyDashboardWidget::ShowCall(const FText& Headline, const FText& Detail, const FLinearColor& Accent, float Seconds)
+{
+	if (Panel != ETNRallyDashboardPanel::Call || !CallContent || !MainText || !SubText)
+	{
+		return;
+	}
+	TNHUDStyle::StylePanel(CallBack, TNRallyDashboard::PanelFill, 26.f, FMargin(0.f), Accent, 5.f);
+	MainText->SetText(Headline);
+	MainText->SetColorAndOpacity(FSlateColor(Accent));
+	SubText->SetText(Detail);
+	CallRemaining = FMath::Max(0.f, Seconds);
+	CallContent->SetVisibility(CallRemaining > 0.f ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Collapsed);
+}
+
+void UTN_RallyDashboardWidget::TickCall(float DeltaTime)
+{
+	if (CallRemaining <= 0.f || !CallContent)
+	{
+		return;
+	}
+	CallRemaining -= DeltaTime;
+	if (CallRemaining <= 0.f)
+	{
+		CallContent->SetVisibility(ESlateVisibility::Collapsed);
 	}
 }
 
@@ -156,9 +201,36 @@ void UTN_RallyDashboardWidget::BuildRollBar()
 	Place(Canvas, SubText, FVector2D(0.5f, 0.84f), FVector2D::ZeroVector);
 }
 
+void UTN_RallyDashboardWidget::BuildCall()
+{
+	using namespace TNRaceUI;
+	const TNRallyDashboard::FPanelLayout Layout = TNRallyDashboard::CallLayout();
+	UCanvasPanel* Canvas = Make<UCanvasPanel>(WidgetTree, TEXT("CallCanvas"));
+	WidgetTree->RootWidget = Canvas;
+	UCanvasPanel* Content = Make<UCanvasPanel>(WidgetTree, TEXT("CallContent"));
+	Fill(Canvas, Content);
+	CallContent = Content;
+	CallBack = Make<UBorder>(WidgetTree);
+	TNHUDStyle::StylePanel(CallBack, TNRallyDashboard::PanelFill, 26.f, FMargin(0.f), TNHUDArt::Gold, 5.f);
+	Fill(Content, CallBack);
+	MainText = MakeText(WidgetTree, FText::GetEmpty(), TEXT("Bold"), Layout.MainFontPx, TNHUDArt::Gold);
+	Place(Content, MainText, FVector2D(0.5f, 0.38f), FVector2D::ZeroVector);
+	SubText = MakeText(WidgetTree, FText::GetEmpty(), TEXT("Bold"), 30, FLinearColor::White);
+	SubText->SetJustification(ETextJustify::Center);
+	SubText->SetAutoWrapText(true);
+	SubText->SetWrapTextAt(Layout.DrawSizePx.X - 40.f);
+	Place(Content, SubText, FVector2D(0.5f, 0.84f), FVector2D::ZeroVector);
+	Content->SetVisibility(ESlateVisibility::Collapsed);
+}
+
 void UTN_RallyDashboardWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
+	if (Panel == ETNRallyDashboardPanel::Call)
+	{
+		TickCall(InDeltaTime);
+		return;
+	}
 	RefreshAccumulator += InDeltaTime;
 	const ATN_Buggy* Target = Buggy.Get();
 	if (!Target || !MainText || RefreshAccumulator < TNRallyDashboard::RefreshSeconds)
@@ -233,8 +305,20 @@ UTN_RallyDashboardComponent* UTN_RallyDashboardComponent::AttachTo(ATN_Buggy* Bu
 	Dashboard->RegisterComponent();
 	Dashboard->Panels.Add(Dashboard->MakePanel(*Buggy, *Player, ETNRallyDashboardPanel::Dash, TNRallyDashboard::DashLayout()));
 	Dashboard->Panels.Add(Dashboard->MakePanel(*Buggy, *Player, ETNRallyDashboardPanel::RollBar, TNRallyDashboard::RollBarLayout()));
-	UE_LOG(LogTNRally, Log, TEXT("[RallyDashboard] Salpicadero y cartel del arco en %s para %s."), *GetNameSafe(Buggy), *GetNameSafe(Player));
+	UWidgetComponent* CallPanel = Dashboard->MakePanel(*Buggy, *Player, ETNRallyDashboardPanel::Call, TNRallyDashboard::CallLayout());
+	Dashboard->Panels.Add(CallPanel);
+	Dashboard->CallWidget = CallPanel ? Cast<UTN_RallyDashboardWidget>(CallPanel->GetWidget()) : nullptr;
+	UE_LOG(LogTNRally, Log, TEXT("[RallyDashboard] Salpicadero, cartel del arco y placa de notas en %s para %s."), *GetNameSafe(Buggy),
+		*GetNameSafe(Player));
 	return Dashboard;
+}
+
+void UTN_RallyDashboardComponent::ShowCall(const FText& Headline, const FText& Detail, const FLinearColor& Accent, float Seconds)
+{
+	if (CallWidget)
+	{
+		CallWidget->ShowCall(Headline, Detail, Accent, Seconds);
+	}
 }
 
 UWidgetComponent* UTN_RallyDashboardComponent::MakePanel(ATN_Buggy& Buggy, APlayerController& Player, ETNRallyDashboardPanel Kind,
@@ -272,6 +356,7 @@ void UTN_RallyDashboardComponent::OnUnregister()
 		}
 	}
 	Panels.Reset();
+	CallWidget = nullptr;
 	Super::OnUnregister();
 }
 

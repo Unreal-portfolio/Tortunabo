@@ -14,6 +14,7 @@
 #include "Voice/ProximityVoiceComponent.h"
 #include "Rally/UI/TN_RallyDashboard.h"
 #include "Rally/TN_RallyCameraDirector.h"
+#include "Rally/TN_RallyCopilotComponent.h"
 #include "Vehicles/TN_Buggy.h"
 #include "Vehicles/TN_BuggyGunnerPawn.h"
 #include "VR/TN_VRMode.h"
@@ -54,6 +55,11 @@ void ATN_RallyPlayerController::BeginPlay()
 	{
 		CameraDirector = NewObject<UTN_RallyCameraDirector>(this, TEXT("RallyCameraDirector"));
 		CameraDirector->RegisterComponent();
+	}
+	if (!Copilot)
+	{
+		Copilot = NewObject<UTN_RallyCopilotComponent>(this, TEXT("RallyCopilot"));
+		Copilot->RegisterComponent();
 	}
 	SyncCosmeticsToServer();
 }

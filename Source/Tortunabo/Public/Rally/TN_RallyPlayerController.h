@@ -13,6 +13,7 @@
 
 class ATN_Buggy;
 class UTN_RallyCameraDirector;
+class UTN_RallyCopilotComponent;
 class UTN_RallyHUDWidget;
 
 UCLASS()
@@ -85,4 +86,8 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTN_RallyCameraDirector> CameraDirector;
+
+	/** Copiloto automático de la conductora sin artillera humana (#331): solo en esta máquina. */
+	UPROPERTY(Transient)
+	TObjectPtr<UTN_RallyCopilotComponent> Copilot;
 };

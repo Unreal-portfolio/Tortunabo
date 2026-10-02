@@ -59,6 +59,7 @@ bool FTNRallyDashboardLegibleTest::RunTest(const FString& Parameters)
 {
 	TNRallyDashboardTest::CheckLegible(*this, TEXT("Salpicadero (velocidad)"), TNRallyDashboard::DashLayout());
 	TNRallyDashboardTest::CheckLegible(*this, TEXT("Cartel del arco (puesto)"), TNRallyDashboard::RollBarLayout());
+	TNRallyDashboardTest::CheckLegible(*this, TEXT("Placa de notas (lado y grado)"), TNRallyDashboard::CallLayout());
 	return true;
 }
 

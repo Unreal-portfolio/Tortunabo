@@ -1,8 +1,8 @@
 // Interfaz diegética de la conductora del Rally (#299): la conductora no tiene HUD de pantalla salvo los avisos (semáforo,
 // contramano, reaparición y resultados); la velocidad, el turbo y la vida van en el salpicadero del buggy, y el puesto y la
-// vuelta en un cartel del arco antivuelco. Son dos widgets en el mundo (UWidgetComponent) que solo existen en la máquina de
-// la conductora (no se replican; a la artillera le taparían la vista): los pone ATN_RallyPlayerController en su buggy. Medidas pensadas para leerse a
-// 1080p con la cámara de persecución (TNRallyDashboard::ProjectedGlyphPx, tests Tortunabo.Rally.Dashboard.*).
+// vuelta en un cartel del arco antivuelco; encima del salpicadero, la placa de la nota cantada (#331). Son widgets en el
+// mundo (UWidgetComponent) que solo existen en la máquina de la conductora (no se replican; a la artillera le taparían la
+// vista): los pone ATN_RallyPlayerController en su buggy. Medidas pensadas para leerse a 1080p con la cámara de persecución (TNRallyDashboard::ProjectedGlyphPx, tests Tortunabo.Rally.Dashboard.*).
 #pragma once
 
 #include "CoreMinimal.h"
@@ -12,8 +12,10 @@
 
 class APlayerController;
 class ATN_Buggy;
+class UBorder;
 class UProgressBar;
 class UTextBlock;
+class UWidget;
 class UWidgetComponent;
 struct FTNRallyStanding;
 
@@ -24,7 +26,9 @@ enum class ETNRallyDashboardPanel : uint8
 	/** Salpicadero: velocidad, turbo y vida del buggy. */
 	Dash,
 	/** Cartel del arco antivuelco: puesto y vuelta (o puerta, o el tiempo de meta). */
-	RollBar
+	RollBar,
+	/** Placa de la nota cantada (#331): sobre el salpicadero, solo mientras dura el canto. */
+	Call
 };
 
 namespace TNRallyDashboard
@@ -44,6 +48,7 @@ namespace TNRallyDashboard
 
 	TORTUNABO_API FPanelLayout DashLayout();
 	TORTUNABO_API FPanelLayout RollBarLayout();
+	TORTUNABO_API FPanelLayout CallLayout();
 
 	/** Alto de las mayúsculas y las cifras respecto al tamaño de la fuente (Roboto: ~0,71). */
 	inline constexpr float CapHeightRatio = 0.71f;
@@ -76,6 +81,9 @@ class TORTUNABO_API UTN_RallyDashboardWidget : public UUserWidget
 public:
 	void Configure(ATN_Buggy* InBuggy, ETNRallyDashboardPanel InPanel);
 
+	/** Solo en la placa (Call): enseña Headline en grande y Detail debajo durante Seconds, con el borde en Accent. */
+	void ShowCall(const FText& Headline, const FText& Detail, const FLinearColor& Accent, float Seconds);
+
 protected:
 	virtual void NativeOnInitialized() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
@@ -83,12 +91,20 @@ protected:
 private:
 	void BuildDash();
 	void BuildRollBar();
+	void BuildCall();
 	void RefreshDash(const ATN_Buggy& Buggy);
 	void RefreshRollBar(const ATN_Buggy& Buggy);
+	void TickCall(float DeltaTime);
 
 	TWeakObjectPtr<ATN_Buggy> Buggy;
 	ETNRallyDashboardPanel Panel = ETNRallyDashboardPanel::Dash;
 	float RefreshAccumulator = 1.f;
+	/** Lo que le queda a la placa en pantalla (s). */
+	float CallRemaining = 0.f;
+
+	/** Contenido de la placa: se pliega cuando no hay canto (el widget sigue vivo para seguir contando). */
+	UPROPERTY(Transient) TObjectPtr<UWidget> CallContent;
+	UPROPERTY(Transient) TObjectPtr<UBorder> CallBack;
 
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> MainText;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> SubText;
@@ -117,6 +133,9 @@ public:
 	/** Los paneles de este buggy en esta máquina (nullptr si no tiene). */
 	static UTN_RallyDashboardComponent* FindOn(const ATN_Buggy* Buggy);
 
+	/** Placa de la nota cantada sobre el salpicadero (#331), durante Seconds. */
+	void ShowCall(const FText& Headline, const FText& Detail, const FLinearColor& Accent, float Seconds);
+
 protected:
 	virtual void OnUnregister() override;
 
@@ -126,4 +145,7 @@ private:
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UWidgetComponent>> Panels;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UTN_RallyDashboardWidget> CallWidget;
 };
