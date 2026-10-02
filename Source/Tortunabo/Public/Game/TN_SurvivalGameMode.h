@@ -10,7 +10,7 @@ class ATN_ChunkManager;
 /**
  * @brief Modo Supervivencia: niveles cortos uno tras otro hasta que queda una tortuga.
  *
- * Se juega en LVL_Run con ?game=Survival (alias en DefaultGame.ini). ATN_ChunkManager pasa al modo por niveles: cada
+ * Se juega en LVL_Run con ?game=Survival (alias en DefaultEngine.ini). ATN_ChunkManager pasa al modo por niveles: cada
  * nivel es un mapa de Supervivencia generado entero (ATN_ProcMapGenerator, #274), con semilla y dificultad crecientes
  * (nivel N: semilla + N - 1 y dificultad min(N, 5)). La semilla del nivel 1 es al azar o la de ?SurvivalSeed=N.
  *  - La espera del lobby es en el corral de LVL_Run; al empezar, todos salen desde la salida del mapa del nivel 1.
