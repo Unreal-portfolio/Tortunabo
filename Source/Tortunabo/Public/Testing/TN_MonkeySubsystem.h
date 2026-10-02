@@ -80,6 +80,8 @@ private:
 	int32 SavedNetShowCorrections = 0;
 	bool bCVarsChanged = false;
 	double MemoryStartMB = 0.0;
+	/** Modo de red al empezar: al cerrarse el mundo de un cliente (el servidor se ha ido) ya no tiene red. */
+	FString SessionNetMode;
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UTN_MonkeyComponent>> Monkeys;
