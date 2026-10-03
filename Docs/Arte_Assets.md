@@ -676,8 +676,8 @@ quiere decir que cada copia se estira a su tamaño respecto a ese (§2).
 
 | Pieza | Tipo | Qué es | Tamaño (cm) | Pivote | Fichero |
 |---|---|---|---|---|---|
-| `ProcMap.Nest.Base` | Componente | Base del nido de huevos (punto de reaparición); hoy el cilindro del motor teñido de marrón | Cilindro de 100 x 100 con escala 2,2 x 2,2 x 0,25 (220 de diámetro y 25 de alto): la malla de arte hereda esa escala, compénsala con el ajuste | Centro del cilindro, 10 sobre el suelo del nido | `World/ProcMap/TN_ProcEggNest.cpp` |
-| `ProcMap.Nest.Egg` | Componente | Huevo del nido (8 en pila); hoy esferas del motor que cambian de color al activarse el nido (el tinte no llega a la malla de arte) | Esfera de 100 con escala 0,55 x 0,55 x 0,72: la malla de arte hereda esa escala | Centro del huevo | `World/ProcMap/TN_ProcEggNest.cpp` |
+| `ProcMap.Nest.Base` | Componente | Base del nido de huevos (punto de reaparición); hoy un nido de arena de código con el hueco oscuro, dos vueltas de paja y dos estrellas y dos vieiras alrededor (la colisión es un cilindro invisible aparte) | Montículo de radio 155 y unos 40 de alto con la paja; con las estrellas y las vieiras, unos 420 de ancho. Escala 1 | Centro del nido en el suelo (origen del actor) | `World/ProcMap/TN_ProcEggNest.cpp` |
+| `ProcMap.Nest.Egg` | Componente | Huevo del nido (8 en pila); hoy el huevo de código del lobby con su banda de color, que cambia de cáscara al activarse el nido (el cambio no llega a la malla de arte) | Huevo de radio 97 y 241 de alto con escala 0,3 (CodeArtEggScale; unos 58 x 72): la malla de arte hereda esa escala | Centro de la base del huevo | `World/ProcMap/TN_ProcEggNest.cpp` |
 
 #### ProcMap.Puzzle
 
