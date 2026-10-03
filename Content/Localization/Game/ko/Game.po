@@ -4,8 +4,8 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Game\n"
-"POT-Creation-Date: 2026-10-03 00:33\n"
-"PO-Revision-Date: 2026-10-03 00:33\n"
+"POT-Creation-Date: 2026-10-03 14:11\n"
+"PO-Revision-Date: 2026-10-03 14:11\n"
 "Language-Team: \n"
 "Language: ko\n"
 "MIME-Version: 1.0\n"
@@ -840,43 +840,43 @@ msgid "Verde tortuga, el clásico que nunca falla."
 msgstr "거북이 초록색, 실패 없는 클래식이에요."
 
 #. Key:	BoothPrompt
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_ChangingBooth.cpp(102)
-#: Source/Tortunabo/Private/Lobby/TN_ChangingBooth.cpp(102)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_ChangingBooth.cpp(103)
+#: Source/Tortunabo/Private/Lobby/TN_ChangingBooth.cpp(103)
 msgctxt "Tortunabo,BoothPrompt"
 msgid "Entrar al probador"
 msgstr "탈의실 들어가기"
 
 #. Key:	BoothLabel
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_ChangingBooth.cpp(477)
-#: Source/Tortunabo/Private/Lobby/TN_ChangingBooth.cpp(477)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_ChangingBooth.cpp(478)
+#: Source/Tortunabo/Private/Lobby/TN_ChangingBooth.cpp(478)
 msgctxt "Tortunabo,BoothLabel"
 msgid "PROBADOR"
 msgstr "탈의실"
 
 #. Key:	GeneralPrompt
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(123)
-#: Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(123)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(125)
+#: Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(125)
 msgctxt "Tortunabo,GeneralPrompt"
 msgid "Hablar con el general"
 msgstr "장군과 대화하기"
 
 #. Key:	GeneralName
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(124)
-#: Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(124)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(126)
+#: Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(126)
 msgctxt "Tortunabo,GeneralName"
 msgid "General Galápago"
 msgstr "갈라파고스 장군"
 
 #. Key:	GeneralHQ
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(125)
-#: Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(125)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(127)
+#: Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(127)
 msgctxt "Tortunabo,GeneralHQ"
 msgid "Cuartel general"
 msgstr "사령부"
 
 #. Key:	GeneralMissionBoard
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(284)
-#: Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(284)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(286)
+#: Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(286)
 msgctxt "Tortunabo,GeneralMissionBoard"
 msgid "ORDEN DEL DÍA<br>MISIÓN: {0}<br>DIFICULTAD: {1}"
 msgstr "오늘의 명령<br>임무: {0}<br>난이도: {1}"
@@ -994,127 +994,127 @@ msgid "lo que manda el reglamento."
 msgstr "규정대로예요."
 
 #. Key:	ProcSelectorMode
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_ProcModeSelector.cpp(142)
-#: Source/Tortunabo/Private/Lobby/TN_ProcModeSelector.cpp(142)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_ProcModeSelector.cpp(146)
+#: Source/Tortunabo/Private/Lobby/TN_ProcModeSelector.cpp(146)
 msgctxt "Tortunabo,ProcSelectorMode"
 msgid "MODO: {0}"
 msgstr "모드: {0}"
 
 #. Key:	ProcSelectorDifficulty
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_ProcModeSelector.cpp(145)
-#: Source/Tortunabo/Private/Lobby/TN_ProcModeSelector.cpp(145)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_ProcModeSelector.cpp(149)
+#: Source/Tortunabo/Private/Lobby/TN_ProcModeSelector.cpp(149)
 msgctxt "Tortunabo,ProcSelectorDifficulty"
 msgid "DIFICULTAD: {0}"
 msgstr "난이도: {0}"
 
 #. Key:	ProcSelectorPrompt
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_ProcModeSelector.cpp(21)
-#: Source/Tortunabo/Private/Lobby/TN_ProcModeSelector.cpp(21)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_ProcModeSelector.cpp(22)
+#: Source/Tortunabo/Private/Lobby/TN_ProcModeSelector.cpp(22)
 msgctxt "Tortunabo,ProcSelectorPrompt"
 msgid "Cambiar"
 msgstr "바꾸기"
 
 #. Key:	ShopPrompt
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_ShopKeeper.cpp(141)
-#: Source/Tortunabo/Private/Lobby/TN_ShopKeeper.cpp(141)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_ShopKeeper.cpp(142)
+#: Source/Tortunabo/Private/Lobby/TN_ShopKeeper.cpp(142)
 msgctxt "Tortunabo,ShopPrompt"
 msgid "Hablar con el tendero"
 msgstr "사장님과 대화하기"
 
 #. Key:	ShopKeeperName
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_ShopKeeper.cpp(142)
-#: Source/Tortunabo/Private/Lobby/TN_ShopKeeper.cpp(142)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_ShopKeeper.cpp(143)
+#: Source/Tortunabo/Private/Lobby/TN_ShopKeeper.cpp(143)
 msgctxt "Tortunabo,ShopKeeperName"
 msgid "Don Tortugo"
 msgstr "토르투고 사장님"
 
 #. Key:	ShopName
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_ShopKeeper.cpp(143)
-#: Source/Tortunabo/Private/Lobby/TN_ShopKeeper.cpp(143)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_ShopKeeper.cpp(144)
+#: Source/Tortunabo/Private/Lobby/TN_ShopKeeper.cpp(144)
 msgctxt "Tortunabo,ShopName"
 msgid "La Concha Dorada"
 msgstr "황금 조개 상점"
 
 #. Key:	TreasureChestPrompt
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TreasureChest.cpp(325)
-#: Source/Tortunabo/Private/Lobby/TN_TreasureChest.cpp(325)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TreasureChest.cpp(326)
+#: Source/Tortunabo/Private/Lobby/TN_TreasureChest.cpp(326)
 msgctxt "Tortunabo,TreasureChestPrompt"
 msgid "Mantén para rebuscar en el cofre"
 msgstr "꾹 눌러서 상자 뒤지기"
 
 #. Key:	SkippedTitle
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(329)
-#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(329)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(330)
+#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(330)
 msgctxt "TNTutorial,SkippedTitle"
 msgid "Tutorial saltado"
 msgstr "튜토리얼 건너뜀"
 
 #. Key:	SkippedText
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(330)
-#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(330)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(331)
+#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(331)
 msgctxt "TNTutorial,SkippedText"
 msgid "Lo que no hayas visto te lo cuenta el General Galápago, en la pestaña «Controles»."
 msgstr "못 본 내용은 갈라파고스 장군이 “조작” 탭에서 알려 줘요."
 
 #. Key:	DoneTitle
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(334)
-#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(334)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(335)
+#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(335)
 msgctxt "TNTutorial,DoneTitle"
 msgid "¡Tutorial completado!"
 msgstr "튜토리얼 완료!"
 
 #. Key:	DoneText
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(335)
-#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(335)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(336)
+#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(336)
 msgctxt "TNTutorial,DoneText"
 msgid "Ya sabes todo lo que hace una tortuga. ¡Bienvenida al castillo!"
 msgstr "거북이가 할 수 있는 건 이제 다 알아요. 성에 온 걸 환영해요!"
 
 #. Key:	PadMove
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(62)
-#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(62)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(63)
+#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(63)
 msgctxt "TNTutorial,PadMove"
 msgid "Stick izquierdo"
 msgstr "왼쪽 스틱"
 
 #. Key:	MouseLook
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(63)
-#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(63)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(64)
+#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(64)
 msgctxt "TNTutorial,MouseLook"
 msgid "Ratón"
 msgstr "마우스"
 
 #. Key:	PadLook
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(63)
-#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(63)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(64)
+#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(64)
 msgctxt "TNTutorial,PadLook"
 msgid "Stick derecho"
 msgstr "오른쪽 스틱"
 
 #. Key:	SpaceKey
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(65)
-#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(65)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(66)
+#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(66)
 msgctxt "TNTutorial,SpaceKey"
 msgid "Espacio"
 msgstr "스페이스"
 
 #. Key:	PadTalk
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(72)
-#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(72)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(73)
+#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(73)
 msgctxt "TNTutorial,PadTalk"
 msgid "Cruceta abajo"
 msgstr "십자키 ↓"
 
 #. Key:	SkipHint
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(894)
-#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(894)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(909)
+#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(909)
 msgctxt "TNTutorial,SkipHint"
 msgid "¿Ya sabes jugar? {0} > «Saltar el tutorial»."
 msgstr "이미 할 줄 아나요? {0} > “튜토리얼 건너뛰기”."
 
 #. Key:	MoundPrompt
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPractice.cpp(297)
-#: Source/Tortunabo/Private/Lobby/TN_TutorialPractice.cpp(297)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPractice.cpp(315)
+#: Source/Tortunabo/Private/Lobby/TN_TutorialPractice.cpp(315)
 msgctxt "TNTutorial,MoundPrompt"
 msgid "Mantén para rebuscar en el montículo"
 msgstr "꾹 눌러서 모래 더미 뒤지기"
@@ -1596,85 +1596,85 @@ msgid "Abajo, en el centro, ves lo que llevas: en la aleta y en el caparazón."
 msgstr "화면 아래 가운데에 들고 있는 물건이 보여요(지느러미와 등껍질)."
 
 #. Key:	Header
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialWidget.cpp(218)
-#: Source/Tortunabo/Private/Lobby/TN_TutorialWidget.cpp(218)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialWidget.cpp(232)
+#: Source/Tortunabo/Private/Lobby/TN_TutorialWidget.cpp(232)
 msgctxt "TNTutorial,Header"
 msgid "TUTORIAL · {0} / {1}"
 msgstr "튜토리얼 · {0} / {1}"
 
 #. Key:	ConnectFailed
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1632)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1632)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1634)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1634)
 msgctxt "TNRooms,ConnectFailed"
 msgid "No se ha podido conectar con la sala: puede que el anfitrión se haya ido."
 msgstr "방에 연결하지 못했어요. 방장이 나갔을 수도 있어요."
 
 #. Key:	HostLeft
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1633)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1633)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1635)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1635)
 msgctxt "TNRooms,HostLeft"
 msgid "Se ha acabado la partida: el anfitrión se ha ido o se ha perdido la conexión."
 msgstr "게임이 끝났어요. 방장이 나갔거나 연결이 끊어졌어요."
 
 #. Key:	ListStale
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1743)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1743)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1745)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1745)
 msgctxt "TNRooms,ListStale"
 msgid "Esa sala ya no está en la lista: actualízala."
 msgstr "그 방은 이제 목록에 없어요. 목록을 새로고침하세요."
 
 #. Key:	ListLocked
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1751)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1751)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1753)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1753)
 msgctxt "TNRooms,ListLocked"
 msgid "«{0}» está cerrada: el anfitrión no deja entrar a nadie más."
 msgstr "“{0}” 방은 닫혀 있어요. 방장이 더 이상 들어오지 못하게 했어요."
 
 #. Key:	ListFull
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1757)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1757)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1759)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1759)
 msgctxt "TNRooms,ListFull"
 msgid "«{0}» está llena ({1}/{2})."
 msgstr "“{0}” 방은 가득 찼어요({1}/{2})."
 
 #. Key:	CodeIncomplete
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1769)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1769)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1771)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1771)
 msgctxt "TNRooms,CodeIncomplete"
 msgid "El código tiene 5 letras y números (nunca lleva O, 0, I, 1 ni L)."
 msgstr "코드는 글자와 숫자 5개예요(O, 0, I, 1, L은 들어가지 않아요)."
 
 #. Key:	CodeSearching
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1772)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1772)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1774)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1774)
 msgctxt "TNRooms,CodeSearching"
 msgid "Buscando la sala {0}..."
 msgstr "방 {0} 찾는 중…"
 
 #. Key:	Locked
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2006)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2006)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2008)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2008)
 msgctxt "TNRooms,Locked"
 msgid "Sala cerrada: no entra nadie más (los que ya estaban pueden volver)."
 msgstr "방을 닫았어요. 새로 들어올 수 없어요(이미 있던 사람은 다시 들어올 수 있어요)."
 
 #. Key:	Unlocked
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2007)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2007)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2009)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2009)
 msgctxt "TNRooms,Unlocked"
 msgid "Sala abierta: puede entrar gente otra vez."
 msgstr "방을 열었어요. 다시 들어올 수 있어요."
 
 #. Key:	KickReason
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2045)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2045)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2047)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2047)
 msgctxt "TNRooms,KickReason"
 msgid "El anfitrión te ha expulsado de la sala."
 msgstr "방장이 나를 방에서 내보냈어요."
 
 #. Key:	KickedNotice
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2062)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2062)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2064)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2064)
 msgctxt "TNRooms,KickedNotice"
 msgid "El anfitrión te ha expulsado de la sala «{0}»."
 msgstr "방장이 나를 “{0}” 방에서 내보냈어요."
@@ -3507,8 +3507,8 @@ msgid "No se ha podido cargar la partida y has vuelto al menú."
 msgstr "게임을 불러오지 못해서 메뉴로 돌아왔어요."
 
 #. Key:	TravelFailedLobby
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/TN_TravelFailureSubsystem.cpp(312)
-#: Source/Tortunabo/Private/Multiplayer/TN_TravelFailureSubsystem.cpp(312)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/TN_TravelFailureSubsystem.cpp(314)
+#: Source/Tortunabo/Private/Multiplayer/TN_TravelFailureSubsystem.cpp(314)
 msgctxt "TNRooms,TravelFailedLobby"
 msgid "No se ha podido cargar la partida: volvéis al lobby."
 msgstr "게임을 불러오지 못했어요. 모두 로비로 돌아가요."
@@ -3528,582 +3528,582 @@ msgid "FRASES"
 msgstr "빠른 채팅"
 
 #. Key:	NoKey
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1331)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1331)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1405)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1405)
 msgctxt "TNSettings,NoKey"
 msgid "—"
 msgstr "—"
 
 #. Key:	Space
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1336)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1336)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1410)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1410)
 msgctxt "TNKeys,Space"
 msgid "Espacio"
 msgstr "스페이스"
 
 #. Key:	LeftShift
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1337)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1337)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1411)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1411)
 msgctxt "TNKeys,LeftShift"
 msgid "Mayús izq."
 msgstr "왼쪽 Shift"
 
 #. Key:	RightShift
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1337)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1337)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1411)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1411)
 msgctxt "TNKeys,RightShift"
 msgid "Mayús der."
 msgstr "오른쪽 Shift"
 
 #. Key:	LeftCtrl
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1338)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1338)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1412)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1412)
 msgctxt "TNKeys,LeftCtrl"
 msgid "Ctrl izq."
 msgstr "왼쪽 Ctrl"
 
 #. Key:	RightCtrl
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1338)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1338)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1412)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1412)
 msgctxt "TNKeys,RightCtrl"
 msgid "Ctrl der."
 msgstr "오른쪽 Ctrl"
 
 #. Key:	Alt
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1339)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1339)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1413)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1413)
 msgctxt "TNKeys,Alt"
 msgid "Alt"
 msgstr "Alt"
 
 #. Key:	AltGr
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1339)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1339)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1413)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1413)
 msgctxt "TNKeys,AltGr"
 msgid "Alt Gr"
 msgstr "Alt Gr"
 
 #. Key:	Backspace
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1340)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1340)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1414)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1414)
 msgctxt "TNKeys,Backspace"
 msgid "Retroceso"
 msgstr "Backspace"
 
 #. Key:	Escape
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1340)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1340)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1414)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1414)
 msgctxt "TNKeys,Escape"
 msgid "Esc"
 msgstr "Esc"
 
 #. Key:	Enter
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1341)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1341)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1415)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1415)
 msgctxt "TNKeys,Enter"
 msgid "Intro"
 msgstr "Enter"
 
 #. Key:	Tab
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1341)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1341)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1415)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1415)
 msgctxt "TNKeys,Tab"
 msgid "Tab"
 msgstr "Tab"
 
 #. Key:	CapsLock
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1342)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1342)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1416)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1416)
 msgctxt "TNKeys,CapsLock"
 msgid "Bloq Mayús"
 msgstr "Caps Lock"
 
 #. Key:	PageDown
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1343)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1343)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1417)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1417)
 msgctxt "TNKeys,PageDown"
 msgid "Av Pág"
 msgstr "Page Down"
 
 #. Key:	PageUp
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1343)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1343)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1417)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1417)
 msgctxt "TNKeys,PageUp"
 msgid "Re Pág"
 msgstr "Page Up"
 
 #. Key:	Delete
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1344)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1344)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1418)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1418)
 msgctxt "TNKeys,Delete"
 msgid "Supr"
 msgstr "Delete"
 
 #. Key:	Insert
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1344)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1344)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1418)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1418)
 msgctxt "TNKeys,Insert"
 msgid "Insert"
 msgstr "Insert"
 
 #. Key:	End
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1345)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1345)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1419)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1419)
 msgctxt "TNKeys,End"
 msgid "Fin"
 msgstr "End"
 
 #. Key:	Home
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1345)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1345)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1419)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1419)
 msgctxt "TNKeys,Home"
 msgid "Inicio"
 msgstr "Home"
 
 #. Key:	ArrowDown
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1346)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1346)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1420)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1420)
 msgctxt "TNKeys,ArrowDown"
 msgid "Flecha abajo"
 msgstr "아래 방향키"
 
 #. Key:	ArrowUp
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1346)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1346)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1420)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1420)
 msgctxt "TNKeys,ArrowUp"
 msgid "Flecha arriba"
 msgstr "위 방향키"
 
 #. Key:	ArrowLeft
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1347)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1347)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1421)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1421)
 msgctxt "TNKeys,ArrowLeft"
 msgid "Flecha izquierda"
 msgstr "왼쪽 방향키"
 
 #. Key:	ArrowRight
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1347)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1347)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1421)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1421)
 msgctxt "TNKeys,ArrowRight"
 msgid "Flecha derecha"
 msgstr "오른쪽 방향키"
 
 #. Key:	Mouse
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1348)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1348)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1422)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1422)
 msgctxt "TNKeys,Mouse"
 msgid "Ratón"
 msgstr "마우스"
 
 #. Key:	MouseLeft
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1350)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1350)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1424)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1424)
 msgctxt "TNKeys,MouseLeft"
 msgid "Clic izquierdo"
 msgstr "좌클릭"
 
 #. Key:	MouseRight
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1350)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1350)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1424)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1424)
 msgctxt "TNKeys,MouseRight"
 msgid "Clic derecho"
 msgstr "우클릭"
 
 #. Key:	MouseMiddle
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1351)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1351)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1425)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1425)
 msgctxt "TNKeys,MouseMiddle"
 msgid "Clic de la rueda"
 msgstr "휠 클릭"
 
 #. Key:	MouseSide1
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1352)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1352)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1426)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1426)
 msgctxt "TNKeys,MouseSide1"
 msgid "Botón lateral 1"
 msgstr "사이드 버튼 1"
 
 #. Key:	MouseSide2
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1352)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1352)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1426)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1426)
 msgctxt "TNKeys,MouseSide2"
 msgid "Botón lateral 2"
 msgstr "사이드 버튼 2"
 
 #. Key:	Wheel
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1353)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1353)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1427)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1427)
 msgctxt "TNKeys,Wheel"
 msgid "Rueda"
 msgstr "휠"
 
 #. Key:	PadLeftStick
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1355)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1355)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1429)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1429)
 msgctxt "TNKeys,PadLeftStick"
 msgid "Stick izquierdo"
 msgstr "왼쪽 스틱"
 
 #. Key:	PadRightStick
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1355)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1355)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1429)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1429)
 msgctxt "TNKeys,PadRightStick"
 msgid "Stick derecho"
 msgstr "오른쪽 스틱"
 
 #. Key:	PadFaceBottom
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1358)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1358)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1432)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1432)
 msgctxt "TNKeys,PadFaceBottom"
 msgid "A / Cruz"
 msgstr "A / ×"
 
 #. Key:	PadFaceRight
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1358)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1358)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1432)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1432)
 msgctxt "TNKeys,PadFaceRight"
 msgid "B / Círculo"
 msgstr "B / ○"
 
 #. Key:	PadFaceLeft
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1359)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1359)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1433)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1433)
 msgctxt "TNKeys,PadFaceLeft"
 msgid "X / Cuadrado"
 msgstr "X / □"
 
 #. Key:	PadFaceTop
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1359)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1359)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1433)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1433)
 msgctxt "TNKeys,PadFaceTop"
 msgid "Y / Triángulo"
 msgstr "Y / △"
 
 #. Key:	PadLeftShoulder
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1360)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1360)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1434)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1434)
 msgctxt "TNKeys,PadLeftShoulder"
 msgid "LB / L1"
 msgstr "LB / L1"
 
 #. Key:	PadRightShoulder
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1360)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1360)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1434)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1434)
 msgctxt "TNKeys,PadRightShoulder"
 msgid "RB / R1"
 msgstr "RB / R1"
 
 #. Key:	PadLeftTrigger
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1361)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1361)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1435)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1435)
 msgctxt "TNKeys,PadLeftTrigger"
 msgid "LT / L2"
 msgstr "LT / L2"
 
 #. Key:	PadRightTrigger
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1361)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1361)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1435)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1435)
 msgctxt "TNKeys,PadRightTrigger"
 msgid "RT / R2"
 msgstr "RT / R2"
 
 #. Key:	PadDpadDown
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1363)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1363)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1437)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1437)
 msgctxt "TNKeys,PadDpadDown"
 msgid "Cruceta abajo"
 msgstr "십자키 ↓"
 
 #. Key:	PadDpadUp
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1363)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1363)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1437)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1437)
 msgctxt "TNKeys,PadDpadUp"
 msgid "Cruceta arriba"
 msgstr "십자키 ↑"
 
 #. Key:	PadDpadLeft
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1364)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1364)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1438)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1438)
 msgctxt "TNKeys,PadDpadLeft"
 msgid "Cruceta izquierda"
 msgstr "십자키 ←"
 
 #. Key:	PadDpadRight
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1364)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1364)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1438)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1438)
 msgctxt "TNKeys,PadDpadRight"
 msgid "Cruceta derecha"
 msgstr "십자키 →"
 
 #. Key:	PadLeftStickClick
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1365)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1365)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1439)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1439)
 msgctxt "TNKeys,PadLeftStickClick"
 msgid "Clic stick izquierdo"
 msgstr "왼쪽 스틱 클릭"
 
 #. Key:	PadRightStickClick
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1366)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1366)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1440)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1440)
 msgctxt "TNKeys,PadRightStickClick"
 msgid "Clic stick derecho"
 msgstr "오른쪽 스틱 클릭"
 
 #. Key:	PadSelect
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1367)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1367)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1441)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1441)
 msgctxt "TNKeys,PadSelect"
 msgid "Select / Vista"
 msgstr "Select / 뷰"
 
 #. Key:	PadStart
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1367)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1367)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1441)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1441)
 msgctxt "TNKeys,PadStart"
 msgid "Start / Menú"
 msgstr "Start / 메뉴"
 
 #. Key:	ActMove
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1380)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1380)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1454)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1454)
 msgctxt "TNSettings,ActMove"
 msgid "Moverse"
 msgstr "이동"
 
 #. Key:	ActLook
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1381)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1381)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1455)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1455)
 msgctxt "TNSettings,ActLook"
 msgid "Mover la cámara"
 msgstr "카메라 돌리기"
 
 #. Key:	ActJump
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1382)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1382)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1456)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1456)
 msgctxt "TNSettings,ActJump"
 msgid "Saltar"
 msgstr "점프"
 
 #. Key:	ActSprint
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1383)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1383)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1457)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1457)
 msgctxt "TNSettings,ActSprint"
 msgid "Correr"
 msgstr "달리기"
 
 #. Key:	ActInteract
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1384)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1384)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1458)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1458)
 msgctxt "TNSettings,ActInteract"
 msgid "Usar, coger y lanzar"
 msgstr "사용, 잡기, 던지기"
 
 #. Key:	ActShell
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1385)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1385)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1459)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1459)
 msgctxt "TNSettings,ActShell"
 msgid "Meterse en el caparazón"
 msgstr "등껍질 속으로 들어가기"
 
 #. Key:	ActDrop
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1386)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1386)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1460)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1460)
 msgctxt "TNSettings,ActDrop"
 msgid "Soltar el objeto"
 msgstr "아이템 내려놓기"
 
 #. Key:	ActRotate
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1387)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1387)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1461)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1461)
 msgctxt "TNSettings,ActRotate"
 msgid "Cambiar de objeto"
 msgstr "아이템 바꾸기"
 
 #. Key:	ActEmotes
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1388)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1388)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1462)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1462)
 msgctxt "TNSettings,ActEmotes"
 msgid "Rueda de bailes"
 msgstr "춤 휠"
 
 #. Key:	ActChat
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1389)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1389)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1463)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1463)
 msgctxt "TNSettings,ActChat"
 msgid "Frases rápidas"
 msgstr "빠른 채팅"
 
 #. Key:	ActWheelPick
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1390)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1390)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1464)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1464)
 msgctxt "TNSettings,ActWheelPick"
 msgid "Elegir en la rueda"
 msgstr "휠에서 고르기"
 
 #. Key:	TalkRow
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1521)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1521)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1595)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1595)
 msgctxt "TNSettings,TalkRow"
 msgid "Hablar (pulsar para hablar)"
 msgstr "말하기(눌러서 말하기)"
 
 #. Key:	PauseRow
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1527)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1527)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1601)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1601)
 msgctxt "TNSettings,PauseRow"
 msgid "Abrir y cerrar este menú"
 msgstr "이 메뉴 열고 닫기"
 
 #. Key:	NotEditable
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1627)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1627)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1701)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1701)
 msgctxt "TNSettings,NotEditable"
 msgid "«{0}» no se cambia con {1}: va con {2}."
 msgstr "“{0}” 항목은 {1}에서 바꿀 수 없어요. 고정 키: {2}"
 
 #. Key:	Reserved
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1633)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1633)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1707)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1707)
 msgctxt "TNSettings,Reserved"
 msgid "{0} está reservada (menú, consola o editor). Prueba con otra."
 msgstr "{0}: 예약된 키예요(메뉴, 콘솔, 에디터). 다른 키를 골라 보세요."
 
 #. Key:	Unchanged
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1640)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1640)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1714)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1714)
 msgctxt "TNSettings,Unchanged"
 msgid "«{0}» ya iba con {1}."
 msgstr "“{0}” 항목은 이미 그대로예요: {1}"
 
 #. Key:	Swapped
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1657)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1657)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1731)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1731)
 msgctxt "TNSettings,Swapped"
 msgid "{0} estaba en «{1}»: ahora «{1}» va con {2}."
 msgstr "{0} 키는 “{1}”에 쓰고 있었어요. 이제 “{1}”의 키: {2}"
 
 #. Key:	Emptied
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1659)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1659)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1733)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1733)
 msgctxt "TNSettings,Emptied"
 msgid "{0} estaba en «{1}», que se queda sin tecla en {2}."
 msgstr "{0} 키는 “{1}”에 쓰고 있었어요. {2}에서는 그 항목의 키가 없어져요."
 
 #. Key:	Assigned
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1666)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1666)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1740)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1740)
 msgctxt "TNSettings,Assigned"
 msgid "«{0}»: {1}."
 msgstr "“{0}”: {1}."
 
 #. Key:	AlreadyDefault
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1721)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1721)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1795)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1795)
 msgctxt "TNSettings,AlreadyDefault"
 msgid "«{0}» ya iba con las de serie."
 msgstr "“{0}” 항목은 이미 기본값이에요."
 
 #. Key:	MoveForward
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(336)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(336)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(342)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(342)
 msgctxt "TNSettings,MoveForward"
 msgid "Avanzar"
 msgstr "앞으로"
 
 #. Key:	MoveBack
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(337)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(337)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(343)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(343)
 msgctxt "TNSettings,MoveBack"
 msgid "Retroceder"
 msgstr "뒤로"
 
 #. Key:	MoveLeft
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(338)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(338)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(344)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(344)
 msgctxt "TNSettings,MoveLeft"
 msgid "Ir a la izquierda"
 msgstr "왼쪽으로"
 
 #. Key:	MoveRight
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(339)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(339)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(345)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(345)
 msgctxt "TNSettings,MoveRight"
 msgid "Ir a la derecha"
 msgstr "오른쪽으로"
 
 #. Key:	DirNext
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(342)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(342)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(348)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(348)
 msgctxt "TNSettings,DirNext"
 msgid "siguiente"
 msgstr "다음"
 
 #. Key:	DirPrevious
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(342)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(342)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(348)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(348)
 msgctxt "TNSettings,DirPrevious"
 msgid "anterior"
 msgstr "이전"
 
 #. Key:	DirBack
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(343)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(343)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(349)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(349)
 msgctxt "TNSettings,DirBack"
 msgid "atrás"
 msgstr "뒤"
 
 #. Key:	DirForward
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(343)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(343)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(349)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(349)
 msgctxt "TNSettings,DirForward"
 msgid "adelante"
 msgstr "앞"
 
 #. Key:	DirLeft
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(344)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(344)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(350)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(350)
 msgctxt "TNSettings,DirLeft"
 msgid "izquierda"
 msgstr "왼쪽"
 
 #. Key:	DirRight
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(344)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(344)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(350)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(350)
 msgctxt "TNSettings,DirRight"
 msgid "derecha"
 msgstr "오른쪽"
 
 #. Key:	DirDown
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(345)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(345)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(351)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(351)
 msgctxt "TNSettings,DirDown"
 msgid "abajo"
 msgstr "아래"
 
 #. Key:	DirUp
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(345)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(345)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(351)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(351)
 msgctxt "TNSettings,DirUp"
 msgid "arriba"
 msgstr "위"
 
 #. Key:	DirectionFmt
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(348)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(348)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(354)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(354)
 msgctxt "TNSettings,DirectionFmt"
 msgid "{0} ({1})"
 msgstr "{0}({1})"
 
 #. Key:	WordKeyboard
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(353)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(353)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(359)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(359)
 msgctxt "TNSettings,WordKeyboard"
 msgid "el teclado y el ratón"
 msgstr "키보드와 마우스"
 
 #. Key:	WordPad
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(353)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(353)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(359)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(359)
 msgctxt "TNSettings,WordPad"
 msgid "el mando"
 msgstr "컨트롤러"
@@ -4921,71 +4921,71 @@ msgid "¡PUM!"
 msgstr "뻥!"
 
 #. Key:	Title
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(171)
-#: Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(171)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(172)
+#: Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(172)
 msgctxt "TNGhost,Title"
 msgid "¡Eres un fantasma!"
 msgstr "유령이 됐어요!"
 
 #. Key:	Watching
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(263)
-#: Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(263)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(264)
+#: Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(264)
 msgctxt "TNGhost,Watching"
 msgid "Mirando a {0}"
 msgstr "{0} 관전 중"
 
 #. Key:	NobodyToWatch
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(264)
-#: Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(264)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(265)
+#: Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(265)
 msgctxt "TNGhost,NobodyToWatch"
 msgid "No queda nadie a quien mirar"
 msgstr "볼 수 있는 상대가 없어요"
 
 #. Key:	FreeCamera
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(266)
-#: Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(266)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(267)
+#: Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(267)
 msgctxt "TNGhost,FreeCamera"
 msgid "Cámara libre: gira alrededor de la tortuga"
 msgstr "자유 카메라: 거북이 주위를 돌아요"
 
 #. Key:	FixedCamera
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(267)
-#: Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(267)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(268)
+#: Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(268)
 msgctxt "TNGhost,FixedCamera"
 msgid "Cámara fija: lo que ve {0}"
 msgstr "고정 카메라: {0}의 시점"
 
-#. Key:	KeysPad
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(270)
-#: Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(270)
-msgctxt "TNGhost,KeysPad"
-msgid "LB / RB  cambiar   ·   R3  cámara   ·   gatillos  zoom"
-msgstr "LB / RB  바꾸기   ·   R3  카메라   ·   트리거  줌"
+#. Key:	KeysPadButtons
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(275)
+#: Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(275)
+msgctxt "TNGhost,KeysPadButtons"
+msgid "{0} / {1}  cambiar   ·   {2}  cámara   ·   gatillos  zoom"
+msgstr "{0} / {1}  바꾸기   ·   {2}  카메라   ·   트리거  줌"
 
 #. Key:	KeysMouse
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(271)
-#: Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(271)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(277)
+#: Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(277)
 msgctxt "TNGhost,KeysMouse"
 msgid "← / →  cambiar   ·   C  cámara   ·   rueda  zoom"
 msgstr "← / →  바꾸기   ·   C  카메라   ·   휠  줌"
 
 #. Key:	AlsoWatching
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(284)
-#: Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(284)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(290)
+#: Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(290)
 msgctxt "TNGhost,AlsoWatching"
 msgid "También miran: {0}"
 msgstr "같이 보는 사람: {0}"
 
 #. Key:	WatchedByOne
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(315)
-#: Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(315)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(321)
+#: Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(321)
 msgctxt "TNGhost,WatchedByOne"
 msgid "Te mira {0}"
 msgstr "나를 보는 사람: {0}"
 
 #. Key:	WatchedByMany
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(316)
-#: Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(316)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(322)
+#: Source/Tortunabo/Private/UI/HUD/TN_GhostHUDWidget.cpp(322)
 msgctxt "TNGhost,WatchedByMany"
 msgid "Te miran {0}"
 msgstr "나를 보는 사람: {0}"
@@ -5004,89 +5004,96 @@ msgctxt "TNLoading,WidgetLoading"
 msgid "Cargando..."
 msgstr "불러오는 중…"
 
+#. Key:	ShellGain
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1013)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1013)
+msgctxt "TNHUD,ShellGain"
+msgid "+{0}"
+msgstr "+{0}"
+
 #. Key:	Storm
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1154)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1154)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1192)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1192)
 msgctxt "TNHUD,Storm"
 msgid "¡La tormenta te alcanza! ¡Al agua!   {0}"
 msgstr "폭풍이 따라잡았어요! 물속으로!   {0}"
 
 #. Key:	Seagull
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1168)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1168)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1206)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1206)
 msgctxt "TNHUD,Seagull"
 msgid "¡Una gaviota te ha marcado! Sal del círculo o métete bajo techo   {0}"
 msgstr "갈매기가 너를 찍었어요! 원 밖으로 나가거나 지붕 아래로 숨어요   {0}"
 
 #. Key:	Down
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1181)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1181)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1219)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1219)
 msgctxt "TNHUD,Down"
 msgid "¡Panza arriba!\nUn compañero puede darte la vuelta:  {0} s"
 msgstr "배가 뒤집혔어요!\n동료가 뒤집어 줄 수 있어요:  {0}초"
 
 #. Key:	OutTitle
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1240)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1240)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1278)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1278)
 msgctxt "TNHUD,OutTitle"
 msgid "¡Fuera de carrera!"
 msgstr "레이스에서 탈락!"
 
 #. Key:	OutHint
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1241)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1241)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1279)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1279)
 msgctxt "TNHUD,OutHint"
 msgid "Anima a los demás hasta que lleguen al agua."
 msgstr "다들 물에 닿을 때까지 응원해 주세요."
 
 #. Key:	PreviewSay
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1440)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1440)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1478)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1478)
 msgctxt "TNHUD,PreviewSay"
 msgid "¡Por aquí, que hay conchas!"
 msgstr "이쪽이에요, 조개가 있어요!"
 
 #. Key:	WheelHint
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1665)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1665)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1706)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1706)
 msgctxt "TNHUD,WheelHint"
 msgid "Apunta con el ratón"
 msgstr "마우스로 가리키세요"
 
+#. Key:	WheelHintPad
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1706)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1706)
+msgctxt "TNHUD,WheelHintPad"
+msgid "Apunta con el stick"
+msgstr "스틱으로 가리키세요"
+
 #. Key:	Exhausted
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(388)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(388)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(398)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(398)
 msgctxt "TNHUD,Exhausted"
 msgid "¡SIN ALIENTO!"
 msgstr "숨이 차요!"
 
 #. Key:	InHand
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(436)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(436)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(446)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(446)
 msgctxt "TNHUD,InHand"
 msgid "EN LA ALETA"
 msgstr "지느러미"
 
 #. Key:	Stored
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(437)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(437)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(447)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(447)
 msgctxt "TNHUD,Stored"
 msgid "EN EL CAPARAZÓN"
 msgstr "등껍질 속"
 
 #. Key:	Reviving
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(533)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(533)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(543)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(543)
 msgctxt "TNHUD,Reviving"
 msgid "Dando la vuelta a tu compañero..."
 msgstr "동료를 일으키는 중…"
-
-#. Key:	ShellGain
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(975)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(975)
-msgctxt "TNHUD,ShellGain"
-msgid "+{0}"
-msgstr "+{0}"
 
 #. Key:	EggBreaking
 #. SourceLocation:	Source/Tortunabo/Private/UI/Loading/STN_EggLoadingScreen.cpp(1207)
@@ -5333,341 +5340,341 @@ msgctxt "TNRooms,MenuIdle"
 msgid "Listo. Crea una partida o únete a una."
 msgstr "준비 완료. 게임을 만들거나 참가해 보세요."
 
-#. Key:	CodeDesc
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1002)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1002)
-msgctxt "TNRooms,CodeDesc"
-msgid "Con este código tus amigos entran desde «Unirse». También lo verás en el menú de pausa. Intro, A o clic: copiarlo."
-msgstr "이 코드로 친구들이 “참가하기”에서 들어와요. 일시정지 메뉴에서도 볼 수 있어요. Enter, A 또는 클릭: 복사."
-
-#. Key:	SummaryPrivate
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1009)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1009)
-msgctxt "TNRooms,SummaryPrivate"
-msgid "Sala privada de {0}, para {1} {1}|plural(one=tortuga,other=tortugas): no sale en la lista y tus amigos entran con el código {2} (o por invitación de Steam)."
-msgstr "{0}의 비공개 방, 거북이 {1}마리까지: 목록에 나오지 않아요. 친구들은 코드 {2}(또는 Steam 초대)로 들어와요."
-
-#. Key:	SummaryPublic
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1011)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1011)
-msgctxt "TNRooms,SummaryPublic"
-msgid "Sala pública de {0}, para {1} {1}|plural(one=tortuga,other=tortugas): sale en la lista de «Unirse» y entra quien quiera (puedes cerrarla desde el menú de pausa)."
-msgstr "{0}의 공개 방, 거북이 {1}마리까지: “참가하기” 목록에 나오고 누구든 들어올 수 있어요(일시정지 메뉴에서 닫을 수 있어요)."
-
-#. Key:	CodeMissing
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1057)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1057)
-msgctxt "TNRooms,CodeMissing"
-msgid "Faltan letras: el código tiene 5."
-msgstr "글자가 모자라요. 코드는 5개예요."
-
-#. Key:	ModeHost
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1094)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1094)
-msgctxt "TNRooms,ModeHost"
-msgid "{0} · de {1}"
-msgstr "{0} · 방장 {1}"
-
-#. Key:	CountFmt
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1095)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1095)
-msgctxt "TNRooms,CountFmt"
-msgid "{0}/{1}"
-msgstr "{0}/{1}"
-
-#. Key:	CountLocked
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1097)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1097)
-msgctxt "TNRooms,CountLocked"
-msgid "{0} · cerrada"
-msgstr "{0} · 닫힘"
-
-#. Key:	CountFull
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1098)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1098)
-msgctxt "TNRooms,CountFull"
-msgid "{0} · llena"
-msgstr "{0} · 가득 참"
-
-#. Key:	RowLockedDesc
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1106)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1106)
-msgctxt "TNRooms,RowLockedDesc"
-msgid "«{0}» está cerrada: el anfitrión no deja entrar a nadie más."
-msgstr "“{0}” 방은 닫혀 있어요. 방장이 더 이상 들어오지 못하게 했어요."
-
-#. Key:	RowFullDesc
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1107)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1107)
-msgctxt "TNRooms,RowFullDesc"
-msgid "«{0}» está llena."
-msgstr "“{0}” 방은 가득 찼어요."
-
-#. Key:	RowDesc
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1108)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1108)
-msgctxt "TNRooms,RowDesc"
-msgid "Intro, A o clic: entrar en «{0}»."
-msgstr "Enter, A 또는 클릭: “{0}” 방에 들어가기."
-
-#. Key:	ListSearching
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1114)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1114)
-msgctxt "TNRooms,ListSearching"
-msgid "Buscando salas públicas..."
-msgstr "공개 방을 찾는 중…"
-
-#. Key:	ListEmpty
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1115)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1115)
-msgctxt "TNRooms,ListEmpty"
-msgid "No hay partidas públicas ahora mismo. Crea una o entra con un código."
-msgstr "지금은 공개 게임이 없어요. 새로 만들거나 코드로 들어오세요."
-
-#. Key:	Searching
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1151)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1151)
-msgctxt "TNRooms,Searching"
-msgid "Buscando{0}"
-msgstr "찾는 중{0}"
-
-#. Key:	RoomsCount
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1161)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1161)
-msgctxt "TNRooms,RoomsCount"
-msgid "{0} {0}|plural(one=sala,other=salas)"
-msgstr "방 {0}개"
-
-#. Key:	HintJoin
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1214)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1214)
-msgctxt "TNRooms,HintJoin"
-msgid "Intro · A  Elegir      Ctrl+V  Pegar el código      F5 · Y  Actualizar      Esc · B  Volver"
-msgstr "Enter · A  선택      Ctrl+V  코드 붙여넣기      F5 · Y  새로고침      Esc · B  뒤로"
-
-#. Key:	HintCreate
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1215)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1215)
-msgctxt "TNRooms,HintCreate"
-msgid "Intro · A  Elegir      ← →  Cambiar      Esc · B  Volver"
-msgstr "Enter · A  선택      ← →  변경      Esc · B  뒤로"
-
-#. Key:	SizeFmt
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(188)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(188)
-msgctxt "TNRooms,SizeFmt"
-msgid "{0} {0}|plural(one=tortuga,other=tortugas)"
-msgstr "{0}마리"
-
-#. Key:	PasteEmpty
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(257)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(257)
-msgctxt "TNRooms,PasteEmpty"
-msgid "En el portapapeles no hay ningún código de sala."
-msgstr "클립보드에 방 코드가 없어요."
-
-#. Key:	CodeFieldEditing
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(268)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(268)
-msgctxt "TNRooms,CodeFieldEditing"
-msgid "↑ ↓ cambian la letra, ← → la casilla, X la borra. A o B: terminar. Intro: entrar."
-msgstr "↑ ↓로 글자를, ← →로 칸을 바꾸고 X로 지워요. A 또는 B: 입력 끝. Enter: 들어가기."
-
-#. Key:	CodeFieldDesc
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(269)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(269)
-msgctxt "TNRooms,CodeFieldDesc"
-msgid "Escribe o pega (Ctrl+V, clic derecho) el código de 5 letras y números. Con mando: A para escribirlo. Intro: entrar."
-msgstr "글자와 숫자 5개짜리 코드를 입력하거나 붙여넣어요(Ctrl+V, 우클릭). 컨트롤러는 A로 입력해요. Enter: 들어가기."
-
-#. Key:	CodeBadChar
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(499)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(499)
-msgctxt "TNRooms,CodeBadChar"
-msgid "Los códigos nunca llevan O, 0, I, 1 ni L: fíjate bien en el código."
-msgstr "코드에는 O, 0, I, 1, L이 들어가지 않아요. 코드를 잘 확인하세요."
-
-#. Key:	ModeRow
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(677)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(677)
-msgctxt "TNRooms,ModeRow"
-msgid "Modo"
-msgstr "모드"
-
-#. Key:	VisibilityRow
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(689)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(689)
-msgctxt "TNRooms,VisibilityRow"
-msgid "Sala"
-msgstr "방"
-
-#. Key:	VisibilityDesc
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(696)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(696)
-msgctxt "TNRooms,VisibilityDesc"
-msgid "Pública: sale en la lista de «Unirse» y entra quien quiera. Privada: no sale en la lista; se entra con su código o por invitación de Steam."
-msgstr "공개: “참가하기” 목록에 나오고 누구든 들어올 수 있어요. 비공개: 목록에 나오지 않고 코드나 Steam 초대로 들어와요."
-
-#. Key:	SizeRow
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(702)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(702)
-msgctxt "TNRooms,SizeRow"
-msgid "Plazas"
-msgstr "인원"
-
-#. Key:	SizeDesc
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(709)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(709)
-msgctxt "TNRooms,SizeDesc"
-msgid "Cuántas tortugas caben en la sala, tú incluida (8 como mucho)."
-msgstr "방에 들어갈 수 있는 거북이 수예요. 나도 포함이고, 최대 8마리예요."
-
-#. Key:	CreateButton
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(724)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(724)
-msgctxt "TNRooms,CreateButton"
-msgid "Crear partida"
-msgstr "게임 만들기"
-
-#. Key:	CreateButtonDesc
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(728)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(728)
-msgctxt "TNRooms,CreateButtonDesc"
-msgid "Crea la sala y te lleva al lobby del castillo. Desde el menú de pausa («Sala») puedes cerrarla o expulsar a alguien."
-msgstr "방을 만들고 성의 로비로 가요. 일시정지 메뉴의 “방”에서 방을 닫거나 누군가를 내보낼 수 있어요."
-
-#. Key:	Back
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(733)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(733)
-msgctxt "TNRooms,Back"
-msgid "Volver"
-msgstr "뒤로"
-
-#. Key:	BackDesc
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(737)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(737)
-msgctxt "TNRooms,BackDesc"
-msgid "Vuelve al menú principal."
-msgstr "메인 메뉴로 돌아가요."
-
-#. Key:	HaveCode
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(753)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(753)
-msgctxt "TNRooms,HaveCode"
-msgid "¿Tienes un código?"
-msgstr "코드가 있나요?"
-
-#. Key:	CodeJoin
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(771)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(771)
-msgctxt "TNRooms,CodeJoin"
-msgid "Entrar"
-msgstr "들어가기"
-
-#. Key:	CodeJoinDesc
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(776)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(776)
-msgctxt "TNRooms,CodeJoinDesc"
-msgid "Entra en la sala de ese código (pública o privada)."
-msgstr "그 코드의 방에 들어가요(공개 방이든 비공개 방이든요)."
-
-#. Key:	Paste
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(781)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(781)
-msgctxt "TNRooms,Paste"
-msgid "Pegar"
-msgstr "붙여넣기"
-
-#. Key:	PasteDesc
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(787)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(787)
-msgctxt "TNRooms,PasteDesc"
-msgid "Pega el código que te hayan pasado (lo busca en el texto copiado)."
-msgstr "받은 코드를 붙여넣어요(복사한 글에서 찾아 줘요)."
-
-#. Key:	CodeHelp
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(791)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(791)
-msgctxt "TNRooms,CodeHelp"
-msgid "5 letras y números, sin O, 0, I, 1 ni L. Con mando: A para escribirlo, ↑ ↓ cambian la letra y ← → la casilla."
-msgstr "글자와 숫자 5개, O·0·I·1·L 제외. 컨트롤러: A로 입력하고 ↑ ↓로 글자, ← →로 칸을 바꿔요."
-
-#. Key:	PublicRooms
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(797)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(797)
-msgctxt "TNRooms,PublicRooms"
-msgid "PARTIDAS PÚBLICAS"
-msgstr "공개 게임"
-
-#. Key:	Refresh
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(802)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(802)
-msgctxt "TNRooms,Refresh"
-msgid "Actualizar"
-msgstr "새로고침"
-
-#. Key:	RefreshDesc
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(807)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(807)
-msgctxt "TNRooms,RefreshDesc"
-msgid "Vuelve a buscar las salas públicas (F5 o Y del mando). La lista se actualiza sola cada poco."
-msgstr "공개 방을 다시 찾아요(F5 또는 컨트롤러의 Y). 목록은 잠깐씩 저절로 새로고침돼요."
-
-#. Key:	CreateTitle
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(868)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(868)
-msgctxt "TNRooms,CreateTitle"
-msgid "CREAR PARTIDA"
-msgstr "게임 만들기"
-
-#. Key:	JoinTitle
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(869)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(869)
-msgctxt "TNRooms,JoinTitle"
-msgid "UNIRSE A UNA PARTIDA"
-msgstr "게임 참가하기"
-
 #. Key:	NameReroll
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(984)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(984)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1059)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1059)
 msgctxt "TNRooms,NameReroll"
 msgid "Otro nombre"
 msgstr "다른 이름"
 
 #. Key:	NameRow
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(984)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(984)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1059)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1059)
 msgctxt "TNRooms,NameRow"
 msgid "Nombre de la sala"
 msgstr "방 이름"
 
 #. Key:	NameDesc
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(987)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(987)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1062)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1062)
 msgctxt "TNRooms,NameDesc"
 msgid "Sale al azar de la lista de salas (cada uno la lee en su idioma). Intro, A o clic: otro nombre."
 msgstr "방 이름 목록에서 무작위로 정해져요(각자 자기 언어로 읽어요). Enter, A 또는 클릭: 다른 이름."
 
 #. Key:	CodeCopy
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(992)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(992)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1067)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1067)
 msgctxt "TNRooms,CodeCopy"
 msgid "Copiar"
 msgstr "복사"
 
+#. Key:	CodeCopied
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1073)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1073)
+msgctxt "TNRooms,CodeCopied"
+msgid "Código {0} copiado: pásaselo a tus amigos."
+msgstr "코드 {0} 복사 완료! 친구들에게 알려 주세요."
+
+#. Key:	CodeDesc
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1077)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1077)
+msgctxt "TNRooms,CodeDesc"
+msgid "Con este código tus amigos entran desde «Unirse». También lo verás en el menú de pausa. Intro, A o clic: copiarlo."
+msgstr "이 코드로 친구들이 “참가하기”에서 들어와요. 일시정지 메뉴에서도 볼 수 있어요. Enter, A 또는 클릭: 복사."
+
+#. Key:	SummaryPrivate
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1084)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1084)
+msgctxt "TNRooms,SummaryPrivate"
+msgid "Sala privada de {0}, para {1} {1}|plural(one=tortuga,other=tortugas): no sale en la lista y tus amigos entran con el código {2} (o por invitación de Steam)."
+msgstr "{0}의 비공개 방, 거북이 {1}마리까지: 목록에 나오지 않아요. 친구들은 코드 {2}(또는 Steam 초대)로 들어와요."
+
+#. Key:	SummaryPublic
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1086)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1086)
+msgctxt "TNRooms,SummaryPublic"
+msgid "Sala pública de {0}, para {1} {1}|plural(one=tortuga,other=tortugas): sale en la lista de «Unirse» y entra quien quiera (puedes cerrarla desde el menú de pausa)."
+msgstr "{0}의 공개 방, 거북이 {1}마리까지: “참가하기” 목록에 나오고 누구든 들어올 수 있어요(일시정지 메뉴에서 닫을 수 있어요)."
+
+#. Key:	CodeMissing
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1132)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1132)
+msgctxt "TNRooms,CodeMissing"
+msgid "Faltan letras: el código tiene 5."
+msgstr "글자가 모자라요. 코드는 5개예요."
+
+#. Key:	ModeHost
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1169)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1169)
+msgctxt "TNRooms,ModeHost"
+msgid "{0} · de {1}"
+msgstr "{0} · 방장 {1}"
+
+#. Key:	CountFmt
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1170)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1170)
+msgctxt "TNRooms,CountFmt"
+msgid "{0}/{1}"
+msgstr "{0}/{1}"
+
+#. Key:	CountLocked
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1172)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1172)
+msgctxt "TNRooms,CountLocked"
+msgid "{0} · cerrada"
+msgstr "{0} · 닫힘"
+
+#. Key:	CountFull
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1173)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1173)
+msgctxt "TNRooms,CountFull"
+msgid "{0} · llena"
+msgstr "{0} · 가득 참"
+
+#. Key:	RowLockedDesc
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1181)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1181)
+msgctxt "TNRooms,RowLockedDesc"
+msgid "«{0}» está cerrada: el anfitrión no deja entrar a nadie más."
+msgstr "“{0}” 방은 닫혀 있어요. 방장이 더 이상 들어오지 못하게 했어요."
+
+#. Key:	RowFullDesc
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1182)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1182)
+msgctxt "TNRooms,RowFullDesc"
+msgid "«{0}» está llena."
+msgstr "“{0}” 방은 가득 찼어요."
+
+#. Key:	RowDesc
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1183)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1183)
+msgctxt "TNRooms,RowDesc"
+msgid "Intro, A o clic: entrar en «{0}»."
+msgstr "Enter, A 또는 클릭: “{0}” 방에 들어가기."
+
+#. Key:	ListSearching
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1189)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1189)
+msgctxt "TNRooms,ListSearching"
+msgid "Buscando salas públicas..."
+msgstr "공개 방을 찾는 중…"
+
+#. Key:	ListEmpty
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1190)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1190)
+msgctxt "TNRooms,ListEmpty"
+msgid "No hay partidas públicas ahora mismo. Crea una o entra con un código."
+msgstr "지금은 공개 게임이 없어요. 새로 만들거나 코드로 들어오세요."
+
+#. Key:	Searching
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1226)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1226)
+msgctxt "TNRooms,Searching"
+msgid "Buscando{0}"
+msgstr "찾는 중{0}"
+
+#. Key:	RoomsCount
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1236)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1236)
+msgctxt "TNRooms,RoomsCount"
+msgid "{0} {0}|plural(one=sala,other=salas)"
+msgstr "방 {0}개"
+
+#. Key:	HintJoin
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1289)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1289)
+msgctxt "TNRooms,HintJoin"
+msgid "Intro · A  Elegir      Ctrl+V  Pegar el código      F5 · Y  Actualizar      Esc · B  Volver"
+msgstr "Enter · A  선택      Ctrl+V  코드 붙여넣기      F5 · Y  새로고침      Esc · B  뒤로"
+
+#. Key:	HintCreate
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1290)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(1290)
+msgctxt "TNRooms,HintCreate"
+msgid "Intro · A  Elegir      ← →  Cambiar      Esc · B  Volver"
+msgstr "Enter · A  선택      ← →  변경      Esc · B  뒤로"
+
+#. Key:	SizeFmt
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(191)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(191)
+msgctxt "TNRooms,SizeFmt"
+msgid "{0} {0}|plural(one=tortuga,other=tortugas)"
+msgstr "{0}마리"
+
+#. Key:	PasteEmpty
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(260)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(260)
+msgctxt "TNRooms,PasteEmpty"
+msgid "En el portapapeles no hay ningún código de sala."
+msgstr "클립보드에 방 코드가 없어요."
+
 #. Key:	CodeRow
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(992)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(992)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(271)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(271)
 msgctxt "TNRooms,CodeRow"
 msgid "Código de la sala"
 msgstr "방 코드"
 
-#. Key:	CodeCopied
-#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(998)
-#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(998)
-msgctxt "TNRooms,CodeCopied"
-msgid "Código {0} copiado: pásaselo a tus amigos."
-msgstr "코드 {0} 복사 완료! 친구들에게 알려 주세요."
+#. Key:	CodeBadChar
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(306)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(306)
+msgctxt "TNRooms,CodeBadChar"
+msgid "Los códigos nunca llevan O, 0, I, 1 ni L: fíjate bien en el código."
+msgstr "코드에는 O, 0, I, 1, L이 들어가지 않아요. 코드를 잘 확인하세요."
+
+#. Key:	CodeFieldEditing
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(339)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(339)
+msgctxt "TNRooms,CodeFieldEditing"
+msgid "↑ ↓ cambian la letra, ← → la casilla, X la borra. A o B: terminar. Intro: entrar."
+msgstr "↑ ↓로 글자를, ← →로 칸을 바꾸고 X로 지워요. A 또는 B: 입력 끝. Enter: 들어가기."
+
+#. Key:	CodeFieldDesc
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(340)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(340)
+msgctxt "TNRooms,CodeFieldDesc"
+msgid "Escribe o pega (Ctrl+V, clic derecho) el código de 5 letras y números. Con mando: A para escribirlo. Intro: entrar."
+msgstr "글자와 숫자 5개짜리 코드를 입력하거나 붙여넣어요(Ctrl+V, 우클릭). 컨트롤러는 A로 입력해요. Enter: 들어가기."
+
+#. Key:	ModeRow
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(752)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(752)
+msgctxt "TNRooms,ModeRow"
+msgid "Modo"
+msgstr "모드"
+
+#. Key:	VisibilityRow
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(764)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(764)
+msgctxt "TNRooms,VisibilityRow"
+msgid "Sala"
+msgstr "방"
+
+#. Key:	VisibilityDesc
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(771)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(771)
+msgctxt "TNRooms,VisibilityDesc"
+msgid "Pública: sale en la lista de «Unirse» y entra quien quiera. Privada: no sale en la lista; se entra con su código o por invitación de Steam."
+msgstr "공개: “참가하기” 목록에 나오고 누구든 들어올 수 있어요. 비공개: 목록에 나오지 않고 코드나 Steam 초대로 들어와요."
+
+#. Key:	SizeRow
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(777)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(777)
+msgctxt "TNRooms,SizeRow"
+msgid "Plazas"
+msgstr "인원"
+
+#. Key:	SizeDesc
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(784)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(784)
+msgctxt "TNRooms,SizeDesc"
+msgid "Cuántas tortugas caben en la sala, tú incluida (8 como mucho)."
+msgstr "방에 들어갈 수 있는 거북이 수예요. 나도 포함이고, 최대 8마리예요."
+
+#. Key:	CreateButton
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(799)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(799)
+msgctxt "TNRooms,CreateButton"
+msgid "Crear partida"
+msgstr "게임 만들기"
+
+#. Key:	CreateButtonDesc
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(803)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(803)
+msgctxt "TNRooms,CreateButtonDesc"
+msgid "Crea la sala y te lleva al lobby del castillo. Desde el menú de pausa («Sala») puedes cerrarla o expulsar a alguien."
+msgstr "방을 만들고 성의 로비로 가요. 일시정지 메뉴의 “방”에서 방을 닫거나 누군가를 내보낼 수 있어요."
+
+#. Key:	Back
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(808)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(808)
+msgctxt "TNRooms,Back"
+msgid "Volver"
+msgstr "뒤로"
+
+#. Key:	BackDesc
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(812)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(812)
+msgctxt "TNRooms,BackDesc"
+msgid "Vuelve al menú principal."
+msgstr "메인 메뉴로 돌아가요."
+
+#. Key:	HaveCode
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(828)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(828)
+msgctxt "TNRooms,HaveCode"
+msgid "¿Tienes un código?"
+msgstr "코드가 있나요?"
+
+#. Key:	CodeJoin
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(846)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(846)
+msgctxt "TNRooms,CodeJoin"
+msgid "Entrar"
+msgstr "들어가기"
+
+#. Key:	CodeJoinDesc
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(851)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(851)
+msgctxt "TNRooms,CodeJoinDesc"
+msgid "Entra en la sala de ese código (pública o privada)."
+msgstr "그 코드의 방에 들어가요(공개 방이든 비공개 방이든요)."
+
+#. Key:	Paste
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(856)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(856)
+msgctxt "TNRooms,Paste"
+msgid "Pegar"
+msgstr "붙여넣기"
+
+#. Key:	PasteDesc
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(862)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(862)
+msgctxt "TNRooms,PasteDesc"
+msgid "Pega el código que te hayan pasado (lo busca en el texto copiado)."
+msgstr "받은 코드를 붙여넣어요(복사한 글에서 찾아 줘요)."
+
+#. Key:	CodeHelp
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(866)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(866)
+msgctxt "TNRooms,CodeHelp"
+msgid "5 letras y números, sin O, 0, I, 1 ni L. Con mando: A para escribirlo, ↑ ↓ cambian la letra y ← → la casilla."
+msgstr "글자와 숫자 5개, O·0·I·1·L 제외. 컨트롤러: A로 입력하고 ↑ ↓로 글자, ← →로 칸을 바꿔요."
+
+#. Key:	PublicRooms
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(872)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(872)
+msgctxt "TNRooms,PublicRooms"
+msgid "PARTIDAS PÚBLICAS"
+msgstr "공개 게임"
+
+#. Key:	Refresh
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(877)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(877)
+msgctxt "TNRooms,Refresh"
+msgid "Actualizar"
+msgstr "새로고침"
+
+#. Key:	RefreshDesc
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(882)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(882)
+msgctxt "TNRooms,RefreshDesc"
+msgid "Vuelve a buscar las salas públicas (F5 o Y del mando). La lista se actualiza sola cada poco."
+msgstr "공개 방을 다시 찾아요(F5 또는 컨트롤러의 Y). 목록은 잠깐씩 저절로 새로고침돼요."
+
+#. Key:	CreateTitle
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(943)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(943)
+msgctxt "TNRooms,CreateTitle"
+msgid "CREAR PARTIDA"
+msgstr "게임 만들기"
+
+#. Key:	JoinTitle
+#. SourceLocation:	Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(944)
+#: Source/Tortunabo/Private/UI/Menu/TN_RoomMenuWidget.cpp(944)
+msgctxt "TNRooms,JoinTitle"
+msgid "UNIRSE A UNA PARTIDA"
+msgstr "게임 참가하기"
 
 #. Key:	FpsFmt
 #. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(1084)
@@ -8904,8 +8911,8 @@ msgid "¡CATAPULTA!"
 msgstr "투석기!"
 
 #. Key:	BeachChestPrompt
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachChest.cpp(659)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachChest.cpp(659)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachChest.cpp(660)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachChest.cpp(660)
 msgctxt "Tortunabo,BeachChestPrompt"
 msgid "Mantén para abrir el cofre"
 msgstr "꾹 눌러서 상자 열기"
@@ -8925,43 +8932,43 @@ msgid "¡ÑAM!"
 msgstr "냠!"
 
 #. Key:	EnemyBonk
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachEnemy.cpp(1130)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachEnemy.cpp(1130)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachEnemy.cpp(1164)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachEnemy.cpp(1164)
 msgctxt "TNBeach,EnemyBonk"
 msgid "¡TOING!"
 msgstr "퉁!"
 
 #. Key:	CrabRam
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachGiantCrab.cpp(1279)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachGiantCrab.cpp(1279)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachGiantCrab.cpp(1280)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachGiantCrab.cpp(1280)
 msgctxt "TNBeach,CrabRam"
 msgid "¡EMBESTIDA!"
 msgstr "돌진!"
 
 #. Key:	CrabCrash
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachGiantCrab.cpp(1297)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachGiantCrab.cpp(1297)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachGiantCrab.cpp(1298)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachGiantCrab.cpp(1298)
 msgctxt "TNBeach,CrabCrash"
 msgid "¡CATAPLÁN!"
 msgstr "와장창!"
 
 #. Key:	GullGrab
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1498)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1498)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1519)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1519)
 msgctxt "TNBeach,GullGrab"
 msgid "¡ÑAC!"
 msgstr "덥석!"
 
 #. Key:	GullSplat
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1533)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1533)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1554)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1554)
 msgctxt "TNBeach,GullSplat"
 msgid "¡PLOF!"
 msgstr "철퍼덕!"
 
 #. Key:	GullPeck
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1974)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1974)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1995)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1995)
 msgctxt "TNBeach,GullPeck"
 msgid "¡PIC!"
 msgstr "콕!"
@@ -8981,29 +8988,29 @@ msgid "¡STRIKE!"
 msgstr "스트라이크!"
 
 #. Key:	LizardBite
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachLizard.cpp(892)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachLizard.cpp(892)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachLizard.cpp(905)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachLizard.cpp(905)
 msgctxt "TNBeach,LizardBite"
 msgid "¡ÑAM!"
 msgstr "앙!"
 
 #. Key:	LizardPrize
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachLizard.cpp(910)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachLizard.cpp(910)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachLizard.cpp(923)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachLizard.cpp(923)
 msgctxt "TNBeach,LizardPrize"
 msgid "¡UN REGALO!"
 msgstr "선물이에요!"
 
 #. Key:	MineClick
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachMine.cpp(589)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachMine.cpp(589)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachMine.cpp(636)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachMine.cpp(636)
 msgctxt "TNBeach,MineClick"
 msgid "¡clic!"
 msgstr "딸깍!"
 
 #. Key:	MineBoom
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachMine.cpp(604)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachMine.cpp(604)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachMine.cpp(651)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachMine.cpp(651)
 msgctxt "TNBeach,MineBoom"
 msgid "¡BUM!"
 msgstr "쾅!"
@@ -9023,8 +9030,8 @@ msgid "¡FUERA!"
 msgstr "저리 가!"
 
 #. Key:	QuadRunOver
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachQuadLane.cpp(318)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachQuadLane.cpp(318)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachQuadLane.cpp(358)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachQuadLane.cpp(358)
 msgctxt "TNBeach,QuadRunOver"
 msgid "¡ATROPELLO!"
 msgstr "치였어요!"
@@ -9044,8 +9051,8 @@ msgid "¡QUÉ PICOR!"
 msgstr "너무 가려워!"
 
 #. Key:	SandWormNom
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachSandWorm.cpp(1255)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachSandWorm.cpp(1255)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachSandWorm.cpp(1266)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachSandWorm.cpp(1266)
 msgctxt "TNBeach,SandWormNom"
 msgid "¡ÑAM!"
 msgstr "꿀꺽!"
@@ -9057,30 +9064,30 @@ msgctxt "TNBeach,UrchinPrick"
 msgid "¡PINCHAZO!"
 msgstr "따끔!"
 
+#. Key:	StormKick
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachStorm.cpp(1149)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachStorm.cpp(1149)
+msgctxt "TNBeach,StormKick"
+msgid "¡PATADA!"
+msgstr "뻥!"
+
 #. Key:	StormRun
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachStorm.cpp(1300)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachStorm.cpp(1300)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachStorm.cpp(1455)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachStorm.cpp(1455)
 msgctxt "TNBeach,StormRun"
 msgid "¡CORRE!"
 msgstr "달려요!"
 
 #. Key:	StormWarn
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachStorm.cpp(1313)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachStorm.cpp(1313)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachStorm.cpp(1468)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachStorm.cpp(1468)
 msgctxt "TNBeach,StormWarn"
 msgid "¡QUE VIENE LA TORMENTA!"
 msgstr "폭풍이 몰려와요!"
 
-#. Key:	StormKick
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachStorm.cpp(994)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachStorm.cpp(994)
-msgctxt "TNBeach,StormKick"
-msgid "¡PATADA!"
-msgstr "뻥!"
-
 #. Key:	TankFoamHit
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachToyTank.cpp(527)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachToyTank.cpp(527)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachToyTank.cpp(587)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachToyTank.cpp(587)
 msgctxt "TNBeach,TankFoamHit"
 msgid "¡PAF!"
 msgstr "퍽!"
@@ -9100,8 +9107,8 @@ msgid "¡CRAC!"
 msgstr "쩍!"
 
 #. Key:	FrisbeeBonk
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceFrisbee.cpp(538)
-#: Source/Tortunabo/Private/World/Beach/TN_RaceFrisbee.cpp(538)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceFrisbee.cpp(544)
+#: Source/Tortunabo/Private/World/Beach/TN_RaceFrisbee.cpp(544)
 msgctxt "TNRace,FrisbeeBonk"
 msgid "¡BONK!"
 msgstr "딱!"
@@ -9233,22 +9240,22 @@ msgid "¡TAXI!"
 msgstr "택시!"
 
 #. Key:	ProcSwitchPrompt
-#. SourceLocation:	Source/Tortunabo/Private/World/ProcMap/TN_ProcPuzzleActors.cpp(211)
-#: Source/Tortunabo/Private/World/ProcMap/TN_ProcPuzzleActors.cpp(211)
+#. SourceLocation:	Source/Tortunabo/Private/World/ProcMap/TN_ProcPuzzleActors.cpp(217)
+#: Source/Tortunabo/Private/World/ProcMap/TN_ProcPuzzleActors.cpp(217)
 msgctxt "Tortunabo,ProcSwitchPrompt"
 msgid "Pulsar"
 msgstr "누르기"
 
 #. Key:	SearchSpotPrompt
-#. SourceLocation:	Source/Tortunabo/Private/World/ProcMap/TN_ProcSearchSpot.cpp(688)
-#: Source/Tortunabo/Private/World/ProcMap/TN_ProcSearchSpot.cpp(688)
+#. SourceLocation:	Source/Tortunabo/Private/World/ProcMap/TN_ProcSearchSpot.cpp(701)
+#: Source/Tortunabo/Private/World/ProcMap/TN_ProcSearchSpot.cpp(701)
 msgctxt "Tortunabo,SearchSpotPrompt"
 msgid "Mantén para rebuscar"
 msgstr "꾹 눌러서 뒤지기"
 
 #. Key:	ProcStartGateName
-#. SourceLocation:	Source/Tortunabo/Private/World/ProcMap/TN_ProcStartStructure.cpp(551)
-#: Source/Tortunabo/Private/World/ProcMap/TN_ProcStartStructure.cpp(551)
+#. SourceLocation:	Source/Tortunabo/Private/World/ProcMap/TN_ProcStartStructure.cpp(562)
+#: Source/Tortunabo/Private/World/ProcMap/TN_ProcStartStructure.cpp(562)
 msgctxt "Tortunabo,ProcStartGateName"
 msgid "TORTUNAVY"
 msgstr "TORTUNAVY"
@@ -9289,8 +9296,8 @@ msgid "Activar Tótem"
 msgstr "토템 작동"
 
 #. Key:	ReplayPrompt
-#. SourceLocation:	Source/Tortunabo/Private/World/TN_TutorialEntryInteractable.cpp(11)
-#: Source/Tortunabo/Private/World/TN_TutorialEntryInteractable.cpp(11)
+#. SourceLocation:	Source/Tortunabo/Private/World/TN_TutorialEntryInteractable.cpp(12)
+#: Source/Tortunabo/Private/World/TN_TutorialEntryInteractable.cpp(12)
 msgctxt "TNTutorial,ReplayPrompt"
 msgid "Repetir el tutorial"
 msgstr "튜토리얼 다시 하기"
