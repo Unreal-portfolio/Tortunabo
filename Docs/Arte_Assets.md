@@ -28,10 +28,14 @@ las animaciones por código (puertas, tapas, el muelle de la medusa, el bamboleo
 6. **bUseArtCollision**: déjalo en falso. La pieza conserva la colisión generada, invisible, y se juega exactamente igual.
    Ponlo en cierto solo si tu malla trae su propia colisión simple y quieres que se choque con ella: entonces la generada
    se quita para esa pieza y cambia cómo se juega (pruébalo y avisa a programación).
-7. **Comprueba**: dale al Play (o vuelve a cargar el nivel). Las piezas del castillo y del valle se ven también en el
-   editor al volver a construirlos (mover el actor un poco); las de los mapas procedurales, solo al jugar (se generan al
-   empezar). `TN.Art.Enabled 0` y recargar el nivel enseña lo generado
-   para comparar; `TN.Art.Reload` vuelve a leer los catálogos.
+7. **Comprueba**: dale al Play. Cada partida (también el PIE y cada viaje) vuelve a leer los catálogos tal como estén en
+   ese momento. En el editor, sin jugar, el castillo y el valle se rehacen solos con cada cambio que hagas en el panel del
+   catálogo; las piezas de los mapas procedurales, del tutorial y los componentes que se guardan con el nivel solo se ven
+   al jugar (§2). Si cambias el catálogo con Python o lo recargas (un catálogo traído de git con el editor abierto no se ve
+   hasta recargarlo, Asset Actions > Reload, o reiniciar el editor, como cualquier asset), el Play ya lo ve; para verlo en
+   el editor sin jugar, pulsa **Aplicar cambios** en el catálogo (o `TN.Art.Reload`). `TN.Art.Enabled 0` y recargar el
+   nivel enseña lo generado para comparar. Si una pieza con malla no sale, mira el log: `[Arte]` avisa de las mallas que
+   no cargan y de los nombres de pieza que no existen.
 8. **Sube** el catálogo y tus mallas. Son binarios: antes de tocar un asset, comprueba que ninguna issue en curso lo nombra
    y escribe en tu issue qué assets cambias (CLAUDE.md, «Reglas»).
 
@@ -1292,7 +1296,9 @@ Assets binarios que ya existen y usa la generación:
 |---|---|
 | Crear los catálogos y meter todas las piezas vacías | En el editor: `exec(open(r"<repo>/Scripts/arte/rellenar_catalogos.py", encoding="utf-8").read())`. Sin interfaz, con el editor cerrado: `UnrealEditor-Cmd.exe "<repo>/Tortunabo.uproject" -run=pythonscript -script="<repo>/Scripts/arte/rellenar_catalogos.py"` (rutas con `/`). |
 | Lista de piezas en el juego | `TN.Art.Slots [prefijo] [segundos]`: nombre, tipo, si se ha visto en esta sesión (y cuántas copias), lo que dibuja y su sustituto; con segundos, sale pasado ese tiempo (para lo que se construye al empezar). Avisa si el código usa una pieza que no está en la tabla. Ejemplo: `TN.Art.Slots Lobby.Castle`. |
-| Volver a leer los catálogos | `TN.Art.Reload` (lo ya construido cambia al volver a cargar el nivel). |
+| Volver a leer los catálogos | Botón **Aplicar cambios** del catálogo (desde Python, `catalog.apply_changes()`) o `TN.Art.Reload`: vuelven a leerlos, avisan de las piezas con malla que no existen y rehacen en el editor el castillo y el valle del nivel abierto. En una partida, lo ya construido cambia al volver a cargar el nivel. No hace falta para el Play: cada partida los vuelve a leer. |
+| Cambiar el catálogo con Python | `catalog.get_editor_property("pieces")` y cada `pieces[nombre]` escriben directamente en el asset, sin avisar al editor (volver a asignar el mapa con `set_editor_property` tampoco avisa: el valor ya es el mismo). Guarda con `unreal.EditorAssetLibrary.save_loaded_asset(catalog)` y llama a `catalog.apply_changes()` para verlo en el editor sin jugar. |
+| Fotos del lobby sin abrir el editor | `UnrealEditor-Win64-DebugGame.exe <uproject> /Game/Maps/Lobby/LVL_Lobby -game -RenderOffScreen -ResX=1600 -ResY=900 -NoSteam -ExecCmds="TN.Art.Shots C:/ruta"`: fotos desde puntos fijos alrededor del castillo (entrada, plaza, puestos, patio, valle), `TN.Art.Slots Lobby` en el log y cierra el juego. También vale en el PIE. Fuera de Shipping. |
 | Comparar con lo generado | `TN.Art.Enabled 0` y recargar el nivel; `TN.Art.Enabled 1` para volver. |
 | Lista de piezas en Markdown | `uv run python Scripts/arte/rellenar_catalogos.py --markdown`, o `--doc` para poner al día §4. |
 | Dónde están los catálogos | Ajustes del proyecto > Tortunavy > Arte (`[/Script/Tortunabo.TN_ArtSettings]` de `Config/DefaultGame.ini`). |
