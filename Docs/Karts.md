@@ -37,7 +37,8 @@ Reparto: `TNKart::ItemWeightsForPlace` (cuanto más atrás, más objetos buenos)
 ## Artillera (#295)
 
 - Torreta y objetos. Su **peso** (A/D o el stick izquierdo) cambia cuánto gira el kart: hacia dentro de la curva cierra el
-  giro hasta un 35 %; hacia fuera lo abre. El HUD le enseña hacia dónde carga.
+  giro (hasta 45 grados de rueda, sobre los 38 del buggy); hacia fuera lo abre hasta un 35 %. El HUD le enseña hacia
+  dónde carga.
 - **Conductora sola**: mira alrededor con el ratón o el stick derecho (vuelve al centro al soltar) y la torreta sigue a la
   cámara; dispara (clic izquierdo, RB) hacia donde mira, con un poco de ayuda al apuntar.
 

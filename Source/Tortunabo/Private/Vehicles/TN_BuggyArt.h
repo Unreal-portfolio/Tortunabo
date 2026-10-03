@@ -85,10 +85,12 @@ namespace TNBuggyArt
 		constexpr double TurretPivotZ = 214.38;
 		/**
 		 * Lo que barre la torreta alrededor de su eje vertical: el aro y el carro (radio 49) desde un poco por debajo del
-		 * aro, y el cañón (radio 49 también, con la caña a un lado) por encima del respaldo de la artillera.
+		 * aro, y el cañón (radio 49 también, con la caña a un lado) por encima del respaldo de la artillera. El aro va
+		 * TNBuggyTurretMesh::RingDropCm por debajo del asiento, sobre dos patas a los lados de la cadera que bajan al suelo
+		 * de la carrocería trasera; en las tortugas se meten en el caparazón.
 		 */
 		constexpr double TurretSweepRadius = 49.0;
-		constexpr double TurretRingBottomZ = 123.0;
+		constexpr double TurretRingBottomZ = 119.0;
 		/** Por dentro del aro solo pueden estar el sillín y el respaldo de la artillera, hasta esta altura. */
 		constexpr double GunnerBackrestTopZ = 143.0;
 	}

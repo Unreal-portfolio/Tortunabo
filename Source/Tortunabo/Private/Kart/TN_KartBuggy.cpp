@@ -16,6 +16,7 @@
 #include "Net/UnrealNetwork.h"
 #include "PhysicsEngine/BodySetup.h"
 #include "Rally/TN_RallyLogic.h"
+#include "Vehicles/TN_BuggyData.h"
 #include "Vehicles/TN_BuggyTurretComponent.h"
 #include "Vehicles/TN_RallyTurretLogic.h"
 
@@ -52,8 +53,10 @@ namespace TNKartBuggyDetail
 	constexpr float TargetAimUpCm = 60.f;
 	/** El servidor acepta la dirección del cliente si no se separa más de esto del apuntado de la torreta (grados). */
 	constexpr float MaxSoloFireErrorDeg = 25.f;
-	/** Cambio mínimo del multiplicador de giro para volver a ponerlo en las ruedas. */
+	/** Por debajo de esto el multiplicador de giro cuenta como sin inclinación. */
 	constexpr float LeanSteerEpsilon = 0.02f;
+	/** Tope del giro de la rueda con la inclinación hacia dentro (grados): el máximo que admite UTN_BuggyData. */
+	constexpr float LeanSteerMaxDeg = 45.f;
 	/** Holgura sobre el suelo al reaparecer (cm): cae un palmo y se asienta. */
 	constexpr float TeleportClearanceCm = 15.f;
 }
@@ -383,29 +386,24 @@ void ATN_KartBuggy::Tick(float DeltaSeconds)
 void ATN_KartBuggy::ApplyLeanSteering()
 {
 	UChaosWheeledVehicleMovementComponent* Move = GetWheeledMovement();
-	if (!Move || !Move->HasValidPhysicsState())
+	const UTN_BuggyData* Tuning = GetData();
+	if (!Move || !Move->HasValidPhysicsState() || !Tuning)
 	{
 		return;
-	}
-	for (int32 Wheel = 0; Wheel < 2; ++Wheel)
-	{
-		if (BaseFrontSteerDeg[Wheel] < 0.f && Move->Wheels.IsValidIndex(Wheel) && Move->Wheels[Wheel])
-		{
-			BaseFrontSteerDeg[Wheel] = Move->Wheels[Wheel]->MaxSteerAngle;
-		}
 	}
 	const float Wanted = TNKart::LeanSteerMultiplier(GetGunnerLean(), Move->GetSteeringInput());
-	if (FMath::Abs(Wanted - AppliedLeanSteer) < TNKartBuggyDetail::LeanSteerEpsilon)
+	const bool bNeutral = FMath::Abs(Wanted - 1.f) < TNKartBuggyDetail::LeanSteerEpsilon;
+	// ATN_Buggy::ApplyWheelFriction vuelve a poner el ángulo del ajuste cada vez que cambia la fricción (freno de mano,
+	// charco): con la inclinación se reaplica cada fotograma; sin ella basta con devolverlo una vez.
+	if (bNeutral && AppliedLeanSteer == 1.f)
 	{
 		return;
 	}
-	AppliedLeanSteer = Wanted;
+	AppliedLeanSteer = bNeutral ? 1.f : Wanted;
+	const float Angle = FMath::Min(Tuning->MaxSteerAngleDeg * AppliedLeanSteer, TNKartBuggyDetail::LeanSteerMaxDeg);
 	for (int32 Wheel = 0; Wheel < 2; ++Wheel)
 	{
-		if (BaseFrontSteerDeg[Wheel] > 0.f)
-		{
-			Move->SetWheelMaxSteerAngle(Wheel, BaseFrontSteerDeg[Wheel] * Wanted);
-		}
+		Move->SetWheelMaxSteerAngle(Wheel, Angle);
 	}
 }
 

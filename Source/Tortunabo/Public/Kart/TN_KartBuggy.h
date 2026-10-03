@@ -147,8 +147,7 @@ private:
 	float AimSendAccumulator = 0.f;
 	double LastFireRequest = -1000.0;
 	FRotator LastSentAim = FRotator(1000.f, 0.f, 0.f);
-	/** Giro máximo de cada rueda delantera sin inclinación (grados) y el multiplicador aplicado. */
-	float BaseFrontSteerDeg[2] = { -1.f, -1.f };
+	/** Multiplicador del giro máximo (UTN_BuggyData::MaxSteerAngleDeg) puesto en las ruedas delanteras. */
 	float AppliedLeanSteer = 1.f;
 	/** Altura del origen sobre el suelo con el kart apoyado (cm); hasta medirla, la de reserva del Rally más un margen. */
 	float RideHeightCm = 90.f;
