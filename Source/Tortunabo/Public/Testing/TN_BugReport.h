@@ -69,6 +69,15 @@ namespace TNBugReport
 	/** Commit del proyecto leído de .git (worktrees incluidos), con la rama si la hay: «abc1234 (rama)». «desconocido» si no hay .git. */
 	TORTUNABO_API FString CommitFromGit(const FString& ProjectDir);
 
-	/** Markdown para pegar en una issue: secciones de la plantilla «Fallo» por rellenar y el contexto automático. */
+	/**
+	 * La línea sin datos personales, para lo que se pega en una issue: direcciones IPv4 (con puerto) por «<ip>», SteamID
+	 * (64 bits o [U:1:n]) por «<steamid>» y el usuario de las rutas «X:\Users\<nombre>» por «<usuario>».
+	 */
+	TORTUNABO_API FString RedactLine(const FString& Line);
+
+	/**
+	 * Markdown para pegar en una issue: secciones de la plantilla «Fallo» por rellenar y el contexto automático. Las líneas
+	 * del registro pasan por RedactLine.
+	 */
 	TORTUNABO_API FString FormatMarkdown(const FContext& Context);
 }

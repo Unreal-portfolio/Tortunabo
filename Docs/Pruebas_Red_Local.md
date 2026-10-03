@@ -57,17 +57,17 @@ F8 en la ventana del juego (también `TN.BugReport` en la consola, o `-TNBugRepo
 
 | Fichero | Contenido |
 | --- | --- |
-| `informe.md` | Listo para pegar en una issue nueva con la plantilla «Fallo»: pasos, esperado y obtenido y criterios por rellenar; tabla de contexto (fecha, commit, compilación, mapa, modo, red, posición, semillas) y los últimos 15 errores y avisos del registro. |
-| `captura.png` | Captura con la interfaz, del siguiente fotograma. No hay en `-nullrhi` (el Markdown lo dice). |
+| `informe.md` | Listo para pegar en una issue nueva con la plantilla «Fallo»: pasos, esperado y obtenido y criterios por rellenar; tabla de contexto (fecha, commit, compilación, mapa, modo, red, posición, semillas) y los últimos 15 errores y avisos del registro, con las IP, los SteamID y el usuario de las rutas tapados (`<ip>`, `<steamid>`, `<usuario>`). |
+| `captura.png` | Captura del viewport de ese juego con la interfaz, en el momento (en PIE, la de su ventana). No hay en `-nullrhi` (el Markdown lo dice). |
 | `log.txt` | Las últimas 2000 líneas del registro. |
 | `partida.json` | Commit, mapa, modo, semillas, red (modo, conexiones, dirección del servidor, ping, `PktLag`/`PktLoss` activos), estado de la partida y propiedades del GameState declaradas en el juego. |
 | `jugador.json` | Cada jugador local: controlador, pawn, posición y velocidad en metros, rotación, rol de red, modo de movimiento y las propiedades del juego del pawn y de su PlayerState. |
 
 - El commit se lee de `.git` (también en worktrees: `abc1234ef (rama)`); en una build empaquetada sale «desconocido».
-- Las semillas son las propiedades enteras con «Seed» en el nombre del GameState y del GameMode (este solo en el servidor), más la del monkey si está en marcha.
+- Las semillas son las propiedades enteras con «Seed» en el nombre del GameState y del GameMode (este solo en el servidor), más la de la ronda de la carrera (`TN_BeachRaceGenerator.RoundSeed`, con su número de ronda) y la del monkey si está en marcha.
 - F8 lo lee un `IInputProcessor` de Slate desde `UTN_BugReportSubsystem` (subsistema del GameInstance), antes que el PlayerController y el HUD. En PIE solo responde la ventana con el foco y la tecla no sigue: F8 ya no expulsa del pawn en PIE (el botón «Eject» de la barra sigue).
 - No hay aviso en pantalla: la ruta sale en el registro (`[Informe] F8: informe de bug en …`).
-- Solo fuera de Shipping (el subsistema no se crea en Shipping). Lógica pura en `Testing/TN_BugReport.h`, tests `Tortunabo.BugReport`.
+- Solo fuera de Shipping (el subsistema no se crea en Shipping): Development, DebugGame y builds de prueba. El registro y los JSON llevan IP, SteamID y rutas locales; para playtests externos se reparte una build Development (decisión del 2026-10-03 en #67). Lógica pura en `Testing/TN_BugReport.h`, tests `Tortunabo.BugReport`.
 
 ## Medición de `MaxClientRate`
 

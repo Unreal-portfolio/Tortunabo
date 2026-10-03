@@ -10,6 +10,7 @@
 #include "Engine/NetConnection.h"
 #include "Engine/NetDriver.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "Framework/Application/IInputProcessor.h"
 #include "Framework/Application/SlateApplication.h"
 #include "GameFramework/Character.h"
@@ -21,6 +22,7 @@
 #include "HAL/FileManager.h"
 #include "HAL/IConsoleManager.h"
 #include "HAL/PlatformOutputDevices.h"
+#include "ImageUtils.h"
 #include "InputCoreTypes.h"
 #include "Misc/App.h"
 #include "Misc/DateTime.h"
@@ -31,6 +33,7 @@
 #include "Testing/TN_TestReport.h"
 #include "UnrealClient.h"
 #include "Widgets/SViewport.h"
+#include "World/Beach/TN_BeachRaceGenerator.h"
 
 namespace TNBugReportSubsystemDetail
 {
@@ -227,6 +230,32 @@ namespace TNBugReportSubsystemDetail
 		return FFileHelper::SaveStringToFile(Text, *Path, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
 	}
 
+	/** PNG del widget del viewport de este juego (escena y UMG), ahora y sin pasar por la petición global de captura. */
+	bool CaptureViewport(const UGameViewportClient& ViewportClient, const FString& Path)
+	{
+		const TSharedPtr<SViewport> Widget = ViewportClient.GetGameViewportWidget();
+		if (!Widget.IsValid() || !FSlateApplication::IsInitialized())
+		{
+			return false;
+		}
+		TArray<FColor> Pixels;
+		FIntVector Size;
+		if (!FSlateApplication::Get().TakeScreenshot(Widget.ToSharedRef(), Pixels, Size) || Size.X <= 0 || Size.Y <= 0
+			|| Pixels.Num() != Size.X * Size.Y)
+		{
+			UE_LOG(LogTortunabo, Warning, TEXT("[Informe] No se ha podido capturar el viewport."));
+			return false;
+		}
+		// Slate devuelve el alfa del búfer de la ventana, no siempre opaco.
+		for (FColor& Pixel : Pixels)
+		{
+			Pixel.A = 255;
+		}
+		TArray64<uint8> Png;
+		FImageUtils::PNGCompressImageArray(Size.X, Size.Y, TArrayView64<const FColor>(Pixels.GetData(), Pixels.Num()), Png);
+		return !Png.IsEmpty() && FFileHelper::SaveArrayToFile(Png, *Path);
+	}
+
 	void RunCommand(UWorld* World)
 	{
 		UGameInstance* GameInstance = World ? World->GetGameInstance() : nullptr;
@@ -373,6 +402,11 @@ FString UTN_BugReportSubsystem::CreateReport(const FString& Trigger)
 	// Semillas: las del GameState y el GameMode (este solo en el servidor) y la del monkey si está en marcha.
 	CollectSeeds(World->GetGameState(), Context.Seeds);
 	CollectSeeds(World->GetAuthGameMode(), Context.Seeds);
+	// La carrera reparte cada ronda con una semilla nueva que guarda (y replica) su generador, no el modo.
+	for (TActorIterator<ATN_BeachRaceGenerator> It(World); It; ++It)
+	{
+		Context.Seeds.Add(FString::Printf(TEXT("TN_BeachRaceGenerator.RoundSeed=%d (ronda %d)"), It->GetRoundSeed(), It->GetRoundNumber()));
+	}
 	if (const UTN_MonkeySubsystem* Monkey = World->GetSubsystem<UTN_MonkeySubsystem>(); Monkey && Monkey->IsRunning())
 	{
 		Context.Seeds.Add(FString::Printf(TEXT("TN.Monkey=%d"), Monkey->GetSeed()));
@@ -445,11 +479,15 @@ FString UTN_BugReportSubsystem::CreateReport(const FString& Trigger)
 	PlayerRoot->SetArrayField(TEXT("local_players"), Players);
 	TNTestReport::Save(*PlayerRoot, FPaths::Combine(Folder, TNBugReport::PlayerFile()));
 
-	// Captura: la toma el viewport en el siguiente fotograma que dibuja; sin RHI no hay ninguno.
-	Context.bHasScreenshot = FApp::CanEverRender() && GameInstance->GetGameViewportClient() != nullptr;
-	if (Context.bHasScreenshot)
+	// Captura del viewport de este juego (sin RHI no hay ninguno). FScreenshotRequest es global: en PIE la atendería el
+	// primer viewport que dibujase, que puede ser otra ventana; solo se usa fuera del editor si la captura directa falla.
+	const UGameViewportClient* ViewportClient = GameInstance->GetGameViewportClient();
+	const FString ScreenshotPath = FPaths::Combine(Folder, TNBugReport::ScreenshotFile());
+	Context.bHasScreenshot = FApp::CanEverRender() && ViewportClient && CaptureViewport(*ViewportClient, ScreenshotPath);
+	if (!Context.bHasScreenshot && FApp::CanEverRender() && ViewportClient && !GIsEditor)
 	{
-		FScreenshotRequest::RequestScreenshot(FPaths::Combine(Folder, TNBugReport::ScreenshotFile()), true, false);
+		FScreenshotRequest::RequestScreenshot(ScreenshotPath, true, false);
+		Context.bHasScreenshot = true;
 	}
 
 	SaveText(TNBugReport::FormatMarkdown(Context), FPaths::Combine(Folder, TNBugReport::MarkdownFile()));

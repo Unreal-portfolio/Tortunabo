@@ -121,6 +121,34 @@ bool FTNBugReportMarkdownTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Con captura la nombra"), WithShot.Contains(TNBugReport::ScreenshotFile()) && !WithShot.Contains(TEXT("Sin captura")));
 	TestTrue(TEXT("Sin semillas lo dice"), WithShot.Contains(TEXT("| Semilla | ninguna |")));
 	TestTrue(TEXT("Sin errores lo dice"), WithShot.Contains(TEXT("Sin errores ni avisos")));
+
+	// Lo que se pega en una issue no lleva IP, SteamID ni el usuario de Windows.
+	Context.Notable = { TEXT("LogNet: Warning: conexión con 192.168.1.20:7777 de 76561198012345678 en C:\\Users\\Rodrigo\\Tortunabo\\Saved") };
+	Context.Folder = TEXT("C:/Users/Rodrigo/Tortunabo/Saved/BugReports/x");
+	const FString Redacted = TNBugReport::FormatMarkdown(Context);
+	TestTrue(TEXT("Registro sin IP, SteamID ni usuario"), Redacted.Contains(TEXT("conexión con <ip> de <steamid> en C:\\Users\\<usuario>\\Tortunabo\\Saved")));
+	TestTrue(TEXT("Carpeta absoluta sin usuario"), Redacted.Contains(TEXT("`C:/Users/<usuario>/Tortunabo/Saved/BugReports/x`")));
+	TestFalse(TEXT("Ni rastro de Rodrigo"), Redacted.Contains(TEXT("Rodrigo")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNBugReportRedactTest, "Tortunabo.BugReport.Redact",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNBugReportRedactTest::RunTest(const FString& Parameters)
+{
+	using TNBugReport::RedactLine;
+	TestEqual(TEXT("IPv4 con puerto"), RedactLine(TEXT("Conectando a 10.0.0.5:17777...")), FString(TEXT("Conectando a <ip>...")));
+	TestEqual(TEXT("IPv4 al final de frase"), RedactLine(TEXT("Servidor 127.0.0.1.")), FString(TEXT("Servidor <ip>.")));
+	TestEqual(TEXT("SteamID de 64 bits"), RedactLine(TEXT("Id=76561198012345678 entra")), FString(TEXT("Id=<steamid> entra")));
+	TestEqual(TEXT("SteamID3"), RedactLine(TEXT("Steam [U:1:52070950] listo")), FString(TEXT("Steam <steamid> listo")));
+	TestEqual(TEXT("Usuario con espacio en una ruta con barras invertidas"), RedactLine(TEXT("Log en c:\\users\\Ana María\\x")),
+		FString(TEXT("Log en c:\\users\\<usuario>\\x")));
+	TestEqual(TEXT("Usuario en una ruta con barras normales"), RedactLine(TEXT("D:/Users/rodri/Saved")), FString(TEXT("D:/Users/<usuario>/Saved")));
+
+	// Lo que no es personal se queda igual: marcas de tiempo, versiones de tres números, números largos que no son SteamID.
+	const FString Stamp = TEXT("[2026.10.02-09.00.00:000][  1]LogTortunabo: v5.6.1, semilla 1234567890123456789, 1.5 m");
+	TestEqual(TEXT("Sin datos personales: igual"), RedactLine(Stamp), Stamp);
 	return true;
 }
 

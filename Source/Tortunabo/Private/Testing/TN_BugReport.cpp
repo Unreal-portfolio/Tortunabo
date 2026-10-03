@@ -1,5 +1,6 @@
 #include "Testing/TN_BugReport.h"
 
+#include "Internationalization/Regex.h"
 #include "Misc/DateTime.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -56,6 +57,28 @@ namespace TNBugReportDetail
 			}
 		}
 		return FString();
+	}
+
+	/** Text con cada coincidencia de Pattern sustituida por Replacement (precedido del grupo 1 si bKeepGroup1). */
+	FString ReplaceMatches(const FString& Text, const FRegexPattern& Pattern, const TCHAR* Replacement, bool bKeepGroup1 = false)
+	{
+		FRegexMatcher Matcher(Pattern, Text);
+		FString Out;
+		int32 Copied = 0;
+		while (Matcher.FindNext())
+		{
+			const int32 Begin = Matcher.GetMatchBeginning();
+			const int32 End = Matcher.GetMatchEnding();
+			Out += Text.Mid(Copied, Begin - Copied);
+			if (bKeepGroup1)
+			{
+				Out += Matcher.GetCaptureGroup(1);
+			}
+			Out += Replacement;
+			Copied = End;
+		}
+		Out += Text.Mid(Copied);
+		return Out;
 	}
 
 	void AddRow(FString& Out, const TCHAR* Field, const FString& Value)
@@ -182,6 +205,16 @@ FString TNBugReport::CommitFromGit(const FString& ProjectDir)
 	return Ref.IsEmpty() ? Short : FString::Printf(TEXT("%s (%s)"), *Short, *Ref);
 }
 
+FString TNBugReport::RedactLine(const FString& Line)
+{
+	using TNBugReportDetail::ReplaceMatches;
+	FString Out = ReplaceMatches(Line, FRegexPattern(TEXT(R"((?i)([A-Z]:[\\/]+Users[\\/]+)[^\\/\r\n"'<>|]+)")), TEXT("<usuario>"), true);
+	Out = ReplaceMatches(Out, FRegexPattern(TEXT(R"(\[U:1:\d+\])")), TEXT("<steamid>"));
+	Out = ReplaceMatches(Out, FRegexPattern(TEXT(R"((?<!\d)7656119\d{10}(?!\d))")), TEXT("<steamid>"));
+	// Sin dígitos pegados delante ni detrás (un punto final de frase sí puede ir detrás).
+	return ReplaceMatches(Out, FRegexPattern(TEXT(R"((?<!\d)(?<!\d\.)(?:\d{1,3}\.){3}\d{1,3}(?::\d{1,5})?(?!\.?\d))")), TEXT("<ip>"));
+}
+
 FString TNBugReport::FormatMarkdown(const FContext& Context)
 {
 	using TNBugReportDetail::AddRow;
@@ -210,7 +243,7 @@ FString TNBugReport::FormatMarkdown(const FContext& Context)
 		Out += FString::Printf(TEXT("Últimos errores y avisos del registro (%d):\n\n```text\n"), Context.Notable.Num());
 		for (const FString& Line : Context.Notable)
 		{
-			Out += Line.Left(300) + TEXT("\n");
+			Out += RedactLine(Line).Left(300) + TEXT("\n");
 		}
 		Out += TEXT("```\n\n");
 	}
@@ -219,7 +252,8 @@ FString TNBugReport::FormatMarkdown(const FContext& Context)
 		Out += TEXT("Sin errores ni avisos en las últimas líneas del registro.\n\n");
 	}
 
-	Out += FString::Printf(TEXT("Ficheros en `%s`: "), *Context.Folder);
+	// La carpeta sale absoluta (con el usuario) si no se puede hacer relativa al proyecto.
+	Out += FString::Printf(TEXT("Ficheros en `%s`: "), *RedactLine(Context.Folder));
 	if (Context.bHasScreenshot)
 	{
 		Out += FString::Printf(TEXT("`%s` (arrástrala a la issue), "), ScreenshotFile());
