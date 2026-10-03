@@ -271,6 +271,25 @@ los resultados con ocho filas. `TN.Proc.StartStyle 0|1` fuerza cómo se sale.
 | `TN.Lobby.Castle 0` / `TN.Lobby.Valley 0` | Esconde el castillo o el valle del lobby (al recargarlo). |
 | `TN.Storm.Cough 1` / `TN.Storm.Cough 2` | Carraspeos sueltos (`1`) o tos fuerte (`2`) de la tormenta sin tormenta; `0` la apaga. |
 
+## Capturas de arte sin abrir el editor
+
+Desde la línea de órdenes (no Shipping), con `-game -windowed`. Por cada clase encuadra el ejemplar del mapa más
+cercano a `-TNArtShotsAt` (o crea uno allí), guarda `<clase>.png` y deja en el registro `[ArtShot] <clase>: marcadores
+visibles=N, medidas=…`: N tiene que ser 0 (ninguna malla del motor a la vista; ver `Public/World/TN_PlaceholderArt.h`).
+
+```bash
+MSYS2_ARG_CONV_EXCL="*" UnrealEditor-Win64-DebugGame.exe Tortunabo.uproject /Game/Maps/Lobby/LVL_HQ -game -windowed \
+  -ResX=1600 -ResY=900 -nosound -NoSteam -TNQuitWhenDone -TNArtShotsAt=-1000:3250 -TNArtShotsOut=<carpeta> \
+  "-TNArtShots=/Game/Blueprints/Gameplay/Cosmetics/BP_SkinStatue.BP_SkinStatue_C;/Game/Blueprints/Gameplay/Items/BP_JellyfishActor.BP_JellyfishActor_C"
+```
+
+| Opción | Qué hace |
+|---|---|
+| `-TNArtShots=<clase>;<clase>` | Rutas completas de las clases (`/Game/.../BP_X.BP_X_C`). |
+| `-TNArtShotsAt=X:Y` | Claro del mapa donde nacen las que no están (dos puntos: la coma corta el valor). Sin él, delante del jugador. |
+| `-TNArtShotsOut=<carpeta>` | Dónde guarda las capturas (por defecto `Saved/ArtShots`). |
+| `-TNArtShotsWarmup=4` | Segundos de espera antes de la primera. |
+
 ## Tortuga: cara, voz, HUD y panzazo
 
 | Comando | Qué hace |
@@ -301,22 +320,3 @@ reiniciarlo al arrancar sin consola, `Saved/ResetTutorial.txt` (vacío = todas l
 | `TN.Tutorial.Skip` | Lo salta como el menú de pausa: baja a la plaza del castillo y queda apuntado como hecho. |
 | `TN.Tutorial.Station 12` | Lleva a la estación 12 (1-19) y mete en el tutorial si hace falta. Sin número, escribe la lista. |
 | `TN.Tutorial.Info` | Ranura del guardado, hecho o no, dentro o fuera, estación y cuántos hay dentro (en el servidor). |
-
-## Capturas de arte sin abrir el editor
-
-Desde la línea de órdenes (no Shipping), con `-game -windowed`. Por cada clase encuadra el ejemplar del mapa más
-cercano a `-TNArtShotsAt` (o crea uno allí), guarda `<clase>.png` y deja en el registro `[ArtShot] <clase>: marcadores
-visibles=N, medidas=…`: N tiene que ser 0 (ninguna malla del motor a la vista; ver `Public/World/TN_PlaceholderArt.h`).
-
-```bash
-MSYS2_ARG_CONV_EXCL="*" UnrealEditor-Win64-DebugGame.exe Tortunabo.uproject /Game/Maps/Lobby/LVL_HQ -game -windowed \
-  -ResX=1600 -ResY=900 -nosound -NoSteam -TNQuitWhenDone -TNArtShotsAt=-1000:3250 -TNArtShotsOut=<carpeta> \
-  "-TNArtShots=/Game/Blueprints/Gameplay/Cosmetics/BP_SkinStatue.BP_SkinStatue_C;/Game/Blueprints/Gameplay/Items/BP_JellyfishActor.BP_JellyfishActor_C"
-```
-
-| Opción | Qué hace |
-|---|---|
-| `-TNArtShots=<clase>;<clase>` | Rutas completas de las clases (`/Game/.../BP_X.BP_X_C`). |
-| `-TNArtShotsAt=X:Y` | Claro del mapa donde nacen las que no están (dos puntos: la coma corta el valor). Sin él, delante del jugador. |
-| `-TNArtShotsOut=<carpeta>` | Dónde guarda las capturas (por defecto `Saved/ArtShots`). |
-| `-TNArtShotsWarmup=4` | Segundos de espera antes de la primera. |
