@@ -55,6 +55,9 @@ public:
 	 */
 	virtual void HandleSeamlessTravelPlayer(AController*& C) override;
 
+	/** Un ServerTravel a un mapa que no existe no empieza (UTN_TravelFailureSubsystem::CanServerTravelTo): los invitados no lo reciben. */
+	virtual bool CanServerTravel(const FString& URL, bool bAbsolute) override;
+
 	/**
 	 * @brief Setup final tras Seamless Travel cuando todos los jugadores han llegado.
 	 *        Lanza countdown si ya estamos completos, o espera con timeout.
