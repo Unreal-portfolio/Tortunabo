@@ -1056,10 +1056,11 @@ void ATN_BeachGullZone::ServerPoop(float Tau, float DeltaSeconds)
 	}
 	if (Attack.Result == 0 && Tau >= DropTime + FallTime)
 	{
-		// Donde cae de verdad: la traza desde arriba da en el techo si lo hay (a cubierto, la cagada cae encima).
+		// Donde cae de verdad: la traza desde arriba da en el techo si lo hay (a cubierto, la cagada cae encima), también en
+		// lo alto de un castillo o de una fortaleza; la sombra de cada máquina se pone en el mismo sitio.
 		FVector Point = Attack.Aim;
 		float Z = static_cast<float>(Point.Z);
-		if (TraceGround(this, Point, Z, nullptr, 3000.f, 3000.f))
+		if (TraceDropSurface(this, Point, Z, nullptr, this))
 		{
 			Point.Z = Z;
 		}
@@ -1433,6 +1434,9 @@ void ATN_BeachGullZone::OnAttackChanged()
 		SeenSerial = Attack.Serial;
 		SeenResult = 0;
 		WarnPhase = 0.f;
+		// Ataque nuevo: dónde cae su cagada se mira en el primer fotograma (no se queda la altura del anterior).
+		DropGroundTimer = 0.f;
+		DropSurfaceLift = 0.f;
 		bSwoopPlayed = false;
 		bWhistlePlayed = false;
 		bReleasePlayed = false;
@@ -1965,19 +1969,27 @@ void ATN_BeachGullZone::VisualTick(float DeltaSeconds)
 		{
 			const FVector Target = CurrentAim();
 			const float U = (Tau - DropTime) / FallTime;
-			// Sale de debajo de la cola del pájaro y cae acelerando.
-			const FVector Top = Target + FVector(0.0, 0.0, PoopHeight + 300.0);
-			const FVector At = FMath::Lerp(Top, Target, static_cast<double>(FMath::Pow(U, 1.8f)));
-			Dropping->SetWorldTransform(FTransform(FRotator(8.f * FMath::Sin(Clock * 9.f), Clock * 60.f, 0.f), At, FVector(SizeK * DropScale)));
+			// Donde cae de verdad: lo primero firme desde arriba (la arena, o un castillo, una fortaleza o una sombrilla si está
+			// encima), con la misma traza que el impacto del servidor (ServerPoop). La sombra y la cagada van ahí, no a la arena
+			// de debajo, que queda tapada.
 			DropGroundTimer -= DeltaSeconds;
 			if (DropGroundTimer <= 0.f)
 			{
 				DropGroundTimer = 0.1f;
-				DropNormal = GroundNormalAt(Target);
+				float SurfaceZ = static_cast<float>(Target.Z);
+				FVector SurfaceNormal = FVector::UpVector;
+				DropSurfaceLift = TraceDropSurface(this, Target, SurfaceZ, &SurfaceNormal, this) ? SurfaceZ - static_cast<float>(Target.Z) : 0.f;
+				// En la arena, su cuesta de siempre; encima de algo, la cara en la que cae (si es más o menos plana).
+				DropNormal = FMath::Abs(DropSurfaceLift) < 30.f ? GroundNormalAt(Target) : (SurfaceNormal.Z > 0.5 ? SurfaceNormal : FVector::UpVector);
 			}
+			const FVector Landing = Target + FVector(0.0, 0.0, DropSurfaceLift);
+			// Sale de debajo de la cola del pájaro y cae acelerando.
+			const FVector Top = Target + FVector(0.0, 0.0, FMath::Max(PoopHeight + 300.0, DropSurfaceLift + 300.0));
+			const FVector At = FMath::Lerp(Top, Landing, static_cast<double>(FMath::Pow(U, 1.8f)));
+			Dropping->SetWorldTransform(FTransform(FRotator(8.f * FMath::Sin(Clock * 9.f), Clock * 60.f, 0.f), At, FVector(SizeK * DropScale)));
 			const float Grow = 0.45f * U + 0.55f * FMath::Pow(U, 1.6f);
 			const float Fade = FMath::Clamp((Tau - DropTime) / MarkerFadeIn, 0.f, 1.f);
-			PlaceMarker(DropShadow, Target, DropNormal, FMath::Lerp(PoopMarkerStartRadius, SplatRadius * SizeK, Grow), MarkerOpacity * Fade);
+			PlaceMarker(DropShadow, Landing, DropNormal, FMath::Lerp(PoopMarkerStartRadius, SplatRadius * SizeK, Grow), MarkerOpacity * Fade);
 			bShowDrop = true;
 			DropTrailTimer -= DeltaSeconds;
 			if (DropTrailTimer <= 0.f)

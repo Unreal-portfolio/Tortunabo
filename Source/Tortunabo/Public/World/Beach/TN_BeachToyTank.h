@@ -10,6 +10,30 @@ class UInstancedStaticMeshComponent;
 class UStaticMeshComponent;
 class UTN_BeachCritterSynthComponent;
 
+/** Lógica pura de las bolitas de espuma del tanque (la prueba Tortunabo.Beach.ToyTank.FoamBounce). */
+namespace TNBeachTankFoam
+{
+	/** Al chocar con una pared: lo que conserva de la velocidad hacia ella (rebota) y de la que lleva a lo largo de ella. */
+	constexpr float WallRestitution = 0.4f;
+	constexpr float WallFriction = 0.6f;
+
+	/**
+	 * Velocidad de la bolita tras chocar con una superficie de normal Normal (unitaria, hacia fuera): sale rebotada y más
+	 * despacio. Si ya se alejaba de ella (no la estaba cruzando), sigue igual.
+	 */
+	inline FVector BounceOffWall(const FVector& Velocity, const FVector& Normal)
+	{
+		const double Into = FVector::DotProduct(Velocity, Normal);
+		if (Into >= 0.0)
+		{
+			return Velocity;
+		}
+		const FVector Across = Normal * Into;
+		const FVector Along = Velocity - Across;
+		return Along * WallFriction - Across * WallRestitution;
+	}
+}
+
 /** Una bolita de espuma en vuelo (igual en todas las máquinas: sale con la hora del servidor y la misma parábola). */
 struct FTNTankShot
 {
@@ -188,6 +212,16 @@ private:
 	void AdvanceShots(double Now, bool bServer);
 	/** La bolita da a Victim en Where: rebota hacia atrás y deja de dar. */
 	void BounceOffTurtle(FTNTankShot& Shot, const FVector& Where, double Now);
+	/**
+	 * Lo que para a una bolita de From a To con radio Radius: paredes, murallas, fortalezas, decorado y la arena de verdad
+	 * (no las tortugas, sus bolas, los demás enemigos ni el propio tanque). Lo que ya tocaba al salir no cuenta.
+	 */
+	bool SweepFoam(const FVector& From, const FVector& To, float Radius, FHitResult& OutHit) const;
+	/**
+	 * Servidor: si la bolita (de Shot.LastPos a Shot.Pos, con Velocity) da a una de Turtles a la vista, la aturde, la bolita
+	 * rebota en ella y se avisa a todas las máquinas. true si ha dado.
+	 */
+	bool HitTurtleOnSegment(FTNTankShot& Shot, const TArray<ATortugaCharacter*>& Turtles, float Radius, const FVector& Velocity, double Now);
 
 	void BuildTank();
 	void PoseTank(float DeltaSeconds, bool bStunned);

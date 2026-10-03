@@ -1151,29 +1151,36 @@ tiempo dejaba su temporizador vivo y la ponía a andar en plena bola; y ningún 
   playa, dentro de la playa jugable y a 30 m del filo) y `TNBeach::FindOpenSandSpot`: la primera superficie desde arriba
   es la malla del terreno (no algo encima), llana (normal ≥ 0,75), la cápsula de pie cabe (+15 cm), fuera del agua (pozas y
   balsas), de las pozas del generador, de las trincheras, del filo y de detrás del muro de la salida. Se prueban su altura
-  y 4 y 8 m a cada lado; si ninguno vale, alrededor hasta 15 m. Sin sitio (fin del recorrido): no patea y vuelve a mirar
-  en 1 s.
+  y 4 y 8 m a cada lado; después lo mismo a `KickShortAhead` = 9 m del frente (arco corto: menos cosas por medio) y, si
+  por delante no había ni un sitio, alrededor hasta 15 m. Sin sitio (fin del recorrido): no patea y vuelve a mirar en 1 s.
 - **Arco comprobado**: para cada sitio, tres vuelos (el de siempre, 2,6 s y 3,2 s: más altos, para salvar lo de
   delante) con la velocidad exacta para llegar con la gravedad del mundo y la amortiguación de la caja
-  (`BallisticLaunch`: x(t) = v/C·(1 − e^−Ct)); el arco se barre con una esfera de 24 cm en 8 tramos contra lo que para
-  una bola (`ECC_PhysicsBody`, sin tortugas ni el último 12 %). El primero libre: bola por el aire.
-- **Salto de teletransporte** si ningún arco está libre, si el sitio está a más de `KickMaxFlightDistance` = 45 m o si
-  nada: la pierna del bañista donde estaba, y aparece en su sitio de pie con polvo, golpe y temblor
-  (`MulticastKickLand`).
+  (`BallisticLaunch`, en `TN_BeachStormKick.h`: x(t) = v/C·(1 − e^−Ct)); el arco se barre con una esfera de 24 cm en 8
+  tramos contra lo que para una bola (`ECC_PhysicsBody`, sin tortugas ni el último 12 %; en el primer tramo no cuenta la
+  pared en la que ya se apoya). El primero libre: bola por el aire.
+- **Sin arco libre, la patada se ve igual** (#252; antes era un salto de teletransporte): si ningún arco está libre, si el
+  sitio está a más de `KickMaxFlightDistance` = 45 m o si nada, la bola vuela alto (2,6 s como poco) **atravesando** lo
+  que haya (`ATN_ShellBody::SetPassThrough`, replicado: la caja no choca con nada en ninguna máquina, y el servidor no la
+  saca del agua ni de debajo del terreno) y vuelve a chocar al bajar sobre su sitio, en cuanto no toca nada pasada la
+  mitad del vuelo o, como tarde, para el último 12 %. A una tortuga invulnerable por un objeto (la estrella) no se la
+  patea: se vuelve a mirar en 1 s.
 - **El vuelo acaba ahí sí o sí**: mientras vuela, la tormenta se reserva la tortuga (`TNBeach::ClaimTurtle(StormKick)`) y
   la vigila en cada fotograma: si se hunde más de 90 cm bajo la malla del terreno, si se atasca (menos de 1,2 m/s 0,35 s
   lejos del sitio), si sale de la bola antes de llegar (agua) o si al acabar el vuelo (+0,4 s) está a más de
-  `KickLandTolerance` = 7 m del sitio o detrás del frente, se la pone en su sitio (`PlaceKicked`: `TNBeach::RelocateTurtle`,
-  sin bola ni aturdimiento, y polvo). Si llega bien, la bola sigue rodando y el aturdimiento acaba como siempre.
+  `KickLandTolerance` = 7 m del sitio o detrás del frente, **otra patada visible** la lleva desde donde está, atravesando
+  (`RetryKick`, hasta `TNBeachStormKick::MaxHops` = 2). Solo sin bola posible o tras esas dos se la pone en su sitio sin
+  vuelo (`PlaceKicked`: `TNBeach::RelocateTurtle`, sin bola ni aturdimiento, y polvo). Si llega bien, la bola sigue
+  rodando y el aturdimiento acaba como siempre.
 - **Después, `KickGraceSeconds` = 3 s sin patadas** (`TNBeach::GrantStormGrace`), y para entonces está ~20 m por delante.
 - **A quién no patea** (`TNBeach::GetTurtleMover`): a la que lleva otra cosa, que la suelta sola: el pico o la boca de un
   enemigo, un gusano, los brazos de otra (patean a la que la lleva), el derribo, la bola de aturdida, un lanzamiento por el
   aire, la red de seguridad, o sin movimiento por otra cosa (una concha que atrapa). Si lo que acaba solo (derribo, bola,
   lanzamiento, concha) sigue más de 8 s detrás del frente, se patea igual. A la que va en su bola porque quiere, sí.
 - Al parar o quitar la tormenta, las reservas se sueltan (la bola sigue su física). Registro: `[Playa] La tormenta patea a
-  X: N m detrás del frente, vuela T s hasta su sitio, M m por delante (L m a lo ancho).`, `… salto a su sitio M m por
-  delante.` y, si no llega, `[Playa] Tormenta: X a su sitio en (x, y, z) m (atascada por el camino / hundida bajo la
-  arena / …); 3 s sin patadas.`
+  X: N m detrás del frente, vuela T s hasta su sitio, M m por delante (L m a lo ancho).`, `… sin arco libre: vuela T s
+  atravesando hasta su sitio, M m por delante.`, si no llega `[Playa] Tormenta: X no ha llegado a su sitio (atascada por
+  el camino / hundida bajo la arena / …): otra patada desde donde está, D m en T s.` y, como último recurso,
+  `[Playa] Tormenta: X a su sitio en (x, y, z) m (…); 3 s sin patadas.`
 
 **Quién mueve a la tortuga** (árbitro, `TN_BeachStun.h`): `TNBeach::ETNBeachMover`, de menos a más prioridad: su movimiento,
 lanzamiento, bola, derribo, en brazos, sujeta por un enemigo, patada de la tormenta, red de seguridad, gusano.
@@ -2374,7 +2381,9 @@ tortugas: se queda mareado un momento, con pajaritos y sin atacar.
 ### Paso de quads (`ATN_BeachQuadLane`)
 
 - Eje X local del actor (el generador lo gira 90° y lo cruza de lado a lado), `Extent` de largo (0 = 280 m). En la arena,
-  dos rodadas que avisan por dónde pasa (se trazan contra el suelo; si aún no está, se reintenta).
+  dos rodadas que avisan por dónde pasa, pegadas a la arena (#259): con la ronda montada, la altura de la malla del terreno
+  (`TraceTerrainAt`, o la del generador) cada 1,25 m a lo largo y en 5 puntos a lo ancho; no se trazan contra el mundo
+  (los muros invisibles de los lados y el decorado las subían).
 - Quad a escala con piloto: 56 m de largo, ruedas de 16,8 m de alto y 6,7 m de ancho, centros a ±8,7 m (las ruedas
   llegan a ±12 m: la huella), hueco de 10,6 m entre ruedas y 7,3 m de altura libre bajo el chasis. `SizeScale` 0,7-1,4
   escala todo.
@@ -2430,7 +2439,9 @@ tortugas: se queda mareado un momento, con pajaritos y sin atacar.
   para verla venir y apartarse corriendo), también siguiendo al blanco: un pegote de 1,6 m con su estela de gotitas, un
   silbido y la sombra dura que crece hasta la mancha. Sobre la tortuga a la que va, un signo de exclamación que parpadea
   cada vez más rápido y se queda fijo cuando la cagada ya cae por su línea (ver «Cagada pintada y aviso»). Al caer, la traza
-  desde arriba da en el techo si lo hay. Quien esté
+  desde arriba da en el techo si lo hay (`ATN_BeachEnemy::TraceDropSurface`: canal de visibilidad, también fortalezas y
+  castillos); la sombra y la cagada que cae van a ese mismo sitio en cada máquina, no a la arena de debajo (#255; igual en
+  la gaviota justiciera). Quien esté
   dentro (2 m por el tamaño + 0,35, antes 2,8 + 0,45, y a menos de 3 m en altura: a cubierto la mancha cae encima) y no vaya
   tirada en plancha en ese momento (`TNBeach::IsDodgingByBellyDive`: en el aire o arrastrándose a 2,5 m/s o más) cae
   derribada (tabla de arriba) con la cagada PINTADA en el caparazón (12 s, ver abajo); gotas, «¡PLOF!» y la mancha en la
@@ -2624,14 +2635,16 @@ soltarla). Y una ronda normal: las gaviotas atacan solo bien dentro de su zona y
   un bañista le da una patada que la lleva a un sitio de arena abierta **resuelto antes** en el servidor, `KickAhead`
   (20 m) por delante del frente contando lo que avanza mientras vuela: en bola por el aire si el arco está libre (vuelo de
   1 s + 1 s por cada 28 m, entre 1,1 y 2,4 s, `KickMinFlight`/`KickMaxFlight`, o más alto, 2,6 o 3,2 s, para salvar lo de
-  delante; mareada lo que vuela + 0,8 s, `KickStunExtra`) o de un salto de teletransporte con polvo si no lo está. Si la
-  bola no llega (atascada, hundida, en el agua, lejos o detrás del frente), se la pone en su sitio. Después, 3 s sin
+  delante; mareada lo que vuela + 0,8 s, `KickStunExtra`) o, si no lo está, en bola igual, atravesando lo que haya hasta
+  bajar sobre su sitio (nunca un salto sin vuelo). Si la bola no llega (atascada, hundida, en el agua, lejos o detrás del
+  frente), otra patada desde donde está; solo tras dos se la pone en su sitio. Después, 3 s sin
   patadas (`KickGraceSeconds`). La que mueve otra cosa (el pico de una gaviota, la boca de un lagarto, un gusano, los
   brazos de otra —patean a la que la lleva—, el derribo, la bola de aturdida, un lanzamiento, la red de seguridad, una
   concha) espera a que la suelten (8 s como mucho con lo que acaba solo); con la ronda parada, nada. Se ve la pierna del
   bañista barriendo por detrás de la tortuga (0,25 s), arriba 0,2 s y fundiéndose (0,45 s), con pisotón, golpe, polvo,
-  temblor y «¡PATADA!» (multicast no fiable; la bola va por la física replicada del caparazón; el salto, por la corrección
-  del movimiento). Dentro (6 m por detrás del frente, `InsideMargin`): niebla y tinte de arena, viñeta, tos y viento.
+  temblor y «¡PATADA!» (multicast no fiable; la bola va por la física replicada del caparazón, y si atraviesa, con ese
+  estado replicado en su caja). Dentro (6 m por detrás del frente, `InsideMargin`): niebla y tinte de arena, viñeta, tos y
+  viento.
 - **Sonido** (a petición del usuario: «hay un sonido de los objetos de los bañistas rebotando todo el rato, pum, pum, pum; es
   súper molesto, quítalo. Que la tormenta tenga solo el ruido, igual que en el cooperativo»): el «pum, pum, pum» eran los
   pisotones de los bañistas (`ETNBeachSfx::Stomp` en cada paso, el del bañista más cercano, con una sacudida de cámara); los
@@ -2695,7 +2708,9 @@ dentro, oculta, hasta la ronda siguiente, que vuelve a crear a todas en la salid
   remolino, luego dentro de la boca) sin suavizado de red y sin correcciones al dueño; en el bocado se oculta
   (`SetActorHiddenInGame`, replicado) y se queda de pie, oculta, donde estaba. Su jugador pierde el control (sin input en
   su tortuga) y su cámara funde en 0,6 s a un lado del gusano (15 m durante el aviso y 32 m después, nunca dentro de
-  una roca ni de una duna), mirando a media altura para que quepa entero con la boca.
+  una roca ni de una duna), mirando a media altura para que quepa entero con la boca. El espectador que la sigue (fija o
+  libre) pasa a esa misma vista con otra mezcla de 0,6 s (`UTN_GhostCameraModifier` con
+  `ATN_BeachSandWorm::GetSpectatorView`, #260); al cambiar de jugador, vuelve a la suya.
 - **Hasta cuándo**: el gusano sigue vivo, sin nada que ver, hasta que la tortuga reaparece (alguien la vuelve a mostrar)
   o deja de existir (la ronda nueva la quita); entonces el servidor lo destruye y cada máquina devuelve lo que tocó
   (input, cámara si aún miraba al gusano, colisión y la marca de sujeta).
@@ -2842,7 +2857,11 @@ cerca de lo militar y de las trincheras.
   estará la tortuga (el 60 % del adelanto), cae con 7 m/s² y deja una estela de humo; «¡pomp!», humo en la boca, el cañón
   recula 45 cm, el casco cabecea 5° y recula 20 cm y la antena se echa atrás. Bota (55 % en planta y 42 % hacia arriba)
   hasta 3 veces o 2,4 s; tras el primer bote o tras dar a alguien ya no hace nada. Da a quien pase a menos de 0,27 m +
-  0,7 m de su recorrido (tabla de arriba) y rebota hacia atrás.
+  0,7 m de su recorrido (tabla de arriba), si no hay nada entre las dos, y rebota hacia atrás.
+- **Choca con lo que hay por medio** (#247; antes solo la paraba el suelo sin trazas y cruzaba paredes, murallas y
+  fortalezas): en cada paso, en todas las máquinas, se barre su esfera por el canal `WorldDynamic` sin lo que es `Pawn`
+  (tortugas, enemigos, el propio tanque) ni las bolas de caparazón, sin contar lo que ya tocaba al salir. Si da en algo,
+  se queda ahí y rebota (`TNBeachTankFoam::BounceOffWall`: 40 % hacia fuera, 60 % a lo largo) y ya no hace nada.
 - **Red**: el casco en `Mover` (10 Hz); la torreta de cada máquina gira hacia `Mover.Aim` (la tortuga a la que apunta). Cada
   disparo va por multicast no fiable con su hora del servidor: la bolita del cliente sale adelantada lo que tardó el
   mensaje y va a la par que la del servidor. Si se pierde el mensaje, solo falta la bolita en esa pantalla (el golpe lo
