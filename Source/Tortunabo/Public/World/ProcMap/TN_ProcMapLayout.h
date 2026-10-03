@@ -131,12 +131,12 @@ namespace TNProcMap
 		double Difficulty01 = 0.5;
 
 		/**
-		 * Camino para el buggy del Rally (ETNProcGameMode::Rally): el mismo mapa del cooperativo, pero que se pueda
+		 * Camino para los karts (ETNProcGameMode::Karts): el mismo mapa del cooperativo, pero que se pueda
 		 * conducir de principio a fin. SanitizeParams quita los cruces colosales, las ramas, los carriles y los huecos de
 		 * salto, cambia los géiseres y toboganes por rampas (SmoothTransitionMax enorme) y ensancha los desfiladeros; el
 		 * perfil de alturas no pone isletas ni pasarelas, las cuevas no llevan río de lava, no hay pilas de huevos y en el
-		 * camino no quedan troncos, obstáculos de objetos, peñascos ni torres de escalada. Con false (siempre fuera del
-		 * Rally) la generación no cambia en nada.
+		 * camino no quedan troncos, obstáculos de objetos, peñascos ni torres de escalada. Con false (siempre fuera de
+		 * los karts) la generación no cambia en nada.
 		 */
 		bool bDrivable = false;
 	};

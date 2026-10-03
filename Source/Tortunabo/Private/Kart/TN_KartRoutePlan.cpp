@@ -1,6 +1,7 @@
-#include "Rally/TN_RallyRoutePlan.h"
+#include "Kart/TN_KartRoutePlan.h"
+#include "Algo/BinarySearch.h"
 
-namespace TNRally
+namespace TNKart
 {
 	namespace
 	{
@@ -8,8 +9,6 @@ namespace TNRally
 		constexpr double RouteGateSearchStepCm = 200.0;
 		/** Margen de la meta respecto al final del camino (cm). */
 		constexpr double RouteFinishEndMarginCm = 1000.0;
-		/** Distancia mínima del eje a la que se queda una columna de la parrilla (cm). */
-		constexpr double RouteGridMinHalfCm = 180.0;
 		/** Margen de la línea del piloto IA respecto al borde de la calzada (cm). */
 		constexpr double RouteLineEdgeMarginCm = 250.0;
 
@@ -144,13 +143,14 @@ namespace TNRally
 			return Plan;
 		}
 
-		auto SampleAt = [&Samples, &Arc](double S, FVector& OutLocation, double& OutWidth, bool& bOutNoGate)
+		const double MaxGateWidth = Params.MaxGateRoadWidthCm;
+		auto SampleAt = [&Samples, &Arc, MaxGateWidth](double S, FVector& OutLocation, double& OutWidth, bool& bOutNoGate)
 		{
 			const int32 Index = SegmentAt(Arc, S);
 			const double T = Alpha(Arc, Index, S);
 			OutLocation = FMath::Lerp(Samples[Index].Location, Samples[Index + 1].Location, T);
 			OutWidth = FMath::Lerp(Samples[Index].WidthCm, Samples[Index + 1].WidthCm, T);
-			bOutNoGate = Samples[Index].bNoGate || Samples[Index + 1].bNoGate;
+			bOutNoGate = Samples[Index].bNoGate || Samples[Index + 1].bNoGate || OutWidth > MaxGateWidth;
 		};
 
 		// Eje de la spline cada RoadStep, de la primera muestra a la meta más la escapatoria.
@@ -193,29 +193,17 @@ namespace TNRally
 			double Ignored = 0.0;
 			SampleAt(FMath::Min(GateArc + 400.0, Total), Ahead, Ignored, bNoGate);
 			SampleAt(FMath::Max(GateArc - 400.0, 0.0), Behind, Ignored, bNoGate);
-			FGateDef Gate;
+			TNRally::FGateDef Gate;
 			Gate.Location = Location;
 			const FVector Direction = (Ahead - Behind).GetSafeNormal2D();
 			Gate.YawDeg = Direction.IsNearlyZero() ? 0.0 : Direction.Rotation().Yaw;
 			Gate.bHasYaw = true;
-			Gate.WidthCm = FMath::Clamp(Width + Params.GateWidthMarginCm, Params.MinGateWidthCm, Params.MaxGateWidthCm);
 			Plan.Gates.Add(Gate);
 			Plan.GateArcCm.Add(GateArc);
 		}
 		Plan.FinishArcCm = FinishArc;
 		Plan.bValid = Plan.Gates.Num() >= 2 && Plan.Road.Num() >= 2;
 		return Plan;
-	}
-
-	FVector2D GridSlotOffsetForWidth(int32 Slot, double RoadWidthCm)
-	{
-		const FVector2D Base = GridSlotOffset(Slot);
-		if (RoadWidthCm <= 0.0)
-		{
-			return Base;
-		}
-		const double Half = FMath::Clamp(RoadWidthCm * 0.25, RouteGridMinHalfCm, GridHalfSpacingCm);
-		return FVector2D(Base.X, Base.Y < 0.0 ? -Half : Half);
 	}
 
 	TArray<double> PlanItemRowArcs(double StartArc, double EndArc, const TArray<double>& GateArcs, double SpacingCm, double MinFromGateCm)
@@ -258,6 +246,22 @@ namespace TNRally
 	double ItemLateralSpacingCm(double RoadWidthCm, int32 Boxes)
 	{
 		return FMath::Min(450.0, FMath::Max(200.0, RoadWidthCm - 200.0) / FMath::Max(1, Boxes));
+	}
+
+	TArray<FVector> OffsetRoad(const TArray<FVector>& Road, const TArray<double>& Offsets)
+	{
+		TArray<FVector> Out = Road;
+		const int32 Num = Road.Num();
+		for (int32 Index = 0; Index < Num && Index < Offsets.Num(); ++Index)
+		{
+			if (FMath::IsNearlyZero(Offsets[Index]))
+			{
+				continue;
+			}
+			const FVector2D Dir = FVector2D(Road[FMath::Min(Num - 1, Index + 1)] - Road[FMath::Max(0, Index - 1)]).GetSafeNormal();
+			Out[Index] += FVector(-Dir.Y, Dir.X, 0.0) * Offsets[Index];
+		}
+		return Out;
 	}
 
 	TArray<double> PlanRacingLineOffsets(const TArray<FVector>& Road, const TArray<double>& HalfWidthsCm,

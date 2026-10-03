@@ -1,29 +1,29 @@
-// Rally sobre el mapa generado del cooperativo (#291): el camino conducible del generador (TNProcMap::FGenParams::bDrivable)
-// y la pista que sale de él (TNRally::PlanRouteFromPath: puertas, salida, meta, parrilla, cajas y línea del piloto IA).
-// Lógica pura. Correr desde Session Frontend (categorías "Tortunabo.Rally.Route" y "Tortunabo.ProcMap.Drivable") o
-// headless con UnrealEditor-Win64-DebugGame-Cmd <uproject> -ExecCmds="Automation RunTests Tortunabo.Rally; Quit".
+// Karts sobre el mapa generado del cooperativo (#291): el camino conducible del generador (TNProcMap::FGenParams::bDrivable)
+// y la pista que sale de él (TNKart::PlanRouteFromPath: puertas, salida, meta, cajas y línea del piloto IA). Lógica pura.
+// Correr desde Session Frontend (categorías "Tortunabo.Kart.Route" y "Tortunabo.ProcMap.Drivable") o headless con
+// UnrealEditor-Win64-DebugGame-Cmd <uproject> -ExecCmds="Automation RunTests Tortunabo.Kart; Quit".
 
 #include "Misc/AutomationTest.h"
 #include "Lobby/TN_LobbyMission.h"
-#include "Rally/TN_RallyRoutePlan.h"
+#include "Kart/TN_KartRoutePlan.h"
 #include "World/ProcMap/TN_ProcMapGenerate.h"
 #include "World/ProcMap/TN_ProcMapTypes.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
-namespace TNRallyRouteTestHelpers
+namespace TNKartRouteTestHelpers
 {
 	/**
 	 * Camino recto en X de Length cm con una muestra cada Step cm y ancho Width: la playa empieza en ShoreFrom (cm) y baja
 	 * hasta el mar al final; las muestras de [TunnelFrom, TunnelTo] van marcadas sin puerta.
 	 */
-	static TArray<TNRally::FRouteSample> StraightPath(double Length, double Step, double Width, double ShoreFrom,
+	static TArray<TNKart::FRouteSample> StraightPath(double Length, double Step, double Width, double ShoreFrom,
 		double TunnelFrom = -1.0, double TunnelTo = -1.0)
 	{
-		TArray<TNRally::FRouteSample> Samples;
+		TArray<TNKart::FRouteSample> Samples;
 		for (double X = 0.0; X <= Length + 1.0; X += Step)
 		{
-			TNRally::FRouteSample& Sample = Samples.AddDefaulted_GetRef();
+			TNKart::FRouteSample& Sample = Samples.AddDefaulted_GetRef();
 			// En la playa el suelo baja de 300 cm a -100 cm en los últimos metros (el mar a 0).
 			const double Z = X < ShoreFrom ? 300.0 : FMath::Lerp(300.0, -100.0, (X - ShoreFrom) / FMath::Max(1.0, Length - ShoreFrom));
 			Sample.Location = FVector(X, 0.0, Z);
@@ -35,14 +35,14 @@ namespace TNRallyRouteTestHelpers
 	}
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNRallyRouteGatesTest, "Tortunabo.Rally.Route.GatesFromPath",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNKartRouteGatesTest, "Tortunabo.Kart.Route.GatesFromPath",
 	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 
-bool FTNRallyRouteGatesTest::RunTest(const FString& Parameters)
+bool FTNKartRouteGatesTest::RunTest(const FString& Parameters)
 {
-	using namespace TNRally;
+	using namespace TNKart;
 	// 3 km recto, cueva de 1000 a 1150 m, playa desde 2900 m.
-	const TArray<FRouteSample> Samples = TNRallyRouteTestHelpers::StraightPath(300000.0, 400.0, 1600.0, 290000.0, 100000.0, 115000.0);
+	const TArray<FRouteSample> Samples = TNKartRouteTestHelpers::StraightPath(300000.0, 400.0, 1600.0, 290000.0, 100000.0, 115000.0);
 	FRoutePlanParams Params;
 	Params.MinFinishZ = 40.0;
 	const FRoutePlan Plan = PlanRouteFromPath(Samples, Params);
@@ -65,28 +65,27 @@ bool FTNRallyRouteGatesTest::RunTest(const FString& Parameters)
 		const double Arc = Plan.GateArcCm[Index];
 		TestFalse(FString::Printf(TEXT("La puerta %d no cae en la cueva (%.0f m)"), Index, Arc / 100.0), Arc >= 100000.0 - 400.0 && Arc <= 115000.0 + 400.0);
 	}
-	for (const FGateDef& Gate : Plan.Gates)
+	for (const TNRally::FGateDef& Gate : Plan.Gates)
 	{
-		TestEqual(TEXT("Puerta del ancho del camino más el margen"), Gate.WidthCm, 1600.0 + Params.GateWidthMarginCm, 1.0);
 		TestEqual(TEXT("Puerta mirando hacia delante"), Gate.YawDeg, 0.0, 0.5);
 	}
 	TestTrue(TEXT("El eje sigue pasada la meta (escapatoria)"), Plan.LengthCm > Plan.FinishArcCm);
 	TestEqual(TEXT("Un ancho por punto del eje"), Plan.RoadWidthCm.Num(), Plan.Road.Num());
 
 	// Camino muy corto: no da para salida y meta.
-	const TArray<FRouteSample> Short = TNRallyRouteTestHelpers::StraightPath(8000.0, 400.0, 1600.0, 6000.0);
+	const TArray<FRouteSample> Short = TNKartRouteTestHelpers::StraightPath(8000.0, 400.0, 1600.0, 6000.0);
 	TestFalse(TEXT("Un camino de 80 m no da para una pista"), PlanRouteFromPath(Short, Params).bValid);
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNRallyRouteFinishTest, "Tortunabo.Rally.Route.FinishOnDryBeach",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNKartRouteFinishTest, "Tortunabo.Kart.Route.FinishOnDryBeach",
 	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 
-bool FTNRallyRouteFinishTest::RunTest(const FString& Parameters)
+bool FTNKartRouteFinishTest::RunTest(const FString& Parameters)
 {
-	using namespace TNRally;
+	using namespace TNKart;
 	// Playa corta: de 300 cm a -100 cm en 40 m; con la meta a 25 m caería en el agua, así que se queda antes de la orilla.
-	const TArray<FRouteSample> Samples = TNRallyRouteTestHelpers::StraightPath(100000.0, 200.0, 1600.0, 96000.0);
+	const TArray<FRouteSample> Samples = TNKartRouteTestHelpers::StraightPath(100000.0, 200.0, 1600.0, 96000.0);
 	TArray<FVector> Points;
 	for (const FRouteSample& Sample : Samples)
 	{
@@ -111,12 +110,12 @@ bool FTNRallyRouteFinishTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNRallyRouteGateShiftTest, "Tortunabo.Rally.Route.GateShift",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNKartRouteGateShiftTest, "Tortunabo.Kart.Route.GateShift",
 	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 
-bool FTNRallyRouteGateShiftTest::RunTest(const FString& Parameters)
+bool FTNKartRouteGateShiftTest::RunTest(const FString& Parameters)
 {
-	using namespace TNRally;
+	using namespace TNKart;
 	FRoutePlanParams Params;
 	// Prohibido de 240 a 260 m: la puerta de 250 m (42 + 250 = 292 m, libre) no se mueve; con prohibido de 280 a 300 m se adelanta.
 	const TArray<double> Free = PlanGateArcs(4200.0, 100000.0, Params, [](double) { return false; });
@@ -132,12 +131,12 @@ bool FTNRallyRouteGateShiftTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNRallyRouteRacingLineTest, "Tortunabo.Rally.Route.RacingLine",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNKartRouteRacingLineTest, "Tortunabo.Kart.Route.RacingLine",
 	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 
-bool FTNRallyRouteRacingLineTest::RunTest(const FString& Parameters)
+bool FTNKartRouteRacingLineTest::RunTest(const FString& Parameters)
 {
-	using namespace TNRally;
+	using namespace TNKart;
 	TArray<FVector> Road;
 	TArray<double> Half;
 	for (int32 Index = 0; Index <= 60; ++Index)
@@ -185,27 +184,6 @@ bool FTNRallyRouteRacingLineTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNRallyRouteGridAndOffTrackTest, "Tortunabo.Rally.Route.GridAndOffTrack",
-	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
-
-bool FTNRallyRouteGridAndOffTrackTest::RunTest(const FString& Parameters)
-{
-	using namespace TNRally;
-	TestEqual(TEXT("Calzada desconocida: la parrilla de siempre"), GridSlotOffsetForWidth(3, 0.0), GridSlotOffset(3));
-	TestEqual(TEXT("Calzada ancha: 3,5 m a cada lado"), FMath::Abs(GridSlotOffsetForWidth(0, 3000.0).Y), GridHalfSpacingCm, 0.01);
-	TestEqual(TEXT("Calzada de 9 m: columnas más juntas (2,25 m)"), FMath::Abs(GridSlotOffsetForWidth(1, 900.0).Y), 225.0, 0.01);
-	TestEqual(TEXT("Nunca a menos de 1,8 m del eje"), FMath::Abs(GridSlotOffsetForWidth(2, 400.0).Y), 180.0, 0.01);
-	TestTrue(TEXT("Izquierda y derecha alternas"), GridSlotOffsetForWidth(0, 900.0).Y < 0.0 && GridSlotOffsetForWidth(1, 900.0).Y > 0.0);
-	TestEqual(TEXT("Las filas no cambian con el ancho"), GridSlotOffsetForWidth(5, 900.0).X, GridSlotOffset(5).X, 0.01);
-
-	TestEqual(TEXT("Calzada estrecha: fuera de pista a 40 m"), OffTrackLimitCm(700.0), OffTrackDistanceCm, 0.01);
-	TestEqual(TEXT("Explanada de 60 m: fuera de pista a 45 m"), OffTrackLimitCm(3000.0), 4500.0, 0.01);
-	FOffTrackState State;
-	TestFalse(TEXT("A 44 m en una explanada no está fuera"), UpdateOffTrack(State, 4400.0, OffTrackLimitCm(3000.0), 2.0));
-	TestTrue(TEXT("A 46 m durante 1 s, sí"), UpdateOffTrack(State, 4600.0, OffTrackLimitCm(3000.0), 1.0));
-	return true;
-}
-
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNProcMapDrivableTest, "Tortunabo.ProcMap.Drivable",
 	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 
@@ -221,7 +199,7 @@ bool FTNProcMapDrivableTest::RunTest(const FString& Parameters)
 		double LengthSum = 0.0;
 		for (const uint32 Seed : { 11u, 777u, 2027u })
 		{
-			// El perfil del cooperativo, como en el Rally (ATN_ProcMapGenerator::BuildLayout).
+			// El perfil del cooperativo, como en los karts (ATN_ProcMapGenerator::BuildLayout).
 			FGenParams Params = TN_MakeDefaultProcProfile(ETNProcGameMode::Coop, Difficulty).ToGenParams(Seed);
 			Params.bDrivable = true;
 			FLayout Layout;
@@ -280,21 +258,21 @@ bool FTNProcMapDrivableTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNRallyLobbyModeTest, "Tortunabo.Rally.Route.LobbyMode",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNKartLobbyModeTest, "Tortunabo.Kart.Route.LobbyMode",
 	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 
-bool FTNRallyLobbyModeTest::RunTest(const FString& Parameters)
+bool FTNKartLobbyModeTest::RunTest(const FString& Parameters)
 {
 	bool bInMenu = false;
 	for (const ETNProcGameMode Mode : TNLobbyMission::MenuModes)
 	{
-		bInMenu |= Mode == ETNProcGameMode::Rally;
+		bInMenu |= Mode == ETNProcGameMode::Karts;
 	}
-	TestTrue(TEXT("El Rally se elige en el menú, la sala y el general"), bInMenu);
-	TestEqual(TEXT("Una sala de Rally se queda en Rally"), TNLobbyMission::NormalizeMenuMode(ETNProcGameMode::Rally), ETNProcGameMode::Rally);
-	TestFalse(TEXT("El Rally tiene nombre propio"), TNLobbyMission::ModeName(ETNProcGameMode::Rally).IsEmpty());
-	TestTrue(TEXT("El Rally va después de los modos que ya había (el número se guarda en las salas)"),
-		static_cast<int32>(ETNProcGameMode::Rally) > static_cast<int32>(ETNProcGameMode::Survival));
+	TestTrue(TEXT("Los karts se eligen en el menú, la sala y el general"), bInMenu);
+	TestEqual(TEXT("Una sala de karts se queda en karts"), TNLobbyMission::NormalizeMenuMode(ETNProcGameMode::Karts), ETNProcGameMode::Karts);
+	TestFalse(TEXT("Los karts tienen nombre propio"), TNLobbyMission::ModeName(ETNProcGameMode::Karts).IsEmpty());
+	TestTrue(TEXT("Los karts van después de los modos que ya había (el número se guarda en las salas)"),
+		static_cast<int32>(ETNProcGameMode::Karts) > static_cast<int32>(ETNProcGameMode::Survival));
 	return true;
 }
 

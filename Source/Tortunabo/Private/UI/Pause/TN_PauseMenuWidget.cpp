@@ -15,8 +15,8 @@
 #include "Multiplayer/MP_GameInstance.h"
 #include "Multiplayer/TN_RoomNames.h"
 #include "Player/TortugaCharacter.h"
-#include "Rally/TN_ProcRallyGameMode.h"
-#include "Rally/TN_ProcRallyGameState.h"
+#include "Kart/TN_KartGameMode.h"
+#include "Kart/TN_KartGameState.h"
 #include "Settings/TN_GameSettingsSubsystem.h"
 #include "Settings/TN_LanguageSettings.h"
 #include "Voice/ProximityVoiceComponent.h"
@@ -1638,13 +1638,13 @@ void UTN_PauseMenuWidget::RefreshHeader()
 	{
 		Mode = NSLOCTEXT("TNPause", "ModeTerrain", "Solo terreno · paseo por el mapa procedural");
 	}
-	else if (const ATN_ProcRallyGameState* Rally = Cast<ATN_ProcRallyGameState>(State))
+	else if (const ATN_KartGameState* Karts = Cast<ATN_KartGameState>(State))
 	{
-		static const FText RallyDifficulties[] = { NSLOCTEXT("TNPause", "DiffEasy", "fácil"), NSLOCTEXT("TNPause", "DiffNormal", "normal"),
+		static const FText KartDifficulties[] = { NSLOCTEXT("TNPause", "DiffEasy", "fácil"), NSLOCTEXT("TNPause", "DiffNormal", "normal"),
 			NSLOCTEXT("TNPause", "DiffHard", "difícil") };
-		const int32 Difficulty = FMath::Clamp(static_cast<int32>(Rally->ProcDifficulty), 0, 2);
-		Mode = FText::Format(NSLOCTEXT("TNPause", "ModeRally", "Rally · el camino del cooperativo en buggy · {0} · semilla {1}"),
-			RallyDifficulties[Difficulty], FText::AsNumber(Rally->MapSeed, &FNumberFormattingOptions::DefaultNoGrouping()));
+		const int32 Difficulty = FMath::Clamp(static_cast<int32>(Karts->Difficulty), 0, 2);
+		Mode = FText::Format(NSLOCTEXT("TNPause", "ModeKarts", "Karts · el camino del cooperativo · {0} · semilla {1}"),
+			KartDifficulties[Difficulty], FText::AsNumber(Karts->MapSeed, &FNumberFormattingOptions::DefaultNoGrouping()));
 	}
 	else if (const ATN_ProcMapGameState* Proc = Cast<ATN_ProcMapGameState>(State))
 	{
@@ -2875,11 +2875,11 @@ void UTN_PauseMenuWidget::ReturnToLobby()
 			{
 				return;
 			}
-			// Rally en el mapa del cooperativo: la misma vuelta que al acabar la carrera.
-			if (ATN_ProcRallyGameMode* RallyMode = World->GetAuthGameMode<ATN_ProcRallyGameMode>())
+			// Karts en el mapa del cooperativo: la misma vuelta que al acabar la carrera.
+			if (ATN_KartGameMode* KartMode = World->GetAuthGameMode<ATN_KartGameMode>())
 			{
 				Menu->CloseMenu();
-				RallyMode->ReturnToLobbyNow();
+				KartMode->ReturnToLobbyNow();
 				return;
 			}
 			ATN_RunGameMode* GameMode = World->GetAuthGameMode<ATN_RunGameMode>();
@@ -3583,5 +3583,5 @@ bool UTN_PauseMenuWidget::CanReturnToLobby() const
 	const UWorld* World = GetWorld();
 	const AGameStateBase* State = World ? World->GetGameState() : nullptr;
 	return State && State->GameModeClass && (State->GameModeClass->IsChildOf(ATN_RunGameMode::StaticClass())
-		|| State->GameModeClass->IsChildOf(ATN_ProcRallyGameMode::StaticClass()));
+		|| State->GameModeClass->IsChildOf(ATN_KartGameMode::StaticClass()));
 }

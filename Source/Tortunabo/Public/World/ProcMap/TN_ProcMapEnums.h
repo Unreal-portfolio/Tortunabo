@@ -25,9 +25,9 @@ enum class ETNProcBiome : uint8
 };
 
 /**
- * Modo de juego. Classic y Survival viajan al mapa de chunks de siempre (LVL_Run); Survival, con ?game=Survival. Rally va
- * al mapa procedural con ?game=Rally (ATN_ProcRallyGameMode): el mapa del cooperativo recorrido en buggy. Los valores se
- * guardan como número en las salas: los nuevos van al final.
+ * Modo de juego. Classic y Survival viajan al mapa de chunks de siempre (LVL_Run); Survival, con ?game=Survival. Karts va
+ * al mapa procedural con ?game=Karts (ATN_KartGameMode): el mapa del cooperativo recorrido en kart (el buggy del Rally),
+ * aparte del Rally de LVL_Rally. Los valores se guardan como número en las salas: los nuevos van al final.
  */
 UENUM(BlueprintType)
 enum class ETNProcGameMode : uint8
@@ -37,7 +37,7 @@ enum class ETNProcGameMode : uint8
 	TwoVsTwo  UMETA(DisplayName = "2 vs 2"),
 	Classic   UMETA(DisplayName = "Clásico (chunks)"),
 	Survival  UMETA(DisplayName = "Supervivencia"),
-	Rally     UMETA(DisplayName = "Rally (buggies en el mapa del cooperativo)"),
+	Karts     UMETA(DisplayName = "Karts (en el mapa del cooperativo)"),
 	Count     UMETA(Hidden)
 };
 

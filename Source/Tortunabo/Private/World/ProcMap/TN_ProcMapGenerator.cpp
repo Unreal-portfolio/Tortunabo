@@ -202,8 +202,8 @@ void ATN_ProcMapGenerator::BuildFromNetConfig()
 		}
 		if (!bTerrainOnly)
 		{
-			// Rally: sin enemigos, peligros ni conchas de las tortugas a pie (estorbarían al buggy en el camino).
-			if (!IsRallyMap())
+			// Karts: sin enemigos, peligros ni conchas de las tortugas a pie (estorbarían al kart en el camino).
+			if (!IsKartMap())
 			{
 				SpawnHazards();
 				// Después de los peligros: las conchas del plan no pisan lo que estos han puesto (HazardSpots).
@@ -241,10 +241,10 @@ void ATN_ProcMapGenerator::BuildFromNetConfig()
 
 bool ATN_ProcMapGenerator::BuildLayout()
 {
-	// El Rally usa el perfil del cooperativo (el mismo camino largo, y la dificultad cambia lo mismo que allí) con el camino
-	// hecho para el buggy.
-	const bool bRally = IsRallyMap();
-	const ETNProcGameMode ProfileMode = bRally ? ETNProcGameMode::Coop : NetConfig.Mode;
+	// Los karts usan el perfil del cooperativo (el mismo camino largo, y la dificultad cambia lo mismo que allí) con el
+	// camino hecho para el kart.
+	const bool bKarts = IsKartMap();
+	const ETNProcGameMode ProfileMode = bKarts ? ETNProcGameMode::Coop : NetConfig.Mode;
 	ActiveProfile = Settings ? Settings->ResolveProfile(ProfileMode, NetConfig.Difficulty)
 		: TN_MakeDefaultProcProfile(ProfileMode, NetConfig.Difficulty);
 
@@ -253,7 +253,7 @@ bool ATN_ProcMapGenerator::BuildLayout()
 	{
 		const uint32 Seed = static_cast<uint32>(NetConfig.Seed) + static_cast<uint32>(Attempt) * 7919u;
 		TNProcMap::FGenParams Params = ActiveProfile.ToGenParams(Seed);
-		Params.bDrivable = bRally;
+		Params.bDrivable = bKarts;
 		if (TNProcMap::GenerateLayout(Params, Layout))
 		{
 			return true;

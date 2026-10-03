@@ -10,37 +10,6 @@ Fuentes: plan maestro §3.3 y §7.2, `Docs/Rally_Sistemas.md`, `Docs/Rally_E01B_
 - Biplaza (por defecto): los jugadores se emparejan por orden de llegada; la 1.ª de cada pareja conduce y la 2.ª es la artillera. Si una tortuga va sola, conduce y dispara ella con apuntado automático.
 - Semáforo de 3 s; salir antes corta el motor 1 s. Cuando llega el primer buggy quedan 20 s; después, resultados y, a los 15 s, carrera nueva en el mismo mapa.
 
-## Rally en el mapa del cooperativo (#291, #302, #304, #300)
-
-Además de `LVL_Rally`, el Rally se juega en el mapa generado del cooperativo y se elige como los demás modos (menú al crear
-sala, la sala y la pestaña «Misión» del General Galápago): `ETNProcGameMode::Rally` viaja a `LVL_ProcMap?game=Rally`
-(`ATN_ProcRallyGameMode`, alias en `DefaultEngine.ini`). Al acabar los resultados, todas vuelven al lobby; el anfitrión
-también puede volver desde el menú de pausa.
-
-- **Mapa**: el del cooperativo con el perfil del cooperativo de `DA_ProcMapSettings` y la dificultad del lobby (fácil 2 km,
-  normal unos 10 km, difícil más), pero con el camino conducible (`TNProcMap::FGenParams::bDrivable`): sin cruces colosales,
-  ramas ni huecos; géiseres y toboganes cambiados por rampas de 11° como mucho; sin isletas ni pasarelas; cuevas con pasos de
-  9-11 m y sin río de lava; calzada de 7 m como poco; sin huevos, recompensas, rebuscables, peligros, enemigos ni conchas, y
-  sin troncos, obstáculos de objetos ni peñascos en el camino (quedan las piezas de explanada y las agujas de roca, que el
-  piloto IA rodea). La fauna, la vegetación, las formaciones y las cuevas se quedan.
-- **Pista** (`TNRally::PlanRouteFromPath`, `TNProcRally::BuildTrackFromGenerator`): eje con un punto por muestra del camino
-  (4 m) y su ancho; puertas del ancho del camino cada 250 m fuera de las cuevas (regla del 60 %); salida a 42 m del
-  principio, con la parrilla en el claro inicial; meta 25 m dentro de la playa final, en seco; fuera de pista según el ancho;
-  la lava y el mar hacen reaparecer. Cada cliente hace su pista con su propio generador y avisa al servidor: el semáforo
-  espera a todas (como mucho 45 s) y la parrilla, a que el suelo tenga colisión.
-- **Bots**: si nadie dice otra cosa (`?Bots=`, `TN.Rally.Bots`), se completa hasta 4 buggies; su velocidad depende de la
-  dificultad.
-- **Salida** (#302): todos retenidos en la parrilla (motor cortado y frenos) hasta la hora del verde del servidor, que cada
-  máquina cumple sola; sin castigo por adelantarse (no se puede); quien se sale del hueco vuelve a él; cada hueco busca sitio
-  libre de rocas y estructuras. Reaparición en un carril libre tras la puerta, con fantasma de 3,5 s (más que el bloqueo).
-- **Cajas de objetos** (#304): la caja de la carrera (la «?») a lo grande, que flota, gira y brilla con columna de luz; da
-  Alga, Burbuja, Mortero o Tinta según el puesto, estalla al cogerla y vuelve a los 3 s. Una fila cada 320 m con 2 a 6 cajas
-  según el ancho. El HUD hace una ruleta antes de enseñar lo que ha tocado y dice los kilómetros que quedan.
-- **Manejo** (#300): más agarre atrás que delante (3,4 frente a 3,0), control de tracción, menos giro a mucha velocidad,
-  centro de masas más bajo y ayuda antiderrape que quita deslizamiento lateral en las curvas normales y se apaga con el freno
-  de mano, en el aire y en las curvas cerradas a más de 70-95 km/h (ahí se suelta el eje trasero y derrapa). Todo en
-  `UTN_BuggyData` (categorías «Derrape» y «Dirección»). `[RallyStats]` da la deriva media y el tiempo derrapando.
-
 ## Controles (Enhanced Input creado en C++, sin assets)
 
 | Acción | Conductora | Artillera |

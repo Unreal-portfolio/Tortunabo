@@ -59,8 +59,8 @@ namespace TNBriefingUI
 			return NSLOCTEXT("Tortunabo", "BriefingOrderRace", "¡Carrera! Todas contra todas hasta el agua. Tres conchas y al podio.");
 		case ETNProcGameMode::Survival:
 			return NSLOCTEXT("Tortunabo", "BriefingOrderSurvival", "¡Supervivencia! Nivel tras nivel, cada uno peor que el anterior. Solo queda en pie la última.");
-		case ETNProcGameMode::Rally:
-			return NSLOCTEXT("Tortunabo", "BriefingOrderRally", "¡Rally! Al buggy de dos en dos: una al volante y otra a la torreta. Del castillo a la playa sin frenar.");
+		case ETNProcGameMode::Karts:
+			return NSLOCTEXT("Tortunabo", "BriefingOrderKarts", "¡Karts! Al volante sola o con una artillera detrás. Cajas, géiseres y cascadas hasta la playa.");
 		default:
 			return NSLOCTEXT("Tortunabo", "BriefingOrderCoop", "¡Cooperativo! Aquí no se deja a nadie atrás: del castillo al mar, todas juntas.");
 		}

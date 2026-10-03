@@ -1,14 +1,14 @@
-// Pista del Rally sobre un camino ya hecho (el principal del mapa generado del cooperativo, ATN_ProcMapGenerator): de sus
-// muestras salen el eje de la spline, las puertas cada GateSpacingCm (fuera de cuevas y estructuras), la salida con la
-// parrilla detrás en el claro inicial, la meta en la playa final, las filas de cajas de objetos y la línea del piloto IA
-// alrededor de los obstáculos grandes. Lógica pura (sin mundo ni actores), con tests Tortunabo.Rally.Route.*. La usan
-// ATN_RallyTrack::BuildFromRoutePlan y TNProcRally::BuildTrackFromGenerator.
+// Pista de los karts sobre un camino ya hecho (el principal del mapa generado del cooperativo, ATN_ProcMapGenerator): de
+// sus muestras salen el eje de la spline, las puertas cada GateSpacingCm (fuera de cuevas, estructuras y explanadas más
+// anchas que el arco), la salida con la parrilla detrás en el claro inicial, la meta en la playa final, las filas de cajas
+// de objetos y la línea del piloto IA alrededor de los obstáculos grandes. Lógica pura (sin mundo ni actores), con tests
+// Tortunabo.Kart.Route.*. La usa ATN_KartTrack.
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Rally/TN_RallyLogic.h"
 
-namespace TNRally
+namespace TNKart
 {
 	// ---- Camino de entrada ----
 
@@ -17,7 +17,7 @@ namespace TNRally
 	{
 		FVector Location = FVector::ZeroVector;
 		double WidthCm = 0.0;
-		/** Sin puerta aquí (cueva, puente, tramo especial): el arco de la puerta no cabría o no se vería. */
+		/** Sin puerta aquí (cueva, puente, géiser, cascada, agua): el arco de la puerta no cabría o no se vería. */
 		bool bNoGate = false;
 		/** Ya en la playa final (la meta va en ella). */
 		bool bShore = false;
@@ -39,10 +39,8 @@ namespace TNRally
 		double MinFinishZ = -1.0e10;
 		/** Pista pasada la meta, para frenar (cm). */
 		double RunOffCm = 6000.0;
-		/** El volumen de la puerta, algo más ancho que el camino (cm), con tope. */
-		double GateWidthMarginCm = 300.0;
-		double MinGateWidthCm = 1200.0;
-		double MaxGateWidthCm = 6000.0;
+		/** Las puertas del Rally miden 24 m: no van donde el camino es más ancho que esto (se rodearían). */
+		double MaxGateRoadWidthCm = 2200.0;
 		/** Separación de los puntos del eje (cm). */
 		double RoadStepCm = 1000.0;
 	};
@@ -55,7 +53,7 @@ namespace TNRally
 		/** Arco (cm, en 3D) de cada punto de Road desde el primero. */
 		TArray<double> RoadArcCm;
 		TArray<double> RoadWidthCm;
-		TArray<FGateDef> Gates;
+		TArray<TNRally::FGateDef> Gates;
 		TArray<double> GateArcCm;
 		double FinishArcCm = 0.0;
 		double LengthCm = 0.0;
@@ -81,15 +79,6 @@ namespace TNRally
 
 	/** El plan completo; bValid = false si el camino no da para salida y meta (menos de dos muestras o muy corto). */
 	TORTUNABO_API FRoutePlan PlanRouteFromPath(const TArray<FRouteSample>& Samples, const FRoutePlanParams& Params);
-
-	// ---- Parrilla ----
-
-	/**
-	 * Hueco de la parrilla 2 × 4 para una calzada de RoadWidthCm (0 = desconocida): X = metros hacia atrás de la salida
-	 * (cm), Y = desplazamiento lateral (cm, + a la derecha). Con calzada estrecha las columnas se juntan (nunca a menos de
-	 * 1,8 m del eje).
-	 */
-	TORTUNABO_API FVector2D GridSlotOffsetForWidth(int32 Slot, double RoadWidthCm);
 
 	// ---- Cajas de objetos ----
 
@@ -119,6 +108,12 @@ namespace TNRally
 		double RadiusCm = 0.0;
 		bool bKeepCentered = false;
 	};
+
+	/**
+	 * Eje desplazado: cada punto de Road movido Offsets (cm, + a la derecha) en horizontal. La spline de la pista de los karts
+	 * es la línea del piloto IA, así el piloto (que sigue la spline) rodea los obstáculos sin cambiar nada del Rally.
+	 */
+	TORTUNABO_API TArray<FVector> OffsetRoad(const TArray<FVector>& Road, const TArray<double>& Offsets);
 
 	/**
 	 * Desplazamiento lateral (cm, + a la derecha) de la línea del piloto IA en cada punto del eje: junto a un obstáculo (a lo

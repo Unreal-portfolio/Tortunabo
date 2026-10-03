@@ -182,23 +182,23 @@ public:
 	float GetTerrainHeightAt(const FVector& WorldLocation) const;
 
 	/**
-	 * Mapa del Rally (NetConfig.Mode == Rally): el camino del cooperativo hecho para el buggy (TNProcMap::FGenParams::bDrivable)
-	 * y sin lo que es de las tortugas a pie (huevos, recompensas, rebuscables, peligros, enemigos y conchas). Lo saben todas
-	 * las máquinas porque el modo viaja en la réplica.
+	 * Mapa de los karts (NetConfig.Mode == Karts): el camino del cooperativo hecho para el kart (TNProcMap::FGenParams::
+	 * bDrivable) y sin lo que es de las tortugas a pie (huevos, recompensas, rebuscables, peligros, enemigos y conchas). Lo
+	 * saben todas las máquinas porque el modo viaja en la réplica.
 	 */
-	bool IsRallyMap() const { return NetConfig.Mode == ETNProcGameMode::Rally; }
+	bool IsKartMap() const { return NetConfig.Mode == ETNProcGameMode::Karts; }
 
 	/** Muestras del camino principal en el mundo, de la salida a la playa final (vacío si no hay mapa). */
 	void GetMainPathWorld(TArray<FTNProcPathPoint>& OutPoints) const;
 
 	/**
 	 * Obstáculos grandes que quedan dentro del camino principal (piezas de explanada y agujas de roca), en el mundo: X, Y y
-	 * Z del centro a ras de suelo y W = radio libre (cm). El piloto IA del Rally los rodea. Los arcos que cruzan el camino
+	 * Z del centro a ras de suelo y W = radio libre (cm). El piloto IA de los karts los rodea. Los arcos que cruzan el camino
 	 * van con W negativo (su medio fondo más 4 m): bajo ellos el piloto va por el centro.
 	 */
 	void GetMainPathObstaclesWorld(TArray<FVector4>& OutObstacles) const;
 
-	/** Cota del mar en el mundo (por debajo, el buggy está en el agua). */
+	/** Cota del mar en el mundo (por debajo, el kart está en el agua). */
 	float GetSeaLevelWorldZ() const;
 
 	UTN_ProcMapSettings* GetSettings() const { return Settings; }
