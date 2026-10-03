@@ -127,3 +127,25 @@ GPU por pases (Development, media en ms):
 5. Los picos periódicos de 25 Hz del informe headless (p95 de 2-3 veces la mediana) no aparecen con ventana: en Development el p95 de la línea base es 1,15 veces la media.
 
 Datos sin procesar (CSV, logs y JSON por ejecución): no están en el repositorio. Se regeneran con el script en unos 4 minutos por escenario.
+
+## Niveles de calidad (2026-10-03, #577)
+
+`Config/DefaultScalability.ini` (nuevo) cambia solo lo necesario respecto a `BaseScalability.ini` del motor. `r.Shadow.Virtual.Enable=1` sale de `DefaultEngine.ini`: con prioridad de ajuste de proyecto, la escalabilidad no podía cambiarlo.
+
+| Nivel | Sombras |
+| --- | --- |
+| Bajo (0) | CSM, 1 cascada de 1024, `r.ShadowQuality=2`, `r.Shadow.DistanceScale=0.35`. Antes: ninguna sombra dinámica (`r.ShadowQuality=0` del motor) |
+| Medio (1) | CSM, 2 cascadas de 2048, `r.Shadow.DistanceScale=0.6`. Antes: VSM con 512 páginas |
+| Alto (2) | VSM del motor con 4 rayos SMRT direccionales (en vez de 8) |
+| Épico (3) y Cine | Sin cambios (VSM) |
+
+Medida: `medir_render_gpu.py --build debuggame --scenario control --resx 1280 --resy 720` en `LVL_BeachRace`, con `scalability N` en `-ExecCmds` (cambio en caliente tras arrancar en otro nivel). Media de todas las fases, en ms; mismo equipo que arriba (RTX 4060 Laptop). Las cifras de CPU llevan ruido: otros procesos del motor compilaban y pasaban tests a la vez.
+
+| Nivel | GPU antes → después | `ShadowDepths` antes → después | `ShadowProjection` antes → después |
+| --- | --- | --- | --- |
+| Bajo | 1,77 → 1,96 | 0 → 0,24 (vuelve a haber sombras) | 0 → 0,01 |
+| Medio | 2,98 → 2,71 | 0,52 → 0,48 | 0,11 → 0,02 |
+| Alto | 4,86 → 4,71 | 0,67 → 0,64 | 0,31 → 0,29 |
+| Épico | 7,55 → 7,79 | 1,41 → 1,31 | 0,41 → 0,39 |
+
+Las cvars resultantes (consultadas en el log de cada ejecución): Bajo y Medio con `r.Shadow.Virtual.Enable=0` y `r.ShadowQuality` 2 y 3; Alto y Épico con `r.Shadow.Virtual.Enable=1`. En Épico no cambia nada: la diferencia es ruido.
