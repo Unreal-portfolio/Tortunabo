@@ -63,11 +63,11 @@ bool FTNProcMapCoopUnchangedTest::RunTest(const FString& Parameters)
 {
 	using namespace TNProcMap;
 	struct FCase { uint32 Seed; int32 Grid; uint64 Expected; };
-	// Huellas tomadas con el generador antes de admitir rejillas rectangulares (dev a1ced1de).
+	// Huellas tomadas con el generador antes de admitir rejillas rectangulares (dev a1ced1de), en DebugGame (#579).
 	const FCase Cases[] = {
 		{ 11u, 3, 0xFD5CBBA920111AD3ull },
 		{ 12u, 3, 0xD8A940E8D5C2E22Dull },
-		{ 21u, 6, 0x06BAEAE6AA08AC97ull },
+		{ 21u, 6, 0x787A8D4838D3FD94ull },
 	};
 	for (const FCase& C : Cases)
 	{
