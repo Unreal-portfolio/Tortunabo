@@ -60,6 +60,45 @@ namespace TNBeachLoot
 		double Progress = 0.0;
 	};
 
+	/**
+	 * Dónde queda el actor interactivo de un punto rebuscable (servidor): en su montículo, no en el centro del decorado (#254).
+	 * El aviso «Mantén para rebuscar», el alcance, las chispitas, el anillo y la tierra salen así donde se ve que se rebusca y
+	 * no por cualquier lado de un decorado grande (un castillo da la vuelta de más de 20 m y el montículo está en un lado).
+	 * Ground es el pie del montículo en la arena y Radius, su base con los terrones que asoman (cm).
+	 */
+	struct FSearchAnchor
+	{
+		FVector Ground = FVector::ZeroVector;
+		float Radius = 0.f;
+	};
+
+	/** Alto (cm) que se le da a la huella de ese actor (el montículo del tutorial usa lo mismo): ventana vertical del aviso y chispitas. */
+	constexpr float MoundSpotHeight = 110.f;
+
+	/**
+	 * Giros (grados) respecto al lado por el que se llega (hacia la salida, ±50°) con los que se prueba, por orden, dónde
+	 * poner el montículo de un punto rebuscable: ese lado, los costados, la espalda y, al final, las diagonales.
+	 */
+	constexpr double MoundSideTurns[] = { 0.0, 90.0, -90.0, 180.0, 45.0, -45.0, 135.0, -135.0 };
+	constexpr int32 NumMoundSides = UE_ARRAY_COUNT(MoundSideTurns);
+
+	/**
+	 * El primer lado libre (IsClear(i) para MoundSideTurns[i], por orden y sin preguntar de más) o INDEX_NONE si ninguno: un
+	 * decorado sin sitio libre para su montículo no es rebuscable (#254). Antes se dejaba el montículo en el primer lado aunque
+	 * estuviera ocupado: metido en otra pieza o en el agua de una poza, y el aviso salía sin montículo a la vista.
+	 */
+	inline int32 PickMoundSide(TFunctionRef<bool(int32)> IsClear)
+	{
+		for (int32 Side = 0; Side < NumMoundSides; ++Side)
+		{
+			if (IsClear(Side))
+			{
+				return Side;
+			}
+		}
+		return INDEX_NONE;
+	}
+
 	/** Catálogo de objetos (el de los rebuscables y las zonas de objetos). */
 	inline const TCHAR* CatalogPath() { return TEXT("/Game/Blueprints/Gameplay/Items/DT_Items.DT_Items"); }
 
@@ -133,7 +172,8 @@ namespace TNBeachLoot
  * Decorado de la playa que se puede rebuscar: el ATN_ProcSearchSpot de siempre (mantener E, aro, «¡puf!» u «¡pof!»,
  * saltito del objeto, una vez para todas) con las reglas de la carrera: más suerte (TNBeachLoot::SearchLuck), los pesos
  * de TNBeachLoot::RaceWeight, polvo de arena y las pistas visuales a la escala de la playa (chispitas desde más lejos y
- * el anillo que marca dónde rebuscar, más grande). Lo crea UTN_BeachLootSubsystem con la huella de su decorado.
+ * el anillo que marca dónde rebuscar, más grande). Lo crea UTN_BeachLootSubsystem en el montículo de su punto y con la huella
+ * de su base (TNBeachLoot::FSearchAnchor): el aviso solo sale junto a un montículo (#254).
  */
 UCLASS()
 class TORTUNABO_API ATN_BeachSearchSpot : public ATN_ProcSearchSpot
@@ -354,7 +394,8 @@ private:
  *    entre centros y 3 m entre bordes), hasta TNBeachLoot::MaxSearchSpots repartidos a lo largo. Cada uno con la huella
  *    real de su decorado (la caja de su malla, girada como ella: cápsula a lo largo del lado largo), en un registro de
  *    puntos (FSearchPoint) con su estado replicado en ATN_BeachSearchRegistry; el actor de cada punto se crea cerca de
- *    una tortuga y se quita al alejarse todas (TickSearchProxies).
+ *    una tortuga y se quita al alejarse todas (TickSearchProxies), puesto en su montículo (FSearchAnchor) y no en el centro
+ *    del decorado. Un decorado sin sitio libre para su montículo no es rebuscable.
  *  - Objetos sueltos: uno por tramo igual del recorrido desde los 90 m y filas de lado a lado en cuatro sitios, en la
  *    arena libre (a 3 m de cualquier huella del reparto, pasos de quads incluidos).
  *  - Conchas de puntos (TN_BeachLootShells.cpp).
@@ -389,8 +430,11 @@ protected:
 	virtual bool DoesSupportWorldType(const EWorldType::Type WorldType) const override;
 
 private:
-	/** Elige los puntos rebuscables de la ronda (el registro); devuelve cuántos. */
-	int32 BuildSearchRegistry(ATN_BeachRaceGenerator& Gen, FRandomStream& Rng, int32& OutCandidates);
+	/**
+	 * Elige los puntos rebuscables de la ronda (el registro) con el montículo de cada uno; devuelve cuántos. OutNoMoundSite
+	 * cuenta los que habrían salido pero no tenían sitio libre para su montículo (no se crean).
+	 */
+	int32 BuildSearchRegistry(ATN_BeachRaceGenerator& Gen, FRandomStream& Rng, int32& OutCandidates, int32& OutNoMoundSite);
 	/** Crea el actor de los puntos a los que se acerca alguna tortuga y quita el de los que ya nadie tiene cerca. */
 	void TickSearchProxies();
 	ATN_BeachSearchRegistry* EnsureRegistry();
@@ -408,6 +452,8 @@ private:
 
 	/** Registro de puntos rebuscables de la ronda (servidor), su actor si lo tiene ahora y si ya se han usado. */
 	TArray<TNBeachLoot::FSearchPoint> SearchPoints;
+	/** Dónde se pone el actor de cada punto: su montículo (mismo índice que SearchPoints y que los montículos del registro). */
+	TArray<TNBeachLoot::FSearchAnchor> SearchAnchors;
 	TArray<TWeakObjectPtr<ATN_BeachSearchSpot>> SearchProxies;
 	TArray<bool> SearchUsed;
 	TWeakObjectPtr<ATN_BeachSearchRegistry> Registry;

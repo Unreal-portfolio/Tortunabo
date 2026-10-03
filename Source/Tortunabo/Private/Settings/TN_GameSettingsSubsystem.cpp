@@ -2,6 +2,7 @@
 #include "Core/TN_Log.h"
 #include "Menu/MP_MenuPlayerController.h"
 #include "Multiplayer/TN_SaveGameIO.h"
+#include "Settings/TN_SettingsMigration.h"
 #include "Audio/TN_AmbientSoundscape.h"
 #include "Audio/TN_AmbientSynthComponent.h"
 #include "Audio/TN_MusicSynthComponent.h"
@@ -60,8 +61,12 @@ namespace TNGameSettingsDetail
 	const TCHAR* const SlotName = TEXT("TN_Settings");
 	constexpr int32 SlotUser = 0;
 
-	/** Segundos sin cambios antes de guardar solos (con el menú abierto se guarda al cerrarlo). */
-	constexpr double AutoSaveDelay = 3.0;
+	/**
+	 * Segundos sin cambios antes de guardar solos (con el menú abierto se guarda al cerrarlo) y tope de la espera entre
+	 * reintentos si el guardado falla (se duplica con cada fallo: 3, 6, 12, 24, 48, 60 s).
+	 */
+	constexpr double AutoSaveDelay = TNSaveLogic::SETTINGS_AUTOSAVE_DELAY;
+	constexpr double AutoSaveMaxDelay = TNSaveLogic::SETTINGS_AUTOSAVE_MAX_DELAY;
 
 	/**
 	 * Capas: el menú de pausa por encima del HUD (4-10), las ruedas (30-31), la tienda y el general (40) y las pantallas
@@ -591,10 +596,19 @@ void UTN_GameSettingsSubsystem::Tick(float DeltaTime)
 	UpdateFpsCounter(PC);
 	UpdateTalkers(PC);
 
-	// Guardado diferido: con el menú abierto se espera a que se cierre.
-	if ((bSettingsDirty || bGraphicsDirty) && !IsPauseMenuOpen() && FApp::GetCurrentTime() - DirtySince > TNGameSettingsDetail::AutoSaveDelay)
+	// Guardado diferido: con el menú abierto se espera a que se cierre. Los ajustes propios, tras un fallo, esperan más
+	// con cada intento (SaveRetryDelay) en vez de reintentarse en cada fotograma; lo gráfico va aparte y no depende de eso.
+	if ((bSettingsDirty || bGraphicsDirty) && !IsPauseMenuOpen())
 	{
-		SaveNow();
+		const double Idle = FApp::GetCurrentTime() - DirtySince;
+		if (bSettingsDirty && Idle > TNSaveLogic::SaveRetryDelay(SettingsSaveFailures, TNGameSettingsDetail::AutoSaveDelay, TNGameSettingsDetail::AutoSaveMaxDelay))
+		{
+			SaveSettingsFile();
+		}
+		if (bGraphicsDirty && Idle > TNGameSettingsDetail::AutoSaveDelay)
+		{
+			SaveGraphicsSettings();
+		}
 	}
 }
 
@@ -610,6 +624,24 @@ void UTN_GameSettingsSubsystem::LoadSettings()
 		if (const UTN_SettingsSaveGame* Saved = Cast<UTN_SettingsSaveGame>(UGameplayStatics::LoadGameFromSlot(SlotName, SlotUser)))
 		{
 			Settings = Saved->Settings;
+			switch (TNSettingsMigration::Migrate(Settings, Saved->Version))
+			{
+			case TNSaveLogic::EMigration::Upgrade:
+				// Se vuelve a guardar sellado con la versión actual (en el Tick, con el guardado diferido).
+				UE_LOG(LogTortunabo, Log, TEXT("[Ajustes] Guardado de la versión %d: pasa a la %d."),
+					TNSettingsMigration::ResolveSavedVersion(Saved->Version), TNSaveLogic::SETTINGS_SAVE_VERSION);
+				MarkDirty(false);
+				break;
+			case TNSaveLogic::EMigration::FromNewerBuild:
+				// No se reescribe por cargarlo (no se marca sucio). Si el jugador cambia algo, SaveSettingsFile lo copia
+				// antes aparte: esta build solo conoce sus campos y al guardar pierde los que no conoce.
+				NewerFileVersion = Saved->Version;
+				UE_LOG(LogTortunabo, Warning, TEXT("[Ajustes] Guardado de una build más nueva (versión %d, esta es la %d): se usa tal cual y no se toca mientras no se cambie nada; si se cambia algo, antes se copia a '%s'."),
+					Saved->Version, TNSaveLogic::SETTINGS_SAVE_VERSION, *TNSaveLogic::BuildNewerBuildBackupSlotName(SlotName, Saved->Version));
+				break;
+			default:
+				break;
+			}
 		}
 	}
 	ClampSettings(Settings);
@@ -617,16 +649,59 @@ void UTN_GameSettingsSubsystem::LoadSettings()
 
 void UTN_GameSettingsSubsystem::SaveNow()
 {
+	SaveSettingsFile();
+	SaveGraphicsSettings();
+}
+
+void UTN_GameSettingsSubsystem::SaveSettingsFile()
+{
 	using namespace TNGameSettingsDetail;
-	if (bSettingsDirty)
+	if (!bSettingsDirty)
 	{
-		if (UTN_SettingsSaveGame* Save = Cast<UTN_SettingsSaveGame>(UGameplayStatics::CreateSaveGameObject(UTN_SettingsSaveGame::StaticClass())))
-		{
-			Save->Settings = Settings;
-			// Si falla (tras un reintento, con error en el log) queda sucio y se vuelve a intentar en el siguiente SaveNow.
-			bSettingsDirty = !TNSaveGameIO::SaveChecked(Save, SlotName, SlotUser, TEXT("Ajustes"));
-		}
+		return;
 	}
+
+	// Un fichero de una build más nueva se copia aparte antes de escribir encima (esta build no conoce todos sus campos).
+	// Si la copia falla no se bloquea el guardado: el jugador cambió algo y tiene que quedar. Hasta que se escriba bien,
+	// cada intento repite la copia (el fichero de la build nueva sigue en disco).
+	if (NewerFileVersion > 0)
+	{
+		TNSaveGameIO::BackupSlot(SlotName, TNSaveLogic::BuildNewerBuildBackupSlotName(SlotName, NewerFileVersion), SlotUser, TEXT("Ajustes"));
+	}
+
+	bool bSaved = false;
+	if (UTN_SettingsSaveGame* Save = Cast<UTN_SettingsSaveGame>(UGameplayStatics::CreateSaveGameObject(UTN_SettingsSaveGame::StaticClass())))
+	{
+		Save->Settings = Settings;
+		Save->StampCurrentVersion();
+		// Un reintento inmediato dentro y error en el log (SaveChecked); los reintentos espaciados van abajo.
+		bSaved = TNSaveGameIO::SaveChecked(Save, SlotName, SlotUser, TEXT("Ajustes"));
+	}
+
+	if (bSaved)
+	{
+		if (SettingsSaveFailures > 0)
+		{
+			UE_LOG(LogTortunabo, Log, TEXT("[Ajustes] Guardados de nuevo tras %d fallos seguidos."), SettingsSaveFailures);
+		}
+		bSettingsDirty = false;
+		SettingsSaveFailures = 0;
+		// El fichero en disco ya es de esta build: la copia de la más nueva (si la había) se queda como está.
+		NewerFileVersion = 0;
+		return;
+	}
+
+	// Sigue sucio. La espera del Tick vuelve a contar desde ahora y se duplica con cada fallo hasta AutoSaveMaxDelay: si no,
+	// reintentaría en cada fotograma (dos escrituras síncronas y dos líneas de log cada vez). El aviso sale una vez por
+	// intento, no por fotograma. Un guardado forzado (SaveNow) no espera, pero cuenta igual.
+	++SettingsSaveFailures;
+	DirtySince = FApp::GetCurrentTime();
+	UE_LOG(LogTortunabo, Warning, TEXT("[Ajustes] No se han podido guardar (fallo %d seguido); el siguiente intento automático es dentro de %.0f s."),
+		SettingsSaveFailures, TNSaveLogic::SaveRetryDelay(SettingsSaveFailures, AutoSaveDelay, AutoSaveMaxDelay));
+}
+
+void UTN_GameSettingsSubsystem::SaveGraphicsSettings()
+{
 	// Una resolución sin confirmar no se guarda (si el juego se cerrase con ella, arrancaría otra vez así).
 	if (bGraphicsDirty && !bVideoModePending)
 	{

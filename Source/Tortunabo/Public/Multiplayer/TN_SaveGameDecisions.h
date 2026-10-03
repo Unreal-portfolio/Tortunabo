@@ -17,6 +17,19 @@ namespace TNSaveLogic
 	/** Versión actual del estado del tutorial. 0 = guardado anterior al campo SaveVersion. */
 	constexpr int32 TUTORIAL_SAVE_VERSION = 1;
 
+	/**
+	 * Versión actual de los ajustes (UTN_SettingsSaveGame::Version): 1 sonido, voz y juego; 2 teclas, micrófono e interfaz;
+	 * 3 idioma y ojo de pez; 4 vibración del mando. 0 = guardado sin número (ver TNSettingsMigration).
+	 */
+	constexpr int32 SETTINGS_SAVE_VERSION = 4;
+
+	/**
+	 * Guardado automático de los ajustes: segundos sin cambios antes del primer intento y tope de la espera entre
+	 * reintentos cuando el guardado falla (ver SaveRetryDelay).
+	 */
+	constexpr double SETTINGS_AUTOSAVE_DELAY = 3.0;
+	constexpr double SETTINGS_AUTOSAVE_MAX_DELAY = 60.0;
+
 	/** Qué hacer con una ranura al cargarla. */
 	enum class ELoadAction : uint8
 	{
@@ -84,6 +97,33 @@ namespace TNSaveLogic
 	inline FString BuildQuarantineSlotName(const FString& Slot, const FDateTime& When)
 	{
 		return FString::Printf(TEXT("%s_corrupto_%s"), *Slot, *When.ToString(TEXT("%Y%m%d-%H%M%S")));
+	}
+
+	/**
+	 * @brief Segundos de espera antes del siguiente intento de guardar, dados los fallos seguidos hasta ahora: BaseSeconds
+	 * sin fallos y el doble con cada uno, con tope en MaxSeconds (con 3 y 60: 3, 6, 12, 24, 48, 60, 60...). Sin esto, un
+	 * guardado que falla (fichero de solo lectura, disco lleno) se reintentaba en cada fotograma.
+	 */
+	inline double SaveRetryDelay(int32 FailedAttempts, double BaseSeconds, double MaxSeconds)
+	{
+		const double Base = FMath::Max(BaseSeconds, 0.0);
+		const double Cap = FMath::Max(MaxSeconds, Base);
+		double Delay = Base;
+		// Se corta al llegar al tope (o si la base es 0, que no crece): el bucle no depende de lo grande que sea FailedAttempts.
+		for (int32 Attempt = 0; Attempt < FailedAttempts && Delay > 0.0 && Delay < Cap; ++Attempt)
+		{
+			Delay *= 2.0;
+		}
+		return FMath::Min(Delay, Cap);
+	}
+
+	/**
+	 * @brief Ranura a la que se copia un guardado de una build más nueva antes de reescribirlo con esta:
+	 * <Slot>_respaldo_v<versión del fichero>.
+	 */
+	inline FString BuildNewerBuildBackupSlotName(const FString& Slot, int32 SavedVersion)
+	{
+		return FString::Printf(TEXT("%s_respaldo_v%d"), *Slot, SavedVersion);
 	}
 
 	/** @brief Copia de una lista de IDs sin NAME_None ni duplicados, en el orden original (migración v0 → v1). */
