@@ -584,7 +584,33 @@ void ATN_BeachSeaweed::OnHeldModeChanged(ACharacter* Turtle, EMovementMode PrevM
 
 void ATN_BeachSeaweed::OnRep_Catches()
 {
+	// Dormida por distancia (UTN_BeachTickWakeSubsystem): un enganche la despierta ya, sin esperar a la siguiente mirada.
+	if (!IsActorTickEnabled())
+	{
+		SetActorTickEnabled(true);
+	}
 	HandleCatchesChanged();
+}
+
+float ATN_BeachSeaweed::GetTickWakeDistance() const
+{
+	return static_cast<float>(TNSeaweedLogic::FREEZE_DISTANCE) + GetFootprintRadius();
+}
+
+bool ATN_BeachSeaweed::IsTickBusy() const
+{
+	if (Catches.Num() > 0 || Holds.Num() > 0 || PredictedSince >= 0.0)
+	{
+		return true;
+	}
+	for (const FWrapSlot& Slot : WrapSlots)
+	{
+		if (Slot.Curl > 0.f)
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 void ATN_BeachSeaweed::HandleCatchesChanged()

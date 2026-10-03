@@ -338,6 +338,30 @@ bool ATN_BeachMine::IsArmedAt(double Now) const
 	return RearmSeconds > 0.f && Now >= static_cast<double>(ExplodedAt) + RearmSeconds;
 }
 
+bool ATN_BeachMine::IsTickBusy() const
+{
+	return TNBeachMineTick::IsBusy(TriggeredAt, ExplodedAt, RearmSeconds, TNBeachTrapKit::ServerNow(GetWorld()));
+}
+
+void ATN_BeachMine::OnTickWakeChanged(bool bAwake)
+{
+	// Dormida, el piloto se queda apagado (no encendido a medio destello).
+	if (!bAwake && LedMesh && LedMesh->IsVisible())
+	{
+		LedMesh->SetVisibility(false);
+	}
+}
+
+void ATN_BeachMine::WakeForNews()
+{
+	// Dormida lejos y con noticias del servidor (pisada, explosión o el estado al llegar): un fotograma al menos para
+	// dibujarlo; si no hay nadie cerca ni nada en marcha, el subsistema la vuelve a dormir.
+	if (bHasScreen && !IsActorTickEnabled())
+	{
+		SetActorTickEnabled(true);
+	}
+}
+
 void ATN_BeachMine::ApplySpec()
 {
 	using namespace TNBeachMineDetail;
@@ -550,6 +574,7 @@ FVector ATN_BeachMine::GetBackDirection() const
 
 void ATN_BeachMine::OnRep_TriggeredAt()
 {
+	WakeForNews();
 	if (!bHasScreen || TriggeredAt < 0.f)
 	{
 		return;
@@ -567,6 +592,7 @@ void ATN_BeachMine::OnRep_TriggeredAt()
 
 void ATN_BeachMine::OnRep_ExplodedAt()
 {
+	WakeForNews();
 	if (!bHasScreen || ExplodedAt < 0.f)
 	{
 		return;

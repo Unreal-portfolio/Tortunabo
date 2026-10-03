@@ -10,6 +10,33 @@ class UPointLightComponent;
 class UStaticMeshComponent;
 class UTN_BeachMineSynthComponent;
 
+/** Tick por distancia de la mina (#59; lógica pura, tests Tortunabo.Perf.BeachTickWake). */
+namespace TNBeachMineTick
+{
+	/**
+	 * Distancia (cm) a la que apaga su Tick: el sensor (tapa de 70-112 cm de radio) despierta de sobra antes de que llegue
+	 * nadie y, más lejos, el destello del piloto (8 % de cada 1,6 s) no se distingue.
+	 */
+	inline constexpr float WakeDistance = 4000.f;
+
+	/** Segundos tras la explosión, además del rearme, en que siguen vivos el humo, los trozos y el polvo de rearmarse. */
+	inline constexpr double AfterBlastSeconds = 4.0;
+
+	/** En marcha: con la mecha encendida o desde la explosión hasta que se ha rearmado y se han posado los efectos. */
+	inline bool IsBusy(float TriggeredAt, float ExplodedAt, float RearmSeconds, double ServerNow)
+	{
+		if (TriggeredAt > ExplodedAt)
+		{
+			return true;
+		}
+		if (ExplodedAt < 0.f)
+		{
+			return false;
+		}
+		return ServerNow < static_cast<double>(ExplodedAt) + FMath::Max(0.f, RearmSeconds) + AfterBlastSeconds;
+	}
+}
+
 /**
  * Mina de juguete medio enterrada (Docs/Modo_Carrera.md, «Mina»): de un montoncito de arena removida asoman la tapa y el
  * pincho de la espoleta (y en algunas, una banderita roja de aviso a un lado); un piloto rojo parpadea despacio. Cuatro
@@ -42,6 +69,9 @@ public:
 
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+	virtual float GetTickWakeDistance() const override { return TNBeachMineTick::WakeDistance; }
+	virtual bool IsTickBusy() const override;
+	virtual void OnTickWakeChanged(bool bAwake) override;
 
 	/** Armada (se puede pisar) con el estado replicado a la hora del servidor Now. */
 	bool IsArmedAt(double Now) const;
@@ -139,6 +169,9 @@ private:
 	FVector GetBackDirection() const;
 
 	void UpdateVisuals(double Now, float DeltaSeconds);
+
+	/** Con pantalla: enciende el Tick si estaba dormida por distancia (llega un cambio replicado). */
+	void WakeForNews();
 
 	/** Crea las partículas la primera vez que hacen falta (casi todas las minas de la ronda no llegan a explotar). */
 	void EnsureFX();
