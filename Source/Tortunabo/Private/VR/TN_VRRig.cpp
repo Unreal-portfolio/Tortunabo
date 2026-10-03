@@ -3,6 +3,8 @@
 #include "VR/TN_VRSubsystem.h"
 #include "VR/TN_VRMath.h"
 #include "VR/TN_VRGrabComponent.h"
+#include "VR/TN_VRInputTriggers.h"
+
 #include "Core/TN_Log.h"
 #include "Player/MP_GamePlayerController.h"
 #include "Player/TortugaCharacter.h"
@@ -686,9 +688,8 @@ void ATN_VRRig::UpdateInput(APlayerController* PC, ATortugaCharacter* Turtle, fl
 
 UInputTrigger* ATN_VRRig::MakeAnalogPressTrigger(UObject* Outer)
 {
-	UInputTriggerDown* Trigger = NewObject<UInputTriggerDown>(Outer ? Outer : GetTransientPackage());
-	Trigger->ActuationThreshold = TNVRMath::AnalogPressThreshold;
-	return Trigger;
+	// Pulsado al 55 % y suelto por debajo del 35 % (con histéresis: un gatillo que ronda el umbral no corta lo que se mantiene).
+	return NewObject<UTN_InputTriggerAnalogDown>(Outer ? Outer : GetTransientPackage());
 }
 
 void ATN_VRRig::EnsureVRMapping(APlayerController* PC)

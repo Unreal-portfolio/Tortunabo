@@ -62,7 +62,8 @@ Cómo se elige (lo de arriba manda sobre lo de abajo). `UTN_VRSubsystem` lo mira
   dirección al servidor (fiable) justo antes de la acción; sin gafas se apunta con la cámara, como siempre.
 - **Gatillos y agarres por su valor.** Con OpenXR los Touch solo dan el valor del gatillo y del agarre (no un «clic»):
   cuentan como pulsados a partir del 55 % y sueltos por debajo del 35 % (en los menús y en los agarres, con histéresis;
-  en las acciones del juego, un disparador «Down» al 55 % en la asignación). Si un menú se abre con el gatillo o el
+  en las acciones del juego, un disparador «Down» con la misma histéresis en la asignación, `UTN_InputTriggerAnalogDown`:
+  un gatillo que ronda el 55 % no corta lo que se mantiene, como rebuscar). Si un menú se abre con el gatillo o el
   agarre ya apretados, no hacen clic ni cambian de pestaña hasta soltarlos y volver a apretar.
 - **HUD** curvo y **anclado a la cámara**: siempre fijo en la vista, como en la pantalla (1,5 m, 80° de arco, el eje del
   cilindro en los ojos). Si hay una pared delante, o el suelo bajo su borde de abajo o en sus lados, se acerca lo justo para
@@ -421,8 +422,9 @@ abrir un fallo del objeto «Modo VR» con lo que se vio.
   soltarlo (`TNVRHands::ShouldEatTriggerAxis`). Depende de que OpenXR mande el eje cuando cambia: comprobar la prueba 49.
 
 - **Stick mantenido al abrir un menú**: el primer fotograma puede mover el foco un paso.
-- **Gatillo rondando el 55 % en el juego**: el disparador «Down» no tiene histéresis; en las interacciones de mantener
-  (rebuscar, cofres) un gatillo justo en el umbral podría cortarlas.
+- **Gatillo rondando el 55 % en el juego**: ya tiene histéresis (suelto por debajo del 35 %); comprobar rebuscando con el
+  gatillo a medias que no se corta y que soltarlo del todo sí lo corta.
+
 - **Velocidad para lanzar**: es la media de los últimos 70 ms; comprobar que un lanzamiento rápido y corto pasa de
   `VRThrowSpeed` (250 cm/s) y que la dirección es la del gesto (si se queda corto, bajar
   `FHandVelocityWindow::DefaultWindowSeconds`).
