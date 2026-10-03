@@ -549,12 +549,14 @@ void ATN_ProcMapGenerator::GetMainPathObstaclesWorld(TArray<FVector4>& OutObstac
 		const bool bSpire = F.Type == EFeature::RockSpire && F.BranchIndex == INDEX_NONE;
 		// Los arcos se pasan por debajo, pero por el centro: van con el radio en negativo (medio fondo más 4 m).
 		const bool bArch = F.Type == EFeature::Formation && F.BranchIndex == INDEX_NONE && IsArchFormation(static_cast<EFormation>(F.Aux));
-		if (!bPlazaPiece && !bSpire && !bArch)
+		// Los géiseres del camino se cogen por el centro (los karts suben en ellos, #293): también con el radio en negativo.
+		const bool bGeyser = F.Type == EFeature::Geyser && F.BranchIndex == INDEX_NONE;
+		if (!bPlazaPiece && !bSpire && !bArch && !bGeyser)
 		{
 			continue;
 		}
 		const FVector Center = MapToWorld(F.Location);
-		const double Radius = bArch ? -(F.Length * 0.5 + 400.0) : F.Radius;
+		const double Radius = bArch ? -(F.Length * 0.5 + 400.0) : (bGeyser ? -1500.0 : F.Radius);
 		OutObstacles.Add(FVector4(Center.X, Center.Y, Center.Z, Radius * Scale));
 	}
 }

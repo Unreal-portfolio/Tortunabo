@@ -730,6 +730,12 @@ namespace TNProcMap
 			const double S0 = M[FMath::Max(0, i - 1)].S;
 			const double S1 = M[FMath::Min(M.Num() - 1, j + 1)].S;
 
+			// Karts: canal de agua abierta, sin isletas (el kart flota de una orilla a otra).
+			if (bIslet && P.bDrivable)
+			{
+				i = j;
+				continue;
+			}
 			if (bIslet)
 			{
 				const double LiMin = LerpD(900.0, 500.0, Diff);

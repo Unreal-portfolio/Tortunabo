@@ -25,13 +25,12 @@ namespace TNProcMap
 		FGenParams P = In;
 		if (P.bDrivable)
 		{
-			// Rally: sin lo que el buggy no puede recorrer (FGenParams::bDrivable). Los desniveles entre módulos se suben y
-			// se bajan por rampas con la pendiente máxima del camino en vez de por géiser o tobogán.
+			// Karts: sin lo que el kart no puede recorrer (FGenParams::bDrivable). Los desniveles grandes entre módulos se
+			// quedan como en el cooperativo: se suben en géiser y se bajan por la cascada (#293).
 			P.NumCrossings = 0;
 			P.NumBranches = 0;
 			P.NumLanes = 0;
 			P.GapsPerKm = 0.0;
-			P.SmoothTransitionMax = 1.0e9;
 			P.NarrowChance *= 0.5;
 			P.PathWidthMin = FMath::Max(P.PathWidthMin, DrivableMinPathWidth);
 			P.PathWidthMax = FMath::Max(P.PathWidthMax, P.PathWidthMin);

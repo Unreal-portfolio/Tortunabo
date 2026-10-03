@@ -24,6 +24,9 @@ namespace TNKartMode
 	TAutoConsoleVariable<int32> CVarKartBots(TEXT("TN.Kart.Bots"), -1,
 		TEXT("Karts: bots de la parrilla (-1 = los que falten hasta MinKarts karts; ?Bots= en la URL manda). Vale para la próxima partida."));
 
+	TAutoConsoleVariable<int32> CVarKartProbeArc(TEXT("TN.Kart.ProbeArc"), 0,
+		TEXT("Karts (diagnóstico, LogTNRally Verbose): perfil del suelo a lo ancho del camino alrededor de este arco (m) al empezar."));
+
 	TAutoConsoleVariable<int32> CVarKartSeats(TEXT("TN.Kart.Seats"), 0,
 		TEXT("Karts: tortugas por kart (1 o 2; 0 = las de por defecto; ?Seats= en la URL manda). Vale para la próxima partida."));
 
@@ -270,6 +273,30 @@ void ATN_KartGameMode::LogStartDiagnostics()
 		return;
 	}
 	NextStartLogTime = Now + 1.0;
+	static const IConsoleVariable* ProbeVar = IConsoleManager::Get().FindConsoleVariable(TEXT("TN.Kart.ProbeArc"));
+	const int32 ProbeArcM = ProbeVar ? ProbeVar->GetInt() : 0;
+	if (ProbeArcM > 0 && Now - KartState->StartServerTime < 1.5)
+	{
+		// Perfil del suelo a lo ancho del camino cada 4 m alrededor del arco pedido (diagnóstico de atascos).
+		ATN_ProcMapGenerator* Map = EnsureGenerator();
+		for (double Arc = (ProbeArcM - 40) * 100.0; Arc <= (ProbeArcM + 40) * 100.0; Arc += 400.0)
+		{
+			const FVector OnLine = KartTrack->GetLocationAtArc(Arc);
+			const FVector Dir = KartTrack->GetDirectionAtArc(Arc);
+			const FVector Right(-Dir.Y, Dir.X, 0.0);
+			FString Row;
+			for (int32 Side = -12; Side <= 12; Side += 3)
+			{
+				const FVector At = OnLine + Right * (Side * 100.0);
+				FHitResult Down;
+				const bool bDown = GetWorld()->LineTraceSingleByChannel(Down, At + FVector(0.0, 0.0, 1500.0), At - FVector(0.0, 0.0, 3000.0), ECC_WorldStatic);
+				Row += bDown ? FString::Printf(TEXT(" %+.0f%s"), Down.ImpactPoint.Z - OnLine.Z,
+					Down.GetActor() && Down.GetActor() != Map ? TEXT("*") : TEXT("")) : FString(TEXT(" ?"));
+			}
+			UE_LOG(LogTNRally, Verbose, TEXT("[Karts] perfil arco %.0f m (línea a %.0f, terreno %.0f):%s"), Arc / 100.0, OnLine.Z,
+				Map ? Map->GetTerrainHeightAt(OnLine) : 0.f, *Row);
+		}
+	}
 	for (const FTNRallyStanding& Entry : KartState->Standings)
 	{
 		if (const APawn* Kart = Entry.Vehicle)

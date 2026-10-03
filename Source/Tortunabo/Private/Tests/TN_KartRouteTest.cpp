@@ -1,4 +1,4 @@
-// Karts sobre el mapa generado del cooperativo (#291): el camino conducible del generador (TNProcMap::FGenParams::bDrivable)
+// Karts sobre el mapa generado del cooperativo (#291, #293): el camino conducible del generador (TNProcMap::FGenParams::bDrivable)
 // y la pista que sale de él (TNKart::PlanRouteFromPath: puertas, salida, meta, cajas y línea del piloto IA). Lógica pura.
 // Correr desde Session Frontend (categorías "Tortunabo.Kart.Route" y "Tortunabo.ProcMap.Drivable") o headless con
 // UnrealEditor-Win64-DebugGame-Cmd <uproject> -ExecCmds="Automation RunTests Tortunabo.Kart; Quit".
@@ -190,8 +190,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNProcMapDrivableTest, "Tortunabo.ProcMap.Driv
 bool FTNProcMapDrivableTest::RunTest(const FString& Parameters)
 {
 	using namespace TNProcMap;
-	constexpr uint32 NotDrivable = PathFlags::GeyserBase | PathFlags::Slide | PathFlags::CliffUp | PathFlags::Islet | PathFlags::Boardwalk
-		| PathFlags::Gap | PathFlags::Elevated | PathFlags::Colossal | PathFlags::TowerTop | PathFlags::UnderTower;
+	// Géiseres, cascadas y canales de agua sí (#293: el kart sube, baja y flota); pasarelas, huecos y estructuras, no.
+	constexpr uint32 NotDrivable = PathFlags::Boardwalk | PathFlags::Gap | PathFlags::Elevated | PathFlags::Colossal | PathFlags::TowerTop
+		| PathFlags::UnderTower;
+	int32 Geysers = 0;
+	int32 Slides = 0;
+	int32 WaterSamples = 0;
 	double PreviousLength = 0.0;
 	for (int32 D = 0; D < 3; ++D)
 	{
@@ -214,27 +218,37 @@ bool FTNProcMapDrivableTest::RunTest(const FString& Parameters)
 			int32 Blocked = 0;
 			double MinWidth = TNumericLimits<double>::Max();
 			double MaxSlope = 0.0;
+			// Los cortes del géiser (pared) y de la cascada no cuentan para la pendiente: se suben y se bajan de otra forma.
+			constexpr uint32 Cut = PathFlags::Slide | PathFlags::CliffUp | PathFlags::GeyserBase;
 			for (int32 Index = 0; Index < Layout.Main.Num(); ++Index)
 			{
 				const FPathSample& Sample = Layout.Main[Index];
 				Blocked += (Sample.Flags & NotDrivable) != 0 ? 1 : 0;
+				WaterSamples += (Sample.Flags & PathFlags::Islet) != 0 ? 1 : 0;
 				if ((Sample.Flags & PathFlags::Shore) == 0)
 				{
 					MinWidth = FMath::Min(MinWidth, Sample.Width);
 				}
-				if (Index > 0 && (Sample.Flags & PathFlags::Shore) == 0)
+				if (Index > 0 && (Sample.Flags & PathFlags::Shore) == 0 && ((Sample.Flags | Layout.Main[Index - 1].Flags) & Cut) == 0)
 				{
 					const double Run = FMath::Max(1.0, Sample.S - Layout.Main[Index - 1].S);
-					MaxSlope = FMath::Max(MaxSlope, FMath::Abs(Sample.Z - Layout.Main[Index - 1].Z) / Run);
+					// Un corte de bajada corto entre módulos (más bajo que la cascada) es un saltito: el kart cae y sigue.
+					const bool bLedge = (Layout.Main[Index - 1].Flags & PathFlags::Portal) != 0 && Sample.Z < Layout.Main[Index - 1].Z;
+					if (!bLedge)
+					{
+						MaxSlope = FMath::Max(MaxSlope, FMath::Abs(Sample.Z - Layout.Main[Index - 1].Z) / Run);
+					}
 				}
 			}
-			TestEqual(*FString::Printf(TEXT("Ni géiseres, ni toboganes, ni escalones, ni isletas, ni huecos (%s)"), *Where), Blocked, 0);
+			TestEqual(*FString::Printf(TEXT("Ni pasarelas, ni huecos, ni estructuras (%s)"), *Where), Blocked, 0);
 			TestTrue(*FString::Printf(TEXT("Sin pasos de menos de 6,5 m, tampoco en las cuevas (%s): %.0f cm"), *Where, MinWidth), MinWidth >= 650.0);
 			TestTrue(*FString::Printf(TEXT("Pendiente conducible (%s): %.2f"), *Where, MaxSlope), MaxSlope <= Layout.Params.MaxPathSlope * 1.6);
 			int32 Forbidden = 0;
 			for (const FFeature& Feature : Layout.Features)
 			{
-				const bool bForbidden = Feature.Type == EFeature::Geyser || Feature.Type == EFeature::SlideZone || Feature.Type == EFeature::Gap
+				Geysers += Feature.Type == EFeature::Geyser ? 1 : 0;
+				Slides += Feature.Type == EFeature::SlideZone ? 1 : 0;
+				const bool bForbidden = Feature.Type == EFeature::Gap
 					|| Feature.Type == EFeature::EggNest || Feature.Type == EFeature::Log || Feature.Type == EFeature::PathProp
 					|| Feature.Type == EFeature::Boulder || Feature.Type == EFeature::ClimbTower || Feature.Type == EFeature::BonusPickup
 					|| Feature.Type == EFeature::Islet || Feature.Type == EFeature::Boardwalk || Feature.Type == EFeature::Tower;
@@ -246,6 +260,8 @@ bool FTNProcMapDrivableTest::RunTest(const FString& Parameters)
 		TestTrue(FString::Printf(TEXT("La dificultad %d alarga el camino como en el cooperativo"), D), LengthSum > PreviousLength);
 		PreviousLength = LengthSum;
 	}
+	AddInfo(FString::Printf(TEXT("Mapas de karts: %d géiseres, %d cascadas y %d muestras de agua en el camino."), Geysers, Slides, WaterSamples));
+	TestTrue(TEXT("Con todas las semillas y dificultades, el camino de los karts sube en géiser y baja por cascadas"), Geysers > 0 && Slides > 0);
 
 	// Sin bDrivable la generación es la de siempre (mismos parámetros, mismo layout).
 	const FGenParams Coop = TN_MakeDefaultProcProfile(ETNProcGameMode::Coop, ETNProcDifficulty::Easy).ToGenParams(11u);

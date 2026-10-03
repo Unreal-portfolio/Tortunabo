@@ -12,6 +12,7 @@
 #include "Kart/TN_KartGunnerPawn.h"
 #include "Kart/TN_KartInput.h"
 #include "Kart/TN_KartItemComponent.h"
+#include "Kart/TN_KartTraversalComponent.h"
 #include "Net/UnrealNetwork.h"
 #include "PhysicsEngine/BodySetup.h"
 #include "Rally/TN_RallyLogic.h"
@@ -60,6 +61,7 @@ namespace TNKartBuggyDetail
 ATN_KartBuggy::ATN_KartBuggy()
 {
 	Items = CreateDefaultSubobject<UTN_KartItemComponent>(TEXT("KartItems"));
+	Traversal = CreateDefaultSubobject<UTN_KartTraversalComponent>(TEXT("KartTraversal"));
 	GunnerPawnClass = ATN_KartGunnerPawn::StaticClass();
 }
 

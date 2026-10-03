@@ -984,10 +984,11 @@ namespace TNProcMap
 		for (int32 i = 0; i < NumS; ++i) { L.Main[i].Z = Z[i]; }
 
 		// Tramos sobre agua: alternan suelo firme (barras de arena / barro) con isletas o
-		// pasarelas, salvo junto a torres, géiseres y toboganes, que necesitan suelo.
+		// pasarelas, salvo junto a torres, géiseres y toboganes, que necesitan suelo. En el mapa de los karts son canales
+		// de agua abierta sin isletas ni tablones (el kart los cruza flotando, #293).
 		double NextToggleS = -1.0;
 		bool bWetStretch = false;
-		for (int32 i = 0; i < NumS && !P.bDrivable; ++i)
+		for (int32 i = 0; i < NumS; ++i)
 		{
 			FPathSample& Sm = L.Main[i];
 			if (!IsWetBiome(Sm.Biome)) { NextToggleS = -1.0; continue; }
@@ -1009,9 +1010,31 @@ namespace TNProcMap
 				if ((L.Main[j].Flags & Solid) != 0) { bNearSolid = true; break; }
 			}
 			if (bNearSolid || (Sm.Flags & (PathFlags::Elevated | PathFlags::Colossal)) != 0) { continue; }
-			Sm.Flags |= (Sm.Biome == ETNProcBiome::Water) ? PathFlags::Islet : PathFlags::Boardwalk;
+			Sm.Flags |= (Sm.Biome == ETNProcBiome::Water || P.bDrivable) ? PathFlags::Islet : PathFlags::Boardwalk;
 			// Pasarela de tablones de 5,5-8 m (el agua de alrededor la da la poza).
-			if (Sm.Biome != ETNProcBiome::Water) { Sm.Width = FMath::Clamp(Sm.Width, 550.0, 800.0); }
+			if (Sm.Biome != ETNProcBiome::Water && !P.bDrivable) { Sm.Width = FMath::Clamp(Sm.Width, 550.0, 800.0); }
+		}
+		if (P.bDrivable)
+		{
+			// Karts: el camino baja al canal en rampa (pendiente máxima del camino) hasta casi el nivel del agua, como una
+			// rampa de botadura: el kart entra flotando y vuelve a salir sobre sus ruedas (#293).
+			for (int32 i = 0; i < NumS; ++i)
+			{
+				if ((L.Main[i].Flags & PathFlags::Islet) == 0) { continue; }
+				// El canal va a ras de agua (la cota del mar es la 0 del mapa): por ahí pasa el kart flotando.
+				L.Main[i].Z = FMath::Min(L.Main[i].Z, 0.0);
+				for (const int32 Step : { -1, 1 })
+				{
+					const bool bEdge = L.Main.IsValidIndex(i + Step) && (L.Main[i + Step].Flags & PathFlags::Islet) == 0;
+					for (int32 k = i + Step; bEdge && L.Main.IsValidIndex(k) && (L.Main[k].Flags & PathFlags::Islet) == 0; k += Step)
+					{
+						// 40 cm sobre el agua (TNProcMap::SeaLevel, la cota 0 del mapa) en la orilla.
+						const double Target = 40.0 + P.MaxPathSlope * FMath::Abs(L.Main[k].S - L.Main[i].S);
+						if (L.Main[k].Z <= Target) { break; }
+						L.Main[k].Z = Target;
+					}
+				}
+			}
 		}
 
 		// Tramo bajo de las murallas: pasa por su puerta. Sus muestras dentro del grueso del muro (y 3 m

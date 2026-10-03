@@ -158,6 +158,17 @@ bool ATN_KartTrack::BuildFromMap(ATN_ProcMapGenerator& Generator)
 	}
 	RoadArcs = Plan.RoadArcCm;
 	RoadHalfWidths = HalfWidths;
+	if (UE_LOG_ACTIVE(LogTNRally, Verbose))
+	{
+		for (const TNKart::FLineObstacle& Obstacle : LineObstacles)
+		{
+			const FVector Center(Obstacle.Center, 0.0);
+			const double Arc = FindArcGlobal(Center);
+			UE_LOG(LogTNRally, Verbose, TEXT("[KartTrack] Obstáculo%s en (%.0f, %.0f), arco %.0f m, radio %.1f m; la línea pasa a %.1f m."),
+				Obstacle.bKeepCentered ? TEXT(" centrado") : TEXT(""), Obstacle.Center.X, Obstacle.Center.Y, Arc / 100.0,
+				Obstacle.RadiusCm / 100.0, FVector::Dist2D(Center, GetLocationAtArc(Arc)) / 100.0);
+		}
+	}
 	BuildGateWings(Plan, Generator);
 	MapGeneration = Generator.GetBuiltGeneration();
 
@@ -179,9 +190,31 @@ bool ATN_KartTrack::BuildFromMap(ATN_ProcMapGenerator& Generator)
 		if (Slope > MaxSlope) { MaxSlope = Slope; MaxSlopeArc = Plan.RoadArcCm[Index]; }
 		if (Plan.RoadWidthCm[Index] < MinWidth) { MinWidth = Plan.RoadWidthCm[Index]; MinWidthArc = Plan.RoadArcCm[Index]; }
 	}
-	UE_LOG(LogTNRally, Log, TEXT("[KartTrack] Mapa %d: %.2f km, %d puertas, %d cajas, %d obstáculos rodeados; pendiente máxima %.0f %% en %.0f m, paso más estrecho %.1f m en %.0f m."),
-		MapGeneration, GetTrackLengthCm() / 100000.0, GetGateCount(), ItemBoxes.Num(), Obstacles.Num(), 100.0 * MaxSlope,
-		MaxSlopeArc / 100.0, MinWidth / 100.0, MinWidthArc / 100.0);
+	// Lo que hay por el camino para el kart (#293): géiseres, cascadas y metros de agua.
+	int32 GeyserCount = 0;
+	int32 SlideCount = 0;
+	int32 WaterSamples = 0;
+	uint32 PreviousFlags = 0;
+	double PathArc = 0.0;
+	for (int32 Index = 0; Index < Points.Num(); ++Index)
+	{
+		const FTNProcPathPoint& Point = Points[Index];
+		PathArc += Index > 0 ? FVector::Dist(Points[Index - 1].Location, Point.Location) : 0.0;
+		constexpr uint32 Watched = TNProcMap::PathFlags::GeyserBase | TNProcMap::PathFlags::Slide | TNProcMap::PathFlags::CliffUp
+			| TNProcMap::PathFlags::Islet | TNProcMap::PathFlags::Tunnel | TNProcMap::PathFlags::Portal;
+		if ((Point.Flags & Watched) != (PreviousFlags & Watched) || (Index > 0 && FMath::Abs(Point.Location.Z - Points[Index - 1].Location.Z) > 150.0))
+		{
+			UE_LOG(LogTNRally, Verbose, TEXT("[KartTrack] Camino a %.0f m: cota %.0f, ancho %.1f m, banderas %u."), PathArc / 100.0,
+				Point.Location.Z, Point.Width / 100.0, Point.Flags);
+		}
+		GeyserCount += (Point.Flags & TNProcMap::PathFlags::GeyserBase) != 0 && (PreviousFlags & TNProcMap::PathFlags::GeyserBase) == 0 ? 1 : 0;
+		SlideCount += (Point.Flags & TNProcMap::PathFlags::Slide) != 0 && (PreviousFlags & TNProcMap::PathFlags::Slide) == 0 ? 1 : 0;
+		WaterSamples += (Point.Flags & TNProcMap::PathFlags::Islet) != 0 ? 1 : 0;
+		PreviousFlags = Point.Flags;
+	}
+	UE_LOG(LogTNRally, Log, TEXT("[KartTrack] Mapa %d: %.2f km, %d puertas, %d cajas, %d obstáculos rodeados, %d géiseres, %d cascadas, %d muestras de agua; pendiente máxima %.0f %% en %.0f m, paso más estrecho %.1f m en %.0f m."),
+		MapGeneration, GetTrackLengthCm() / 100000.0, GetGateCount(), ItemBoxes.Num(), Obstacles.Num(), GeyserCount, SlideCount, WaterSamples,
+		100.0 * MaxSlope, MaxSlopeArc / 100.0, MinWidth / 100.0, MinWidthArc / 100.0);
 	return true;
 }
 

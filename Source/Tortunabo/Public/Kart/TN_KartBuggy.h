@@ -1,7 +1,8 @@
 // Kart de los karts del mapa del cooperativo: el buggy de SkiTemplar (ATN_Buggy, sin tocarlo) con lo que es solo de los
 // karts. Objetos (#304, UTN_KartItemComponent): los usa la artillera si la hay y si no la conductora. Artillera (#295,
 // ATN_KartGunnerPawn): su inclinación cambia cuánto gira el kart. Conductora sola (#295): mira alrededor con el ratón o el
-// stick derecho y la torreta sigue a la cámara (dispara hacia donde mira, con un poco de ayuda al apuntar).
+// stick derecho y la torreta sigue a la cámara (dispara hacia donde mira, con un poco de ayuda al apuntar). Géiseres,
+// cascadas y agua (#293, UTN_KartTraversalComponent): sube en géiser, baja por la cascada y flota como una balsa.
 //
 // Red: la inclinación de la artillera y el apuntado de la conductora sola llegan por RPC validada y se replican; la
 // inclinación la aplican el servidor y la conductora local, que simulan el chasis.
@@ -13,6 +14,7 @@
 
 class UTN_KartInputSet;
 class UTN_KartItemComponent;
+class UTN_KartTraversalComponent;
 class USpringArmComponent;
 struct FInputActionValue;
 
@@ -53,6 +55,7 @@ public:
 	virtual void RallyTeleport(const FTransform& Where, float LockSeconds, float GhostSeconds) override;
 
 	UTN_KartItemComponent* GetItems() const { return Items; }
+	UTN_KartTraversalComponent* GetTraversal() const { return Traversal; }
 
 	/** Inclinación de la artillera en [-1, 1] (replicada). */
 	UFUNCTION(BlueprintPure, Category = "Karts")
@@ -88,6 +91,10 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, Category = "Components")
 	TObjectPtr<UTN_KartItemComponent> Items;
+
+	/** Géiseres, cascadas y agua (#293). */
+	UPROPERTY(VisibleAnywhere, Category = "Components")
+	TObjectPtr<UTN_KartTraversalComponent> Traversal;
 
 private:
 	UTN_KartInputSet* GetKartInput();
