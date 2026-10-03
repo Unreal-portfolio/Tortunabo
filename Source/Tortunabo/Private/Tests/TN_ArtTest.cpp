@@ -19,6 +19,7 @@
 #include "HAL/IConsoleManager.h"
 #include "Internationalization/Regex.h"
 #include "Misc/FileHelper.h"
+#include "Misc/PackageName.h"
 #include "Misc/Paths.h"
 #include "Misc/ScopeExit.h"
 #include "ProceduralMeshComponent.h"
@@ -101,7 +102,9 @@ bool FTNArtSlotTableTest::RunTest(const FString& Parameters)
 		Seen.Add(Name);
 		const FString Kind(Info.Kind);
 		TestTrue(FString::Printf(TEXT("%s: tipo conocido"), *Name),
-			Kind == TNArt::SlotKind::Piece || Kind == TNArt::SlotKind::Component || Kind == TNArt::SlotKind::Instances);
+			Kind == TNArt::SlotKind::Piece || Kind == TNArt::SlotKind::Component || Kind == TNArt::SlotKind::Instances || Kind == TNArt::SlotKind::Bone);
+		TestEqual(FString::Printf(TEXT("%s: las piezas de la tortuga (y solo ellas) van pegadas a un hueso"), *Name),
+			Kind == TNArt::SlotKind::Bone, TNArt::ZoneOf(Name) == TEXT("Turtle"));
 		TestTrue(FString::Printf(TEXT("%s: existe su fichero %s"), *Name, Info.Source),
 			FPaths::FileExists(FPaths::Combine(PrivateDir, Info.Source)));
 		TestTrue(FString::Printf(TEXT("%s: dice qué es, su tamaño y su pivote"), *Name),
@@ -110,6 +113,7 @@ bool FTNArtSlotTableTest::RunTest(const FString& Parameters)
 	}
 
 	TestTrue(TEXT("Nombre válido"), TNArt::IsValidSlotName(TEXT("ProcMap.Rock.Boulder2")));
+	TestTrue(TEXT("Pieza de la tortuga"), TNArt::IsValidSlotName(TEXT("Turtle.Shell")));
 	TestFalse(TEXT("Sin zona conocida"), TNArt::IsValidSlotName(TEXT("Menu.Logo")));
 	TestFalse(TEXT("Solo la zona"), TNArt::IsValidSlotName(TEXT("Lobby")));
 	TestFalse(TEXT("Parte en minúscula"), TNArt::IsValidSlotName(TEXT("Lobby.castle")));
@@ -489,9 +493,10 @@ bool FTNArtUnknownPiecesTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("La mal escrita"), Unknown.Contains(FName(TEXT("Lobby.Castle.Towers"))));
 	TestEqual(TEXT("Sin catálogo, nada"), TNArt::FindUnknownPieces(nullptr).Num(), 0);
 
-	// Los catálogos del proyecto no tienen ninguna.
+	// Los catálogos del proyecto (los que ya existen) no tienen ninguna.
 	for (const TSoftObjectPtr<UTN_ArtCatalog>& Soft : GetDefault<UTN_ArtSettings>()->Catalogs)
 	{
+		if (!FPackageName::DoesPackageExist(Soft.ToSoftObjectPath().GetLongPackageName())) { continue; }
 		if (const UTN_ArtCatalog* Project = Soft.LoadSynchronous())
 		{
 			for (const FName& Name : TNArt::FindUnknownPieces(Project))
