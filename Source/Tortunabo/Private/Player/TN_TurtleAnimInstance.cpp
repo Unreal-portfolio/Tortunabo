@@ -1323,6 +1323,18 @@ void UTN_TurtleAnimInstance::PlayThrow(bool bBothFlippers)
 	bPendingThrowBoth = bBothFlippers;
 }
 
+bool UTN_TurtleAnimInstance::SnapOutOfShellPose()
+{
+	if (Frame.ShellW <= 0.f)
+	{
+		return false;
+	}
+	Frame.ShellW = 0.f;
+	// La evaluación lee la copia del proxy (la de NativeUpdateAnimation llega en el siguiente, y con la pausa no llega).
+	GetProxyOnGameThread<FTNTurtleAnimProxy>().Frame.ShellW = 0.f;
+	return true;
+}
+
 void UTN_TurtleAnimInstance::BeginGetUp(const TArray<FTransform>& LocalPose, float Seconds)
 {
 	GetUpPose = LocalPose;

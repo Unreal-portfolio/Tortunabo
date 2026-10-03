@@ -310,3 +310,15 @@ def test_done_sin_las_dos_validaciones_o_con_pr_abierta_no_se_cierra(monkeypatch
     cambios, avisos = [], []
     tablero.reconciliar_fusiones(proyecto, abiertas, cambios, avisos)
     assert not cambios
+
+
+def test_comprobar_campos_rechaza_opciones_que_no_existen_y_admite_vacios():
+    from base import ErrorTablero, comprobar_campos
+
+    proyecto = {"campos": {"Área": {"id": "A", "opciones": {"Red": "1", "Personaje": "2"}},
+                           "Prioridad": {"id": "P", "opciones": {"P0": "a"}}}}
+    comprobar_campos(proyecto, {"Área": "Personaje", "Prioridad": "P0", "Editor": None})
+    with pytest.raises(ErrorTablero, match="Área"):
+        comprobar_campos(proyecto, {"Área": "Arte", "Prioridad": "P0"})
+    with pytest.raises(ErrorTablero, match="Fase"):
+        comprobar_campos(proyecto, {"Fase": "F1"})
