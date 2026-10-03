@@ -377,10 +377,12 @@ def reconciliar_bloqueos(proyecto: dict, cambios: list) -> None:
 
 def reconciliar_lotes(proyecto: dict, cambios: list, avisos: list) -> None:
     """Lotes abiertos: miembros listos → Validada; con la PR del lote en dev y todos cerrados, se cierra el lote."""
-    fusionadas = prs_fusionadas()
+    fusionadas, abiertas = prs_fusionadas(), prs_abiertas()
     for n, issue in proyecto["items"].items():
         if issue["state"] != "OPEN" or objetos.es_objeto(issue) or lotes.es_lote(issue) or not lotes.lotes_de(issue):
             continue
+        if esta_fusionada(n, fusionadas, abiertas):
+            continue  # la decide reconciliar_fusiones: pasarla a Validada aquí la dejaría cerrada en Validada (#436)
         destino, _ = flujo.estado_objetivo(issue["valores"].get("Status"), issue["valores"], False, en_lote=True)
         if destino == "Validada" and issue["valores"].get("Status") != "Validada":
             cambios.append((f"#{n} → Validada (aprobada y probada; espera al resto de su lote)",
@@ -510,7 +512,8 @@ def aplicar_estado(proyecto: dict, numero: int, valores: dict, fusionada: bool, 
     issue = proyecto["items"].get(numero, {})
     actual = issue.get("valores", {}).get("Status")
     estado, cerrar = flujo.estado_objetivo(actual, valores, fusionada, en_lote=bool(lotes.lotes_de(issue)), sin_pr=sin_pr)
-    if estado and estado != actual:
+    if estado and (estado != actual or cerrar):
+        # Al cerrar se fija aunque la foto ya lo diga: otro cambio del mismo `sync` puede haberlo movido (#436).
         poner_campo(proyecto, numero, "Status", estado)
     if cerrar and proyecto["items"].get(numero, {}).get("state") != "CLOSED":
         motivo = "Probada en el editor" if sin_pr else f"Fusionada en `{INTEGRACION}`, revisada y probada"
