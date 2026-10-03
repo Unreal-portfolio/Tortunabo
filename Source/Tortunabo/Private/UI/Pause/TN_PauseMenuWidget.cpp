@@ -336,6 +336,10 @@ void UTN_PauseRow::NativeOnInitialized()
 	Super::NativeOnInitialized();
 	// Se enfoca para que el teclado y el mando la recorran (tiene que ser antes de montar su widget de Slate).
 	SetIsFocusable(true);
+	// Y se le puede dar con el puntero: la navegación de Slate (flechas, cruceta, stick) busca la fila siguiente en la rejilla
+	// de lo que se puede tocar de la ventana, y un UUserWidget nace SelfHitTestInvisible, fuera de esa rejilla. Sin esto, el
+	// ratón la enfocaba (sus hijos sí se tocan) pero arriba y abajo no llevaban a ninguna parte (#311).
+	SetVisibility(ESlateVisibility::Visible);
 	SetRenderTransformPivot(FVector2D(0.5f, 0.5f));
 	// La raíz existe desde ya: las filas se meten en listas que ya están en pantalla antes de montarse (Setup...), y el
 	// widget de Slate de la fila se crea al entrar en la lista. Si la raíz llegara después, la fila quedaría vacía:
@@ -904,6 +908,17 @@ FReply UTN_PauseRow::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEven
 		StepBy(1);
 		return FReply::Handled();
 	}
+	// Una pestaña: izquierda y derecha cambian de pestaña (el menú deja el foco en la barra).
+	if (OnSideStep && IsKey(Key, { EKeys::Left, EKeys::A, EKeys::Gamepad_DPad_Left, EKeys::Gamepad_LeftStick_Left }))
+	{
+		OnSideStep(-1);
+		return FReply::Handled();
+	}
+	if (OnSideStep && IsKey(Key, { EKeys::Right, EKeys::D, EKeys::Gamepad_DPad_Right, EKeys::Gamepad_LeftStick_Right }))
+	{
+		OnSideStep(1);
+		return FReply::Handled();
+	}
 	// Fila de tecla: Supr o Y del mando la devuelven a la de serie.
 	if (Kind == ETNPauseRowKind::KeyBind && IsKey(Key, { EKeys::Delete, EKeys::Gamepad_FaceButton_Top }))
 	{
@@ -930,9 +945,11 @@ FReply UTN_PauseRow::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEven
 
 FNavigationReply UTN_PauseRow::NativeOnNavigation(const FGeometry& MyGeometry, const FNavigationEvent& InNavigationEvent, const FNavigationReply& InDefaultReply)
 {
-	// En los deslizadores y las listas, izquierda y derecha cambian el valor (el stick también manda navegación): no se sale.
+	// En los deslizadores, las listas y las pestañas, izquierda y derecha cambian el valor o la pestaña (el stick también
+	// manda navegación): no se sale.
 	const EUINavigation Direction = InNavigationEvent.GetNavigationType();
-	if ((Kind == ETNPauseRowKind::Slider || Kind == ETNPauseRowKind::Choice) && (Direction == EUINavigation::Left || Direction == EUINavigation::Right))
+	const bool bSideStep = Kind == ETNPauseRowKind::Slider || Kind == ETNPauseRowKind::Choice || OnSideStep;
+	if (bSideStep && (Direction == EUINavigation::Left || Direction == EUINavigation::Right))
 	{
 		return FNavigationReply::Stop();
 	}
@@ -1454,6 +1471,25 @@ UWidget* UTN_PauseMenuWidget::BuildSettingsPage()
 			if (UTN_PauseMenuWidget* Menu = WeakThis.Get()) { Menu->ShowTab(static_cast<ETNPauseTab>(i)); }
 		});
 		TabRow->SetDescription(NSLOCTEXT("TNPause", "TabDesc", "Q y E (o LB y RB) cambian de pestaña."));
+		// En la barra, izquierda y derecha también: se abre la pestaña de al lado de esta (no de la abierta: subiendo desde
+		// la lista se puede llegar a otra) y el foco sigue en la barra.
+		TabRow->OnSideStep = [WeakThis, i](int32 Direction)
+		{
+			UTN_PauseMenuWidget* Menu = WeakThis.Get();
+			if (!Menu)
+			{
+				return;
+			}
+			const ETNPauseTab Next = Menu->StepTab(static_cast<ETNPauseTab>(i), Direction);
+			if (Next == static_cast<ETNPauseTab>(i))
+			{
+				return;
+			}
+			Menu->PlayUISound(ETNPauseSound::Press, 0.f);
+			// La de al lado ya está abierta: solo el foco.
+			if (Next == Menu->Tab && Menu->TabRows.IsValidIndex(static_cast<int32>(Next))) { Menu->FocusRow(Menu->TabRows[static_cast<int32>(Next)]); }
+			else { Menu->ShowTab(Next, false); }
+		};
 		TNPauseUI::AddH(TabBar, TabRow, FMargin(5.f, 0.f));
 		TabRows.Add(TabRow);
 		// Un invitado de la partida local, solo Controles y Juego; en la partida local, sin voz.
@@ -1915,7 +1951,7 @@ void UTN_PauseMenuWidget::ShowPage(ETNPausePage NewPage)
 	RefreshHint();
 }
 
-void UTN_PauseMenuWidget::ShowTab(ETNPauseTab NewTab)
+void UTN_PauseMenuWidget::ShowTab(ETNPauseTab NewTab, bool bFocusList)
 {
 	if (!IsTabAvailable(NewTab))
 	{
@@ -1927,7 +1963,9 @@ void UTN_PauseMenuWidget::ShowTab(ETNPauseTab NewTab)
 		if (TabRows[i]) { TabRows[i]->SetActive(i == static_cast<int32>(NewTab)); }
 	}
 	FillTab();
-	FocusFirstOfPage();
+	UTN_PauseRow* TabRow = TabRows.IsValidIndex(static_cast<int32>(NewTab)) ? TabRows[static_cast<int32>(NewTab)].Get() : nullptr;
+	if (!bFocusList && TabRow) { FocusRow(TabRow); }
+	else { FocusFirstOfPage(); }
 }
 
 void UTN_PauseMenuWidget::FillTab()
@@ -3664,6 +3702,28 @@ FReply UTN_PauseMenuWidget::NativeOnAnalogValueChanged(const FGeometry& InGeomet
 	return FReply::Handled();
 }
 
+FNavigationReply UTN_PauseMenuWidget::NativeOnNavigation(const FGeometry& MyGeometry, const FNavigationEvent& InNavigationEvent,
+	const FNavigationReply& InDefaultReply)
+{
+	// Ajustes: arriba desde la primera fila de la lista lleva a la pestaña abierta (Slate, por la geometría, elegiría cualquiera
+	// de la barra), así izquierda y derecha siguen desde ella.
+	const UTN_PauseRow* Focused = LastFocused.Get();
+	if (Page == ETNPausePage::Settings && !IsConfirmOpen() && InNavigationEvent.GetNavigationType() == EUINavigation::Up
+		&& SettingsList && Focused && Focused->GetParent() == SettingsList && TabRows.IsValidIndex(static_cast<int32>(Tab)) && TabRows[static_cast<int32>(Tab)])
+	{
+		const UTN_PauseRow* FirstRow = nullptr;
+		for (int32 i = 0; i < SettingsList->GetChildrenCount() && !FirstRow; ++i)
+		{
+			FirstRow = Cast<UTN_PauseRow>(SettingsList->GetChildAt(i));
+		}
+		if (FirstRow == Focused)
+		{
+			return FNavigationReply::Explicit(TabRows[static_cast<int32>(Tab)]->TakeWidget());
+		}
+	}
+	return Super::NativeOnNavigation(MyGeometry, InNavigationEvent, InDefaultReply);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Menú: contexto
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3715,11 +3775,11 @@ bool UTN_PauseMenuWidget::IsTabAvailable(ETNPauseTab InTab) const
 	return !(InTab == ETNPauseTab::Voice && IsLocalGame());
 }
 
-ETNPauseTab UTN_PauseMenuWidget::StepTab(int32 Direction) const
+ETNPauseTab UTN_PauseMenuWidget::StepTab(ETNPauseTab From, int32 Direction) const
 {
 	const int32 Count = static_cast<int32>(ETNPauseTab::Count);
 	const int32 Step = Direction < 0 ? Count - 1 : 1;
-	int32 Index = static_cast<int32>(Tab);
+	int32 Index = static_cast<int32>(From);
 	for (int32 Tries = 0; Tries < Count; ++Tries)
 	{
 		Index = (Index + Step) % Count;

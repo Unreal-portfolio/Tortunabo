@@ -216,6 +216,15 @@ despacio por la arena no debe sonar; un bote de más de 2,6 m/s, sí.
 Escape en el juego y Tabulador en el editor (PIE); Start en el mando. No tiene comandos. La lista de pruebas está en
 `Docs/Menu_Pausa.md`.
 
+Prueba automática con mando, teclado y pantalla partida: pulsa la cruceta, el stick, las flechas, A, B y RB como los
+manda el motor sobre el menú de pausa (los ajustes del menú principal), «Crear partida» y «Unirse», y el menú de un
+invitado de la partida local. Necesita el juego con su ventana, así que no sale en el editor:
+
+```
+UnrealEditor-Win64-DebugGame.exe <uproject> -game -RenderOffScreen -NoSteam -ResX=1280 -ResY=720 -unattended -nosound
+    -ExecCmds="Automation RunTests Tortunabo.UI.PausePad; Quit"
+```
+
 ## Modo VR
 
 Detalle, controles y pruebas en `Docs/Modo_VR.md`. Se escriben en la ventana de **quien lo prueba** (el modo VR es de cada

@@ -18,7 +18,7 @@ con el estilo del HUD (`TN_HUDArt`, `TN_HUDStyle`, `TN_ShopArt`) y los ajustes s
 | `TNHUDFonts` | `Private/UI/HUD/TN_HUDFonts.*` | La fuente compuesta de la interfaz (`TNHUDStyle::Font`): la del motor más una fuente de reserva por idioma cuando su archivo está en `Content/Slate/Fonts`. |
 | `UTN_PauseMenuWidget` | `UI/Pause/TN_PauseMenuWidget.*` | El menú: cabecera, portada, ajustes en cinco pestañas, página de controles (con el cambio de teclas), avisos y cuadro de confirmación. También sale desde el menú principal (ver «Ajustes desde el menú principal»). |
 | Botón «Ajustes» del menú principal | `UI/Menu/MP_MainMenuWidget.*`, `UTN_GameSettingsSubsystem::OpenMainMenuSettings` | Un botón hecho en código junto a los del Blueprint que abre este mismo menú. |
-| `UTN_PauseRow` | `UI/Pause/TN_PauseMenuWidget.*` | Fila enfocable: botón, deslizador, lista de opciones, texto, medidor o tecla. |
+| `UTN_PauseRow` | `UI/Pause/TN_PauseMenuWidget.*` | Fila enfocable: botón, deslizador, lista de opciones, texto, medidor o tecla. Es `Visible` (no `SelfHitTestInvisible`, el de serie de un `UUserWidget`): la navegación de Slate solo llega a lo que se puede tocar. |
 | `UTN_FpsCounterWidget` | `UI/Pause/TN_PauseMenuWidget.*` | Contador de FPS (ajuste «Mostrar FPS»). |
 | `UTN_TalkersWidget` | `UI/Pause/TN_PauseMenuWidget.*` | «Quién habla»: los nombres de quien se oye hablar por voz, a la derecha (accesibilidad). |
 | `TNPauseArt` | `Private/UI/Pause/TN_PauseArt.h` | Iconos pintados en código: los de los botones de la portada, altavoz y micrófono (tachados si están silenciados) y la corona del anfitrión. |
@@ -86,7 +86,8 @@ mando por separado y los nombres en español, y se cambian ahí mismo (ver Contr
 sticks), los controles del espectador y moverse por los menús.
 
 **Moverse por el menú**: flechas, WASD, cruceta o stick izquierdo; Intro, Espacio o A pulsan; izquierda y derecha (A y
-D) cambian los deslizadores y las listas; Q y E o LB y RB cambian de pestaña; el ratón enfoca al pasar por encima,
+D) cambian los deslizadores y las listas y, en la barra de pestañas, abren la de al lado (arriba desde la lista lleva a
+la pestaña abierta); Q y E o LB y RB cambian de pestaña; el ratón enfoca al pasar por encima,
 pulsa con clic y arrastra los deslizadores; la rueda desplaza las listas. Cada fila suena al enfocarla («pom») y al
 pulsar («plin»): los sonidos de las conchas (`UTN_ScoreShellSynthComponent`); al mover un deslizador el «pom» sube de
 tono con el valor.
