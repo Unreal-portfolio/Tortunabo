@@ -48,6 +48,8 @@ private:
 		TArray<float> GameThreadMs;
 		TArray<float> RenderThreadMs;
 		TArray<float> GpuMs;
+		/** 1 si el hilo de juego estaba en un núcleo de eficiencia (CPU híbrida) al empezar o al acabar el fotograma de FrameMs. */
+		TArray<uint8> FrameOnECore;
 		float HitchMs = 0.f;
 		double MemoryMB = 0.0;
 		int32 Actors = 0;
@@ -97,4 +99,9 @@ private:
 	TArray<TWeakObjectPtr<AActor>> Spawned;
 	int32 SavedMaxFps = 0;
 	bool bMaxFpsChanged = false;
+	/** QoS alta pedida a Windows al empezar (sin -TNStressDefaultQoS) y si la aceptó; ver TN_CpuCoreProbe.h. */
+	bool bHighQoSRequested = false;
+	bool bHighQoSApplied = false;
+	bool bPerformanceCoresApplied = false;
+	bool bLastFrameOnECore = false;
 };
