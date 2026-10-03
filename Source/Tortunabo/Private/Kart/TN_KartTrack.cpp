@@ -13,6 +13,8 @@ namespace TNKart
 {
 	namespace
 	{
+		/** Lo que se hunde cada puerta bajo el suelo (cm). */
+		constexpr double GateSinkCm = 200.0;
 		/** La meta, como poco esto por encima del mar (cm): en la arena seca, no en la orilla. */
 		constexpr double FinishAboveSeaCm = 40.0;
 		/** Altura de las cajas sobre el suelo (cm). */
@@ -174,7 +176,14 @@ bool ATN_KartTrack::BuildFromMap(ATN_ProcMapGenerator& Generator)
 	const TArray<double> Offsets = TNKart::PlanRacingLineOffsets(Plan.Road, HalfWidths, LineObstacles, LineClearanceCm, LineRampCm);
 	const TArray<FVector> Line = TNKart::OffsetRoad(Plan.Road, Offsets);
 
-	if (!BuildFromGates(Plan.Gates, false, Line, 0.0))
+	// Cada puerta, algo hundida en el suelo: su volumen (10 m de alto desde la base) recoge al kart aunque el suelo real quede
+	// un poco por debajo de la cota del camino (bocas de cueva, orillas) o salga de un salto.
+	TArray<TNRally::FGateDef> GateDefs = Plan.Gates;
+	for (TNRally::FGateDef& Gate : GateDefs)
+	{
+		Gate.Location.Z = FMath::Min(Gate.Location.Z, static_cast<double>(Generator.GetTerrainHeightAt(Gate.Location))) - TNKart::GateSinkCm;
+	}
+	if (!BuildFromGates(GateDefs, false, Line, 0.0))
 	{
 		return false;
 	}
