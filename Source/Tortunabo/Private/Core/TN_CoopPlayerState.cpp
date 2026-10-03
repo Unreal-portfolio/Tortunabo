@@ -1,6 +1,7 @@
 #include "Core/TN_CoopPlayerState.h"
 #include "Core/TN_Log.h"
 #include "Core/TN_CoopGameState.h"
+#include "Game/TN_LateJoinRules.h"
 #include "Player/TortugaCharacter.h"
 #include "World/TN_ScoreShellBurst.h"
 #include "GameFramework/PlayerController.h"
@@ -209,6 +210,46 @@ void ATN_CoopPlayerState::MulticastScoreShellCollected_Implementation(FVector_Ne
 	{
 		OnScoreShellCollected.Broadcast(Value, Tier, WorldLocation);
 	}
+}
+
+void ATN_CoopPlayerState::SeamlessTravelTo(APlayerState* NewPlayerState)
+{
+	TGuardValue<bool> TravelGuard(bCopyingForSeamlessTravel, true);
+	Super::SeamlessTravelTo(NewPlayerState);
+}
+
+void ATN_CoopPlayerState::CopyProperties(APlayerState* PlayerState)
+{
+	Super::CopyProperties(PlayerState);
+
+	ATN_CoopPlayerState* Target = Cast<ATN_CoopPlayerState>(PlayerState);
+	if (!Target || bCopyingForSeamlessTravel)
+	{
+		return;
+	}
+
+	// Lo copia AGameMode::AddInactivePlayer (Duplicate) al desconectarse: es lo que recupera quien vuelve a la sala.
+	FTNReconnectState State;
+	State.bIsAlive = bIsAlive;
+	State.bIsDBNO = bIsDBNO;
+	State.bHasFinishedRun = bHasFinishedRun;
+	State.bIsEliminated = bIsEliminated;
+	const FTNReconnectState Saved = TNLateJoinLogic::SanitizeForReconnect(State);
+
+	Target->bIsAlive = Saved.bIsAlive;
+	Target->bIsDBNO = Saved.bIsDBNO;
+	Target->bHasFinishedRun = Saved.bHasFinishedRun;
+	Target->bIsEliminated = Saved.bIsEliminated;
+	Target->FinishRank = FinishRank;
+	Target->FinishTimeSeconds = FinishTimeSeconds;
+	Target->RaceScore = RaceScore;
+	Target->RoundWins = RoundWins;
+	Target->RaceShellHalves = RaceShellHalves;
+	Target->TeamIndex = TeamIndex;
+	Target->EquippedHelmetId = EquippedHelmetId;
+	Target->EquippedSkinId = EquippedSkinId;
+	Target->EquippedShellId = EquippedShellId;
+	Target->EquippedEyesId = EquippedEyesId;
 }
 
 void ATN_CoopPlayerState::ResetForNewRace()

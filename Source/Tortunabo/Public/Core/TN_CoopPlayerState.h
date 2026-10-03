@@ -211,7 +211,21 @@ public:
 
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
+	/** @brief Viaje sin cortes: marca la copia para que CopyProperties no arrastre la carrera anterior. */
+	virtual void SeamlessTravelTo(APlayerState* NewPlayerState) override;
+
+protected:
+	/**
+	 * @brief Copia el estado de carrera (puntos, vivo o muerto, meta) al PlayerState inactivo de quien se desconecta, para
+	 *        devolvérselo si vuelve a la sala (#345). Derribado cuenta como muerto. En el viaje sin cortes no se copia:
+	 *        la ronda nueva empieza de cero.
+	 */
+	virtual void CopyProperties(APlayerState* PlayerState) override;
+
 private:
+	/** true solo dentro de SeamlessTravelTo. */
+	bool bCopyingForSeamlessTravel = false;
+
 	float ServerLastQuickChatTime = -10000.f;
 	TMap<uint8, float> ServerLastEmoteTimes;
 
