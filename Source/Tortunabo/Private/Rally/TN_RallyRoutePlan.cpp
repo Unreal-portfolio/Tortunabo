@@ -293,9 +293,16 @@ namespace TNRally
 			const FVector2D Right(-Dir.Y, Dir.X);
 			const double Edge = Limit(Index);
 			Blocks.Reset();
+			bool bCentered = false;
 			for (const FLineObstacle& Obstacle : Obstacles)
 			{
 				const FVector2D To = Obstacle.Center - Point;
+				if (Obstacle.bKeepCentered)
+				{
+					// Bajo un arco, por el centro (los lados son más bajos y ahí están sus pies).
+					bCentered |= FVector2D::Distance(Obstacle.Center, Point) <= Obstacle.RadiusCm;
+					continue;
+				}
 				const double Keep = Obstacle.RadiusCm + ClearanceCm;
 				const double Along = FVector2D::DotProduct(To, Dir);
 				const double Lateral = FVector2D::DotProduct(To, Right);
@@ -307,6 +314,11 @@ namespace TNRally
 			}
 			if (Blocks.Num() == 0)
 			{
+				if (bCentered)
+				{
+					bCore[Index] = true;
+					Offsets[Index] = 0.0;
+				}
 				continue;
 			}
 			auto IsFree = [&Blocks](double Offset)

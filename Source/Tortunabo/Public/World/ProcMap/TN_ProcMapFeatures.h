@@ -1254,7 +1254,7 @@ namespace TNProcMap
 					// Aguja (alta y fina) o mogote (bajo y ancho) en mitad de la explanada, con carriles a ambos lados.
 					const bool bSpire = Rng.Chance(0.6);
 					const double R = bSpire ? Rng.Range(150.0, 320.0) : Rng.Range(380.0, 700.0);
-					const double Room = W * 0.5 - R - 500.0;
+					const double Room = W * 0.5 - R - (L.Params.bDrivable ? 800.0 : 500.0);
 					if (Room < 0.0) { continue; }
 					FFeature F = MakeAtSample(EFeature::RockSpire, Sm, i, BranchIndex);
 					F.Location = FVector(Sm.P + N * Rng.Range(-Room, Room) * 0.6, Sm.Z);

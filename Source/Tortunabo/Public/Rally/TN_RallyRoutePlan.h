@@ -108,11 +108,16 @@ namespace TNRally
 
 	// ---- Línea del piloto IA ----
 
-	/** Obstáculo dentro del camino (pieza de explanada, aguja de roca): centro en planta y radio (cm). */
+	/**
+	 * Obstáculo dentro del camino (pieza de explanada, aguja de roca): centro en planta y radio (cm). Con bKeepCentered es
+	 * un arco que cruza el camino (sus pies están en los bordes y es más bajo a los lados): la línea pasa por el centro a lo
+	 * largo de RadiusCm.
+	 */
 	struct FLineObstacle
 	{
 		FVector2D Center = FVector2D::ZeroVector;
 		double RadiusCm = 0.0;
+		bool bKeepCentered = false;
 	};
 
 	/**

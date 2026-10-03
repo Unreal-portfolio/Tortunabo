@@ -82,6 +82,7 @@ private:
 	/** Hora (s del mundo) en que empezó a esperar el suelo de la parrilla. */
 	double GroundWaitStart = -1.0;
 	bool bReturning = false;
+	mutable bool bLoggedLineProbe = false;
 
 	/** Última generación del mapa con la pista hecha en cada máquina cliente. */
 	TMap<TWeakObjectPtr<APlayerController>, int32> ClientTrackGeneration;

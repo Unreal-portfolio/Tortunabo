@@ -547,12 +547,15 @@ void ATN_ProcMapGenerator::GetMainPathObstaclesWorld(TArray<FVector4>& OutObstac
 		const bool bPlazaPiece = F.Type == EFeature::Formation && F.BranchIndex == INDEX_NONE
 			&& !IsArchFormation(static_cast<EFormation>(F.Aux)) && !IsLandmarkFormation(static_cast<EFormation>(F.Aux));
 		const bool bSpire = F.Type == EFeature::RockSpire && F.BranchIndex == INDEX_NONE;
-		if (!bPlazaPiece && !bSpire)
+		// Los arcos se pasan por debajo, pero por el centro: van con el radio en negativo (medio fondo más 4 m).
+		const bool bArch = F.Type == EFeature::Formation && F.BranchIndex == INDEX_NONE && IsArchFormation(static_cast<EFormation>(F.Aux));
+		if (!bPlazaPiece && !bSpire && !bArch)
 		{
 			continue;
 		}
 		const FVector Center = MapToWorld(F.Location);
-		OutObstacles.Add(FVector4(Center.X, Center.Y, Center.Z, F.Radius * Scale));
+		const double Radius = bArch ? -(F.Length * 0.5 + 400.0) : F.Radius;
+		OutObstacles.Add(FVector4(Center.X, Center.Y, Center.Z, Radius * Scale));
 	}
 }
 

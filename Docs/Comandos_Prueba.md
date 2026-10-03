@@ -266,6 +266,25 @@ los resultados con ocho filas. `TN.Proc.StartStyle 0|1` fuerza cómo se sale.
 | `TN.Lobby.Castle 0` / `TN.Lobby.Valley 0` | Esconde el castillo o el valle del lobby (al recargarlo). |
 | `TN.Storm.Cough 1` / `TN.Storm.Cough 2` | Carraspeos sueltos (`1`) o tos fuerte (`2`) de la tormenta sin tormenta; `0` la apaga. |
 
+## Rally en el mapa del cooperativo
+
+Se elige como los demás modos: «Rally» en el menú al crear sala, en la sala o con el General Galápago (pestaña
+«Misión»), y la dificultad igual que en el cooperativo. Al salir del lobby se viaja a `LVL_ProcMap?game=Rally`
+(`ATN_ProcRallyGameMode`): el mapa del cooperativo con el camino hecho para el buggy, puertas cada 250 m, salida en el claro
+y meta en la playa. Al acabar los resultados se vuelve al lobby (y desde el menú de pausa del anfitrión).
+
+| Comando | Qué hace |
+|---|---|
+| `open LVL_ProcMap?game=Rally?ProcDifficulty=Easy` | Rally sin pasar por el lobby (`Easy`, `Normal` o `Hard`; sin la opción, la del lobby). |
+| `...?ProcSeed=4242` | Mapa fijo (misma pista siempre). |
+| `...?Bots=3` / `TN.Rally.Bots 3` | Bots de la parrilla; sin ninguno de los dos se completa hasta 4 buggies (`TN.Rally.Bots -1`). |
+| `...?Seats=1` | Un buggy por jugadora (sin artillera). |
+| `TN.Rally.Status` | Fase, puestos, ocupantes y cajas en el log (`LogTNRally`). |
+| `TN.Rally.Measure 25 0` | Velocidad punta, 0-100 y frenada del buggy en la pista (`LogTNBuggy [Medida]`). |
+
+Sin editor (carreras solo de la IA, una línea `[RallyStats]` por carrera con terminados, atascos, deriva y derrapes):
+`UnrealEditor-Win64-DebugGame-Cmd <uproject> "/Game/Maps/Run/LVL_ProcMap?game=Rally?Bots=4?AutoStart?Races=1?RaceTimeout=420?ProcDifficulty=Easy?ProcSeed=4242" -server -nullrhi -NoSteam`.
+
 ## Tortuga: cara, voz, HUD y panzazo
 
 | Comando | Qué hace |

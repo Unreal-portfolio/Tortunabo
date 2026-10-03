@@ -71,6 +71,31 @@ namespace TNProcRally
 			}
 			UE_LOG(LogTNRally, Log, TEXT("[ProcRally] Camino: pendiente máxima %.0f %% en el arco %.0f m, %d tramos de más del 30 %%, paso más estrecho %.1f m en el arco %.0f m."),
 				100.0 * MaxSlope, MaxSlopeArc / 100.0, Steep, MinWidth / 100.0, MinWidthArc / 100.0);
+			// Terreno por encima del camino en el eje o a media calzada (lo que no se ha tallado): en Verbose, dónde.
+			if (UE_LOG_ACTIVE(LogTNRally, Verbose))
+			{
+				double LastReported = -1.0e9;
+				for (int32 Index = 1; Index < Plan.Road.Num(); ++Index)
+				{
+					const FVector Dir = (Plan.Road[Index] - Plan.Road[Index - 1]).GetSafeNormal2D();
+					const FVector Right(-Dir.Y, Dir.X, 0.0);
+					const double Half = FMath::Max(0.0, 0.5 * Plan.RoadWidthCm[Index] - 150.0);
+					double Worst = 0.0;
+					double WorstSide = 0.0;
+					for (const double Side : { 0.0, -0.5, 0.5, -1.0, 1.0 })
+					{
+						const FVector At = Plan.Road[Index] + Right * (Side * Half);
+						const double Rise = Generator.GetTerrainHeightAt(At) - Plan.Road[Index].Z;
+						if (Rise > Worst) { Worst = Rise; WorstSide = Side; }
+					}
+					if (Worst > 60.0 && Plan.RoadArcCm[Index] - LastReported > 2000.0)
+					{
+						LastReported = Plan.RoadArcCm[Index];
+						UE_LOG(LogTNRally, Verbose, TEXT("[ProcRally] Terreno %.0f cm por encima del camino en el arco %.0f m (%s, calzada de %.0f m)."),
+							Worst, Plan.RoadArcCm[Index] / 100.0, WorstSide == 0.0 ? TEXT("en el eje") : TEXT("a un lado"), Plan.RoadWidthCm[Index] / 100.0);
+					}
+				}
+			}
 		}
 		TArray<FVector4> Raw;
 		Generator.GetMainPathObstaclesWorld(Raw);
@@ -78,7 +103,7 @@ namespace TNProcRally
 		Obstacles.Reserve(Raw.Num());
 		for (const FVector4& Obstacle : Raw)
 		{
-			Obstacles.Add({ FVector2D(Obstacle.X, Obstacle.Y), Obstacle.W });
+			Obstacles.Add({ FVector2D(Obstacle.X, Obstacle.Y), FMath::Abs(Obstacle.W), Obstacle.W < 0.0 });
 		}
 		// Suelo sin trazas: la colisión del terreno se cocina en segundo plano y la parrilla y las cajas se colocan antes.
 		TWeakObjectPtr<ATN_ProcMapGenerator> WeakGenerator(&Generator);
@@ -97,6 +122,10 @@ namespace TNProcRally
 		{
 			for (const FVector4& Obstacle : Raw)
 			{
+				if (Obstacle.W < 0.0)
+				{
+					continue;
+				}
 				const FVector Center(Obstacle.X, Obstacle.Y, Obstacle.Z);
 				const double Arc = Track.FindArcGlobal(Center);
 				UE_LOG(LogTNRally, Verbose, TEXT("[ProcRally] Obstáculo en el arco %.0f m, a %.1f m del eje (calzada de %.0f m), radio %.1f m; la línea IA pasa a %.1f m."),

@@ -193,7 +193,8 @@ public:
 
 	/**
 	 * Obstáculos grandes que quedan dentro del camino principal (piezas de explanada y agujas de roca), en el mundo: X, Y y
-	 * Z del centro a ras de suelo y W = radio libre (cm). El piloto IA del Rally los rodea.
+	 * Z del centro a ras de suelo y W = radio libre (cm). El piloto IA del Rally los rodea. Los arcos que cruzan el camino
+	 * van con W negativo (su medio fondo más 4 m): bajo ellos el piloto va por el centro.
 	 */
 	void GetMainPathObstaclesWorld(TArray<FVector4>& OutObstacles) const;
 

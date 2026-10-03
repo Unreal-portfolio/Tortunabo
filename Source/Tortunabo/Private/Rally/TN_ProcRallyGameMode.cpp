@@ -132,6 +132,12 @@ bool ATN_ProcRallyGameMode::IsReadyToSeat() const
 			return false;
 		}
 	}
+	// Con la colisión lista, diagnóstico de la línea del piloto IA (solo con LogTNRally en Verbose).
+	if (UE_LOG_ACTIVE(LogTNRally, Verbose) && !bLoggedLineProbe)
+	{
+		bLoggedLineProbe = true;
+		UE_LOG(LogTNRally, Verbose, TEXT("[ProcRally] La línea IA choca en %d sitios."), RaceTrack->LogLineObstructions());
+	}
 	return true;
 }
 
