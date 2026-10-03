@@ -6,6 +6,7 @@
 #include "UObject/UObjectGlobals.h"
 #include "World/Beach/TN_BeachLayout.h"
 #include "../ProcMap/TN_ProcMapMeshKit.h"
+#include "../../Art/TN_ArtPieces.h"
 #include "../../Lobby/TN_CastleKit.h"
 
 /**
@@ -63,13 +64,15 @@ namespace TNBeachRaceKit
 		return 0.5 + 0.5 * TNProcMesh::TNProcHashNoise(A, B, Seed);
 	}
 
-	/** Sube unos buffers como sección Section del componente, con o sin colisión. */
-	inline void Upload(UProceduralMeshComponent* Comp, int32 Section, const TNProcMesh::FTNProcMeshBuffers& B, UMaterialInterface* Mat, bool bCollision)
+	/**
+	 * Sube unos buffers como sección Section del componente, con o sin colisión. Con Log, sin las piezas que tienen sustituto
+	 * de arte (TNArt::UploadSection; la colisión no cambia).
+	 */
+	inline void Upload(UProceduralMeshComponent* Comp, int32 Section, const TNProcMesh::FTNProcMeshBuffers& B, UMaterialInterface* Mat, bool bCollision,
+		const TNArt::FPieceLog* Log = nullptr)
 	{
 		if (!Comp || B.IsEmpty()) { return; }
-		const TArray<FProcMeshTangent> NoTangents;
-		Comp->CreateMeshSection_LinearColor(Section, B.Verts, B.Tris, B.Normals, B.UVs, B.Colors, NoTangents, bCollision);
-		if (Mat) { Comp->SetMaterial(Section, Mat); }
+		TNArt::UploadSection(Comp, Section, B, bCollision, Mat, Log);
 	}
 
 	/** Añade Src a Dst escalado Scale veces alrededor de Origin (las normales no cambian con una escala uniforme). */
@@ -84,5 +87,19 @@ namespace TNBeachRaceKit
 			Dst.Colors.Add(Src.Colors[i]);
 		}
 		for (const int32 Index : Src.Tris) { Dst.Tris.Add(Base + Index); }
+	}
+
+	/**
+	 * Peñasco (TNProcAddBoulder) ya dibujado en un buffer aparte: lo añade tal cual a Rocks como pieza de arte
+	 * «Beach.Rock.Boulder», con el pivote en Base y la escala de su caja (1 = 500 de radio en planta y 1000 de alto sobre Base).
+	 */
+	inline void AppendBoulderPiece(TNArt::FPieceLog& Log, TNProcMesh::FTNProcMeshBuffers& Rocks, const FVector& Base, const TNProcMesh::FTNProcMeshBuffers& Boulder)
+	{
+		FBox Box(ForceInit);
+		for (const FVector& V : Boulder.Verts) { Box += V; }
+		const double Radius = Box.IsValid ? FMath::Max(FMath::Max(Box.Max.X - Base.X, Base.X - Box.Min.X), FMath::Max(Box.Max.Y - Base.Y, Base.Y - Box.Min.Y)) : 500.0;
+		const double Height = Box.IsValid ? FMath::Max(1.0, Box.Max.Z - Base.Z) : 1000.0;
+		TNArt::FPieceScope Piece(Log, TN_ART("Beach.Rock.Boulder"), TNArt::PiecePivot(Base, 0.0, FVector(Radius / 500.0, Radius / 500.0, Height / 1000.0)), { &Rocks });
+		AppendScaled(Rocks, Boulder, FVector::ZeroVector, 1.0);
 	}
 }

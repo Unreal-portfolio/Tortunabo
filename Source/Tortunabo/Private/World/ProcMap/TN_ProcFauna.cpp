@@ -11,6 +11,7 @@
 #include "TN_ProcMapRuntimeMesh.h"
 #include "TN_ProcMapAmbientFX.h"
 #include "TN_ProcMapKeepOut.h"
+#include "Art/TN_Art.h"
 #include "Core/TN_Log.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/InstancedStaticMeshComponent.h"
@@ -164,6 +165,355 @@ namespace TNFaunaSim
 	inline float ActWeight(float ActT, float ActDur)
 	{
 		return FMath::Clamp(FMath::Min(ActT, ActDur - ActT) / 0.3f, 0.f, 1.f);
+	}
+
+	/**
+	 * Pieza de arte de cada pieza animada (Docs/Arte_Assets.md): una por especie y canal de animación (las manchas que
+	 * brillan, aparte). Su malla de arte va en el ISM de esa pieza y el código la sigue moviendo (TNArt::UpdateInstances).
+	 */
+	inline FName TNFaunaArt(TNFauna::ETNFaunaSpecies Species, TNFauna::ETNFaunaBone Bone, bool bGlow)
+	{
+		using Sp = TNFauna::ETNFaunaSpecies;
+		using B = TNFauna::ETNFaunaBone;
+		switch (Species)
+		{
+			case Sp::Crab:
+				switch (Bone)
+				{
+					case B::Body:  return TN_ART("ProcMap.Fauna.Crab.Body");
+					case B::LegFL: return TN_ART("ProcMap.Fauna.Crab.LegFL");
+					case B::LegFR: return TN_ART("ProcMap.Fauna.Crab.LegFR");
+					case B::ClawL: return TN_ART("ProcMap.Fauna.Crab.ClawL");
+					case B::ClawR: return TN_ART("ProcMap.Fauna.Crab.ClawR");
+					default:       return NAME_None;
+				}
+			case Sp::FiddlerCrab:
+				switch (Bone)
+				{
+					case B::Body:  return TN_ART("ProcMap.Fauna.FiddlerCrab.Body");
+					case B::LegFL: return TN_ART("ProcMap.Fauna.FiddlerCrab.LegFL");
+					case B::LegFR: return TN_ART("ProcMap.Fauna.FiddlerCrab.LegFR");
+					case B::ClawL: return TN_ART("ProcMap.Fauna.FiddlerCrab.ClawL");
+					case B::ClawR: return TN_ART("ProcMap.Fauna.FiddlerCrab.ClawR");
+					default:       return NAME_None;
+				}
+			case Sp::BabyTurtle:
+				switch (Bone)
+				{
+					case B::Body:  return TN_ART("ProcMap.Fauna.BabyTurtle.Body");
+					case B::Head:  return TN_ART("ProcMap.Fauna.BabyTurtle.Head");
+					case B::LegFL: return TN_ART("ProcMap.Fauna.BabyTurtle.LegFL");
+					case B::LegFR: return TN_ART("ProcMap.Fauna.BabyTurtle.LegFR");
+					case B::LegBL: return TN_ART("ProcMap.Fauna.BabyTurtle.LegBL");
+					case B::LegBR: return TN_ART("ProcMap.Fauna.BabyTurtle.LegBR");
+					default:       return NAME_None;
+				}
+			case Sp::SeaTurtle:
+				switch (Bone)
+				{
+					case B::Body:  return TN_ART("ProcMap.Fauna.SeaTurtle.Body");
+					case B::Head:  return TN_ART("ProcMap.Fauna.SeaTurtle.Head");
+					case B::LegFL: return TN_ART("ProcMap.Fauna.SeaTurtle.LegFL");
+					case B::LegFR: return TN_ART("ProcMap.Fauna.SeaTurtle.LegFR");
+					case B::LegBL: return TN_ART("ProcMap.Fauna.SeaTurtle.LegBL");
+					case B::LegBR: return TN_ART("ProcMap.Fauna.SeaTurtle.LegBR");
+					default:       return NAME_None;
+				}
+			case Sp::Gull:
+				switch (Bone)
+				{
+					case B::Body:  return TN_ART("ProcMap.Fauna.Gull.Body");
+					case B::Head:  return TN_ART("ProcMap.Fauna.Gull.Head");
+					case B::WingL: return TN_ART("ProcMap.Fauna.Gull.WingL");
+					case B::WingR: return TN_ART("ProcMap.Fauna.Gull.WingR");
+					case B::LegBL: return TN_ART("ProcMap.Fauna.Gull.LegBL");
+					case B::LegBR: return TN_ART("ProcMap.Fauna.Gull.LegBR");
+					default:       return NAME_None;
+				}
+			case Sp::Sandpiper:
+				switch (Bone)
+				{
+					case B::Body:  return TN_ART("ProcMap.Fauna.Sandpiper.Body");
+					case B::Head:  return TN_ART("ProcMap.Fauna.Sandpiper.Head");
+					case B::WingL: return TN_ART("ProcMap.Fauna.Sandpiper.WingL");
+					case B::WingR: return TN_ART("ProcMap.Fauna.Sandpiper.WingR");
+					case B::LegBL: return TN_ART("ProcMap.Fauna.Sandpiper.LegBL");
+					case B::LegBR: return TN_ART("ProcMap.Fauna.Sandpiper.LegBR");
+					default:       return NAME_None;
+				}
+			case Sp::Toucan:
+				switch (Bone)
+				{
+					case B::Body:  return TN_ART("ProcMap.Fauna.Toucan.Body");
+					case B::Head:  return TN_ART("ProcMap.Fauna.Toucan.Head");
+					case B::WingL: return TN_ART("ProcMap.Fauna.Toucan.WingL");
+					case B::WingR: return TN_ART("ProcMap.Fauna.Toucan.WingR");
+					case B::LegBL: return TN_ART("ProcMap.Fauna.Toucan.LegBL");
+					case B::LegBR: return TN_ART("ProcMap.Fauna.Toucan.LegBR");
+					default:       return NAME_None;
+				}
+			case Sp::Heron:
+				switch (Bone)
+				{
+					case B::Body:  return TN_ART("ProcMap.Fauna.Heron.Body");
+					case B::Head:  return TN_ART("ProcMap.Fauna.Heron.Head");
+					case B::WingL: return TN_ART("ProcMap.Fauna.Heron.WingL");
+					case B::WingR: return TN_ART("ProcMap.Fauna.Heron.WingR");
+					case B::LegBL: return TN_ART("ProcMap.Fauna.Heron.LegBL");
+					case B::LegBR: return TN_ART("ProcMap.Fauna.Heron.LegBR");
+					default:       return NAME_None;
+				}
+			case Sp::Flamingo:
+				switch (Bone)
+				{
+					case B::Body:  return TN_ART("ProcMap.Fauna.Flamingo.Body");
+					case B::Head:  return TN_ART("ProcMap.Fauna.Flamingo.Head");
+					case B::WingL: return TN_ART("ProcMap.Fauna.Flamingo.WingL");
+					case B::WingR: return TN_ART("ProcMap.Fauna.Flamingo.WingR");
+					case B::LegBL: return TN_ART("ProcMap.Fauna.Flamingo.LegBL");
+					case B::LegBR: return TN_ART("ProcMap.Fauna.Flamingo.LegBR");
+					default:       return NAME_None;
+				}
+			case Sp::Pelican:
+				switch (Bone)
+				{
+					case B::Body:  return TN_ART("ProcMap.Fauna.Pelican.Body");
+					case B::Head:  return TN_ART("ProcMap.Fauna.Pelican.Head");
+					case B::WingL: return TN_ART("ProcMap.Fauna.Pelican.WingL");
+					case B::WingR: return TN_ART("ProcMap.Fauna.Pelican.WingR");
+					case B::LegBL: return TN_ART("ProcMap.Fauna.Pelican.LegBL");
+					case B::LegBR: return TN_ART("ProcMap.Fauna.Pelican.LegBR");
+					default:       return NAME_None;
+				}
+			case Sp::Vulture:
+				switch (Bone)
+				{
+					case B::Body:  return TN_ART("ProcMap.Fauna.Vulture.Body");
+					case B::Head:  return TN_ART("ProcMap.Fauna.Vulture.Head");
+					case B::WingL: return TN_ART("ProcMap.Fauna.Vulture.WingL");
+					case B::WingR: return TN_ART("ProcMap.Fauna.Vulture.WingR");
+					case B::LegBL: return TN_ART("ProcMap.Fauna.Vulture.LegBL");
+					case B::LegBR: return TN_ART("ProcMap.Fauna.Vulture.LegBR");
+					default:       return NAME_None;
+				}
+			case Sp::Eagle:
+				switch (Bone)
+				{
+					case B::Body:  return TN_ART("ProcMap.Fauna.Eagle.Body");
+					case B::Head:  return TN_ART("ProcMap.Fauna.Eagle.Head");
+					case B::WingL: return TN_ART("ProcMap.Fauna.Eagle.WingL");
+					case B::WingR: return TN_ART("ProcMap.Fauna.Eagle.WingR");
+					case B::LegBL: return TN_ART("ProcMap.Fauna.Eagle.LegBL");
+					case B::LegBR: return TN_ART("ProcMap.Fauna.Eagle.LegBR");
+					default:       return NAME_None;
+				}
+			case Sp::Pigeon:
+				switch (Bone)
+				{
+					case B::Body:  return TN_ART("ProcMap.Fauna.Pigeon.Body");
+					case B::Head:  return TN_ART("ProcMap.Fauna.Pigeon.Head");
+					case B::WingL: return TN_ART("ProcMap.Fauna.Pigeon.WingL");
+					case B::WingR: return TN_ART("ProcMap.Fauna.Pigeon.WingR");
+					case B::LegBL: return TN_ART("ProcMap.Fauna.Pigeon.LegBL");
+					case B::LegBR: return TN_ART("ProcMap.Fauna.Pigeon.LegBR");
+					default:       return NAME_None;
+				}
+			case Sp::Hen:
+				switch (Bone)
+				{
+					case B::Body:  return TN_ART("ProcMap.Fauna.Hen.Body");
+					case B::Head:  return TN_ART("ProcMap.Fauna.Hen.Head");
+					case B::WingL: return TN_ART("ProcMap.Fauna.Hen.WingL");
+					case B::WingR: return TN_ART("ProcMap.Fauna.Hen.WingR");
+					case B::LegBL: return TN_ART("ProcMap.Fauna.Hen.LegBL");
+					case B::LegBR: return TN_ART("ProcMap.Fauna.Hen.LegBR");
+					default:       return NAME_None;
+				}
+			case Sp::Roadrunner:
+				switch (Bone)
+				{
+					case B::Body:  return TN_ART("ProcMap.Fauna.Roadrunner.Body");
+					case B::Head:  return TN_ART("ProcMap.Fauna.Roadrunner.Head");
+					case B::WingL: return TN_ART("ProcMap.Fauna.Roadrunner.WingL");
+					case B::WingR: return TN_ART("ProcMap.Fauna.Roadrunner.WingR");
+					case B::LegBL: return TN_ART("ProcMap.Fauna.Roadrunner.LegBL");
+					case B::LegBR: return TN_ART("ProcMap.Fauna.Roadrunner.LegBR");
+					default:       return NAME_None;
+				}
+			case Sp::Monkey:
+				switch (Bone)
+				{
+					case B::Body:  return TN_ART("ProcMap.Fauna.Monkey.Body");
+					case B::Head:  return TN_ART("ProcMap.Fauna.Monkey.Head");
+					case B::LegFL: return TN_ART("ProcMap.Fauna.Monkey.LegFL");
+					case B::LegFR: return TN_ART("ProcMap.Fauna.Monkey.LegFR");
+					case B::LegBL: return TN_ART("ProcMap.Fauna.Monkey.LegBL");
+					case B::LegBR: return TN_ART("ProcMap.Fauna.Monkey.LegBR");
+					case B::Tail:  return TN_ART("ProcMap.Fauna.Monkey.Tail");
+					default:       return NAME_None;
+				}
+			case Sp::Capybara:
+				switch (Bone)
+				{
+					case B::Body:  return TN_ART("ProcMap.Fauna.Capybara.Body");
+					case B::Head:  return TN_ART("ProcMap.Fauna.Capybara.Head");
+					case B::LegFL: return TN_ART("ProcMap.Fauna.Capybara.LegFL");
+					case B::LegFR: return TN_ART("ProcMap.Fauna.Capybara.LegFR");
+					case B::LegBL: return TN_ART("ProcMap.Fauna.Capybara.LegBL");
+					case B::LegBR: return TN_ART("ProcMap.Fauna.Capybara.LegBR");
+					default:       return NAME_None;
+				}
+			case Sp::Meerkat:
+				switch (Bone)
+				{
+					case B::Body:  return TN_ART("ProcMap.Fauna.Meerkat.Body");
+					case B::Head:  return TN_ART("ProcMap.Fauna.Meerkat.Head");
+					case B::LegFL: return TN_ART("ProcMap.Fauna.Meerkat.LegFL");
+					case B::LegFR: return TN_ART("ProcMap.Fauna.Meerkat.LegFR");
+					case B::LegBL: return TN_ART("ProcMap.Fauna.Meerkat.LegBL");
+					case B::LegBR: return TN_ART("ProcMap.Fauna.Meerkat.LegBR");
+					case B::Tail:  return TN_ART("ProcMap.Fauna.Meerkat.Tail");
+					default:       return NAME_None;
+				}
+			case Sp::Ibex:
+				switch (Bone)
+				{
+					case B::Body:  return TN_ART("ProcMap.Fauna.Ibex.Body");
+					case B::Head:  return TN_ART("ProcMap.Fauna.Ibex.Head");
+					case B::LegFL: return TN_ART("ProcMap.Fauna.Ibex.LegFL");
+					case B::LegFR: return TN_ART("ProcMap.Fauna.Ibex.LegFR");
+					case B::LegBL: return TN_ART("ProcMap.Fauna.Ibex.LegBL");
+					case B::LegBR: return TN_ART("ProcMap.Fauna.Ibex.LegBR");
+					case B::Tail:  return TN_ART("ProcMap.Fauna.Ibex.Tail");
+					default:       return NAME_None;
+				}
+			case Sp::Marmot:
+				switch (Bone)
+				{
+					case B::Body:  return TN_ART("ProcMap.Fauna.Marmot.Body");
+					case B::Head:  return TN_ART("ProcMap.Fauna.Marmot.Head");
+					case B::LegFL: return TN_ART("ProcMap.Fauna.Marmot.LegFL");
+					case B::LegFR: return TN_ART("ProcMap.Fauna.Marmot.LegFR");
+					case B::LegBL: return TN_ART("ProcMap.Fauna.Marmot.LegBL");
+					case B::LegBR: return TN_ART("ProcMap.Fauna.Marmot.LegBR");
+					case B::Tail:  return TN_ART("ProcMap.Fauna.Marmot.Tail");
+					default:       return NAME_None;
+				}
+			case Sp::Cat:
+				switch (Bone)
+				{
+					case B::Body:  return TN_ART("ProcMap.Fauna.Cat.Body");
+					case B::Head:  return TN_ART("ProcMap.Fauna.Cat.Head");
+					case B::LegFL: return TN_ART("ProcMap.Fauna.Cat.LegFL");
+					case B::LegFR: return TN_ART("ProcMap.Fauna.Cat.LegFR");
+					case B::LegBL: return TN_ART("ProcMap.Fauna.Cat.LegBL");
+					case B::LegBR: return TN_ART("ProcMap.Fauna.Cat.LegBR");
+					case B::Tail:  return TN_ART("ProcMap.Fauna.Cat.Tail");
+					default:       return NAME_None;
+				}
+			case Sp::Rabbit:
+				switch (Bone)
+				{
+					case B::Body:  return TN_ART("ProcMap.Fauna.Rabbit.Body");
+					case B::Head:  return TN_ART("ProcMap.Fauna.Rabbit.Head");
+					case B::LegFL: return TN_ART("ProcMap.Fauna.Rabbit.LegFL");
+					case B::LegFR: return TN_ART("ProcMap.Fauna.Rabbit.LegFR");
+					case B::LegBL: return TN_ART("ProcMap.Fauna.Rabbit.LegBL");
+					case B::LegBR: return TN_ART("ProcMap.Fauna.Rabbit.LegBR");
+					case B::Tail:  return TN_ART("ProcMap.Fauna.Rabbit.Tail");
+					default:       return NAME_None;
+				}
+			case Sp::Lizard:
+				switch (Bone)
+				{
+					case B::Body:  return TN_ART("ProcMap.Fauna.Lizard.Body");
+					case B::Head:  return TN_ART("ProcMap.Fauna.Lizard.Head");
+					case B::LegFL: return TN_ART("ProcMap.Fauna.Lizard.LegFL");
+					case B::LegFR: return TN_ART("ProcMap.Fauna.Lizard.LegFR");
+					case B::LegBL: return TN_ART("ProcMap.Fauna.Lizard.LegBL");
+					case B::LegBR: return TN_ART("ProcMap.Fauna.Lizard.LegBR");
+					case B::Tail:  return TN_ART("ProcMap.Fauna.Lizard.Tail");
+					default:       return NAME_None;
+				}
+			case Sp::Salamander:
+				switch (Bone)
+				{
+					case B::Body:  return bGlow ? TN_ART("ProcMap.Fauna.Salamander.BodyGlow") : TN_ART("ProcMap.Fauna.Salamander.Body");
+					case B::Head:  return TN_ART("ProcMap.Fauna.Salamander.Head");
+					case B::LegFL: return TN_ART("ProcMap.Fauna.Salamander.LegFL");
+					case B::LegFR: return TN_ART("ProcMap.Fauna.Salamander.LegFR");
+					case B::LegBL: return TN_ART("ProcMap.Fauna.Salamander.LegBL");
+					case B::LegBR: return TN_ART("ProcMap.Fauna.Salamander.LegBR");
+					case B::Tail:  return bGlow ? TN_ART("ProcMap.Fauna.Salamander.TailGlow") : TN_ART("ProcMap.Fauna.Salamander.Tail");
+					default:       return NAME_None;
+				}
+			case Sp::MarineIguana:
+				switch (Bone)
+				{
+					case B::Body:  return TN_ART("ProcMap.Fauna.MarineIguana.Body");
+					case B::Head:  return TN_ART("ProcMap.Fauna.MarineIguana.Head");
+					case B::LegFL: return TN_ART("ProcMap.Fauna.MarineIguana.LegFL");
+					case B::LegFR: return TN_ART("ProcMap.Fauna.MarineIguana.LegFR");
+					case B::LegBL: return TN_ART("ProcMap.Fauna.MarineIguana.LegBL");
+					case B::LegBR: return TN_ART("ProcMap.Fauna.MarineIguana.LegBR");
+					case B::Tail:  return TN_ART("ProcMap.Fauna.MarineIguana.Tail");
+					default:       return NAME_None;
+				}
+			case Sp::DartFrog:
+				switch (Bone)
+				{
+					case B::Body:  return TN_ART("ProcMap.Fauna.DartFrog.Body");
+					case B::LegFL: return TN_ART("ProcMap.Fauna.DartFrog.LegFL");
+					case B::LegFR: return TN_ART("ProcMap.Fauna.DartFrog.LegFR");
+					case B::LegBL: return TN_ART("ProcMap.Fauna.DartFrog.LegBL");
+					case B::LegBR: return TN_ART("ProcMap.Fauna.DartFrog.LegBR");
+					default:       return NAME_None;
+				}
+			case Sp::TreeFrog:
+				switch (Bone)
+				{
+					case B::Body:  return TN_ART("ProcMap.Fauna.TreeFrog.Body");
+					case B::LegFL: return TN_ART("ProcMap.Fauna.TreeFrog.LegFL");
+					case B::LegFR: return TN_ART("ProcMap.Fauna.TreeFrog.LegFR");
+					case B::LegBL: return TN_ART("ProcMap.Fauna.TreeFrog.LegBL");
+					case B::LegBR: return TN_ART("ProcMap.Fauna.TreeFrog.LegBR");
+					default:       return NAME_None;
+				}
+			case Sp::Fish:
+				switch (Bone)
+				{
+					case B::Body:  return TN_ART("ProcMap.Fauna.Fish.Body");
+					case B::Tail:  return TN_ART("ProcMap.Fauna.Fish.Tail");
+					default:       return NAME_None;
+				}
+			case Sp::Mudskipper:
+				switch (Bone)
+				{
+					case B::Body:  return TN_ART("ProcMap.Fauna.Mudskipper.Body");
+					case B::Tail:  return TN_ART("ProcMap.Fauna.Mudskipper.Tail");
+					case B::LegFL: return TN_ART("ProcMap.Fauna.Mudskipper.LegFL");
+					case B::LegFR: return TN_ART("ProcMap.Fauna.Mudskipper.LegFR");
+					default:       return NAME_None;
+				}
+			case Sp::FireBeetle:
+				switch (Bone)
+				{
+					case B::Body:  return bGlow ? TN_ART("ProcMap.Fauna.FireBeetle.BodyGlow") : TN_ART("ProcMap.Fauna.FireBeetle.Body");
+					case B::LegFL: return TN_ART("ProcMap.Fauna.FireBeetle.LegFL");
+					case B::LegFR: return TN_ART("ProcMap.Fauna.FireBeetle.LegFR");
+					default:       return NAME_None;
+				}
+			case Sp::Bat:
+				switch (Bone)
+				{
+					case B::Body:  return TN_ART("ProcMap.Fauna.Bat.Body");
+					case B::WingL: return TN_ART("ProcMap.Fauna.Bat.WingL");
+					case B::WingR: return TN_ART("ProcMap.Fauna.Bat.WingR");
+					default:       return NAME_None;
+				}
+			default:
+				return NAME_None;
+		}
 	}
 }
 
@@ -509,7 +859,10 @@ void ATN_ProcFauna::BuildFauna()
 			{
 				Xf.Add(FTransform(FQuat::Identity, Animals[Member].Pos, FVector::ZeroVector));
 			}
-			PartISMs.Add(MakePartISM(Mesh, Xf, Part.bShadow));
+			UInstancedStaticMeshComponent* PartISM = MakePartISM(Mesh, Xf, Part.bShadow);
+			// Malla de arte de la pieza, si la tiene (sin ella, nada cambia); el Tick la mueve con UpdateInstances.
+			TNArt::ApplyToInstances(PartISM, TNFaunaSim::TNFaunaArt(static_cast<ETNFaunaSpecies>(K.Species), Part.Bone, Part.bGlow));
+			PartISMs.Add(PartISM);
 			PartMeshes.Add(Mesh);
 			PartBone.Add(static_cast<uint8>(Part.Bone));
 			PartPivot.Add(Part.Pivot);
@@ -717,7 +1070,7 @@ void ATN_ProcFauna::Tick(float DeltaTime)
 				UInstancedStaticMeshComponent* ISM = PartISMs[Part];
 				if (!ISM) { continue; }
 				const TArrayView<const FTransform> Range(PartXf[Part].GetData() + First, Count);
-				ISM->BatchUpdateInstancesTransforms(First, Range, false, false, false);
+				TNArt::UpdateInstances(ISM, First, Range, false, false, false);
 			}
 			K.DirtyMin = MAX_int32;
 			K.DirtyMax = -1;

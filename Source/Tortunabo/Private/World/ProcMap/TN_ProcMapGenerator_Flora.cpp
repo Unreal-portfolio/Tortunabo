@@ -14,6 +14,7 @@
 #include "TN_ProcMapPropMeshes.h"
 #include "TN_ProcMapKeepOut.h"
 #include "TN_ProcMapRuntimeMesh.h"
+#include "Art/TN_Art.h"
 #include "Async/ParallelFor.h"
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -24,6 +25,100 @@
 using namespace TNProcMesh;
 using namespace TNFloraMesh;
 using TNProcRuntimeMesh::SRGBToLinear;
+
+namespace
+{
+	/**
+	 * Pieza de arte de una planta o un objeto suelto (Docs/Arte_Assets.md): una por forma, la misma para todos los biomas y
+	 * variantes (su malla de arte va en cada HISM de esa forma, con la escala de cada ejemplar).
+	 */
+	FName TNProcFloraArt(TNProcMap::EFloraShape Shape, TNProcMap::EPropKind Prop)
+	{
+		using S = TNProcMap::EFloraShape;
+		using P = TNProcMap::EPropKind;
+		if (Shape == S::Prop)
+		{
+			switch (Prop)
+			{
+				case P::Crate:       return TN_ART("ProcMap.Prop.Crate");
+				case P::WoodBarrel:  return TN_ART("ProcMap.Prop.WoodBarrel");
+				case P::Barricade:   return TN_ART("ProcMap.Prop.Barricade");
+				case P::TrafficCone: return TN_ART("ProcMap.Prop.TrafficCone");
+				case P::HayBale:     return TN_ART("ProcMap.Prop.HayBale");
+				case P::Bench:       return TN_ART("ProcMap.Prop.Bench");
+				case P::LampPost:    return TN_ART("ProcMap.Prop.LampPost");
+				case P::Mailbox:     return TN_ART("ProcMap.Prop.Mailbox");
+				case P::Sacks:       return TN_ART("ProcMap.Prop.Sacks");
+				case P::FlowerPot:   return TN_ART("ProcMap.Prop.FlowerPot");
+				case P::Shell:       return TN_ART("ProcMap.Prop.Shell");
+				case P::Starfish:    return TN_ART("ProcMap.Prop.Starfish");
+				case P::SandBucket:  return TN_ART("ProcMap.Prop.SandBucket");
+				case P::BeachTowel:  return TN_ART("ProcMap.Prop.BeachTowel");
+				case P::Surfboard:   return TN_ART("ProcMap.Prop.Surfboard");
+				case P::Parasol:     return TN_ART("ProcMap.Prop.Parasol");
+				case P::Driftwood:   return TN_ART("ProcMap.Prop.Driftwood");
+				case P::Coconuts:    return TN_ART("ProcMap.Prop.Coconuts");
+				case P::Lifebuoy:    return TN_ART("ProcMap.Prop.Lifebuoy");
+				case P::Mushrooms:   return TN_ART("ProcMap.Prop.Mushrooms");
+				case P::ClayPot:     return TN_ART("ProcMap.Prop.ClayPot");
+				case P::TikiTorch:   return TN_ART("ProcMap.Prop.TikiTorch");
+				case P::SkullPost:   return TN_ART("ProcMap.Prop.SkullPost");
+				case P::CattleSkull: return TN_ART("ProcMap.Prop.CattleSkull");
+				case P::Bones:       return TN_ART("ProcMap.Prop.Bones");
+				case P::Amphora:     return TN_ART("ProcMap.Prop.Amphora");
+				case P::WagonWheel:  return TN_ART("ProcMap.Prop.WagonWheel");
+				case P::Signpost:    return TN_ART("ProcMap.Prop.Signpost");
+				case P::Tumbleweed:  return TN_ART("ProcMap.Prop.Tumbleweed");
+				case P::Crystals:    return TN_ART("ProcMap.Prop.Crystals");
+				case P::Stump:       return TN_ART("ProcMap.Prop.Stump");
+				case P::Cairn:       return TN_ART("ProcMap.Prop.Cairn");
+				case P::Lantern:     return TN_ART("ProcMap.Prop.Lantern");
+				case P::CrabTrap:    return TN_ART("ProcMap.Prop.CrabTrap");
+				default:             return NAME_None;
+			}
+		}
+		switch (Shape)
+		{
+			case S::BroadTree:    return TN_ART("ProcMap.Flora.BroadTree");
+			case S::Ceiba:        return TN_ART("ProcMap.Flora.Ceiba");
+			case S::Palm:         return TN_ART("ProcMap.Flora.Palm");
+			case S::MangroveTree: return TN_ART("ProcMap.Flora.MangroveTree");
+			case S::YoungSequoia: return TN_ART("ProcMap.Flora.YoungSequoia");
+			case S::Cypress:      return TN_ART("ProcMap.Flora.Cypress");
+			case S::Pine:         return TN_ART("ProcMap.Flora.Pine");
+			case S::Fir:          return TN_ART("ProcMap.Flora.Fir");
+			case S::Willow:       return TN_ART("ProcMap.Flora.Willow");
+			case S::Acacia:       return TN_ART("ProcMap.Flora.Acacia");
+			case S::DeadTree:     return TN_ART("ProcMap.Flora.DeadTree");
+			case S::CharredTree:  return TN_ART("ProcMap.Flora.CharredTree");
+			case S::Ornamental:   return TN_ART("ProcMap.Flora.Ornamental");
+			case S::Fern:         return TN_ART("ProcMap.Flora.Fern");
+			case S::Bush:         return TN_ART("ProcMap.Flora.Bush");
+			case S::Grass:        return TN_ART("ProcMap.Flora.Grass");
+			case S::Flowers:      return TN_ART("ProcMap.Flora.Flowers");
+			case S::Reeds:        return TN_ART("ProcMap.Flora.Reeds");
+			case S::Saguaro:      return TN_ART("ProcMap.Flora.Saguaro");
+			case S::Barrel:       return TN_ART("ProcMap.Flora.BarrelCactus");
+			case S::DryBush:      return TN_ART("ProcMap.Flora.DryBush");
+			case S::AshBush:      return TN_ART("ProcMap.Flora.AshBush");
+			case S::Hedge:        return TN_ART("ProcMap.Flora.Hedge");
+			case S::Umbrella:     return TN_ART("ProcMap.Flora.Umbrella");
+			case S::Creeper:      return TN_ART("ProcMap.Flora.Creeper");
+			case S::BananaPlant:  return TN_ART("ProcMap.Flora.BananaPlant");
+			case S::Bamboo:       return TN_ART("ProcMap.Flora.Bamboo");
+			case S::TreeFern:     return TN_ART("ProcMap.Flora.TreeFern");
+			case S::SeaGrape:     return TN_ART("ProcMap.Flora.SeaGrape");
+			case S::Pandanus:     return TN_ART("ProcMap.Flora.Pandanus");
+			case S::FanPalm:      return TN_ART("ProcMap.Flora.FanPalm");
+			case S::Casuarina:    return TN_ART("ProcMap.Flora.Casuarina");
+			case S::JoshuaTree:   return TN_ART("ProcMap.Flora.JoshuaTree");
+			case S::Birch:        return TN_ART("ProcMap.Flora.Birch");
+			case S::Rock:         return TN_ART("ProcMap.Flora.Rock");
+			case S::Stones:       return TN_ART("ProcMap.Flora.Stones");
+			default:              return NAME_None;
+		}
+	}
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Vegetación procedural
@@ -166,6 +261,8 @@ void ATN_ProcMapGenerator::BuildFlora()
 		}
 		HISM->RegisterComponent();
 		HISM->AddInstances(Entry.Value, false, false);
+		// Malla de arte de su forma, si la tiene (sin ella, nada cambia).
+		TNArt::ApplyToInstances(HISM, TNProcFloraArt(Sp.Shape, Sp.Prop));
 		ScatterComponents.Add(HISM);
 		++Meshes;
 		Total += Entry.Value.Num();

@@ -235,7 +235,8 @@ namespace TNBeachDungeonDetail
 		Hulls.Add(TNPlaygroundKit::HullCylinder(Base, Height, Radius, Radius * 0.85, 10));
 	}
 
-	void BuildCastle(FBuffers& B, FBuffers& Decor, FHulls& Hulls, const FLayout& L, uint32 Seed)
+	/** Las murallas, suelos, escaleras y rampas siguen la planta; con Log, las torres, columnas, conchas y estrellas son piezas de arte. */
+	void BuildCastle(FBuffers& B, FBuffers& Decor, FHulls& Hulls, const FLayout& L, uint32 Seed, TNArt::FPieceLog& Log)
 	{
 		const double IWid = L.IY1 - L.IY0;
 
@@ -303,6 +304,8 @@ namespace TNBeachDungeonDetail
 			FVector2D(L.IX0 + 0.78 * RoomA, L.IY0 + 0.72 * IWid) };
 		for (const FVector2D& P : PillarAt)
 		{
+			// Pieza de arte: centro de la base sobre el suelo, ejes del castillo.
+			TNArt::FPieceScope Piece(Log, TN_ART("Beach.Dungeon.Column"), TNArt::PiecePivot(FVector(P, FloorZ)), { &B, &Decor });
 			AddPillar(B, Decor, Hulls, P, 90.0, WallTop - 220.0);
 		}
 
@@ -313,13 +316,23 @@ namespace TNBeachDungeonDetail
 		{
 			for (const double Sy : { -1.0, 1.0 })
 			{
-				AddTower(B, Decor, Hulls, FVector2D(Sx * (L.HX - Inset), Sy * (L.HY - Inset)), L.TowerR, Variant++);
+				// Pieza de arte: centro de la base a ras de suelo, +X hacia fuera (en diagonal); escala 1 = radio 240.
+				const FVector2D TowerAt(Sx * (L.HX - Inset), Sy * (L.HY - Inset));
+				TNArt::FPieceScope Piece(Log, TN_ART("Beach.Dungeon.Tower"),
+					TNArt::PiecePivot(FVector(TowerAt, 0.0), FMath::RadiansToDegrees(FMath::Atan2(Sy, Sx)), FVector(L.TowerR / 240.0, L.TowerR / 240.0, 1.0)), { &B, &Decor });
+				AddTower(B, Decor, Hulls, TowerAt, L.TowerR, Variant++);
 			}
 		}
 
-		// Adornos: concha grande sobre la entrada, estrellas y conchas en las caras de fuera, guijarros por dentro.
-		TNPlaygroundKit::AddShellFan(Decor, FVector(-L.HX - 3.0, L.EntY, FloorZ + EntryH + 70.0), -FVector::ForwardVector, FVector::UpVector, 110.0,
-			TNBeachTrapKit::ShellTone(static_cast<int32>(Seed % 5u)));
+		// Adornos: concha grande sobre la entrada, estrellas y conchas en las caras de fuera, guijarros por dentro. Conchas y
+		// estrellas, como las de las fortalezas: centro, +X hacia fuera de la pared, escala 1 = 50 de radio.
+		{
+			const FVector ShellAt(-L.HX - 3.0, L.EntY, FloorZ + EntryH + 70.0);
+			TNArt::FPieceScope Piece(Log, TN_ART("Beach.SandCastle.Shell"), TNArt::PiecePivot(ShellAt, 180.0, FVector(110.0 / 50.0)), { &Decor });
+			TNPlaygroundKit::AddShellFan(Decor, ShellAt, -FVector::ForwardVector, FVector::UpVector, 110.0, TNBeachTrapKit::ShellTone(static_cast<int32>(Seed % 5u)));
+		}
+		// Aberturas de cada muralla de fuera, para no pegar adornos donde no hay pared (entrada, salida, ventanas y el hueco de encima).
+		const TArray<FOpening> SideOpenings[4] = { { Entry }, { Exit, SeaA, SeaB }, { LowA, HighC }, { LowA, HighD, HighC } };
 		for (int32 d = 0; d < 14; ++d)
 		{
 			const int32 Side = d % 4;
@@ -334,12 +347,37 @@ namespace TNBeachDungeonDetail
 			case 2: At = FVector(FMath::Lerp(-L.HX + 400.0, L.HX - 400.0, U), L.HY + 3.0, Z); Normal = FVector::RightVector; break;
 			default: At = FVector(FMath::Lerp(-L.HX + 400.0, L.HX - 400.0, U), -L.HY - 3.0, Z); Normal = -FVector::RightVector; break;
 			}
+			const double Along = Side < 2 ? At.Y : At.X;
+			const double Reach = d % 3 == 0 ? 55.0 : 48.0;
+			bool bFloating = false;
+			for (const FOpening& Op : SideOpenings[Side])
+			{
+				// El adorno entero (radio Reach) tiene que quedar fuera de la abertura, y también de la concha grande de encima de la entrada.
+				const bool bBeside = FMath::Abs(Along - Op.Center) > 0.5 * Op.Width + Reach;
+				const bool bBelowOrAbove = Z + Reach < Op.Bottom || Z - Reach > Op.Top;
+				if (!bBeside && !bBelowOrAbove)
+				{
+					bFloating = true;
+					break;
+				}
+			}
+			if (Side == 0 && FMath::Abs(Along - L.EntY) < 110.0 + Reach && Z - Reach < FloorZ + EntryH + 70.0 + 110.0)
+			{
+				bFloating = true;
+			}
+			if (bFloating)
+			{
+				continue;
+			}
+			const double NormalYaw = FMath::RadiansToDegrees(FMath::Atan2(Normal.Y, Normal.X));
 			if (d % 3 == 0)
 			{
+				TNArt::FPieceScope Piece(Log, TN_ART("Beach.SandCastle.Starfish"), TNArt::PiecePivot(At, NormalYaw, FVector(55.0 / 50.0)), { &Decor });
 				TNPlaygroundKit::AddStarfish(Decor, At, Normal, FVector::UpVector, 55.0, 5.0, TNPlaygroundKit::Rgb(0xFF8A70));
 			}
 			else
 			{
+				TNArt::FPieceScope Piece(Log, TN_ART("Beach.SandCastle.Shell"), TNArt::PiecePivot(At, NormalYaw, FVector(48.0 / 50.0)), { &Decor });
 				TNPlaygroundKit::AddShellFan(Decor, At, Normal, FVector::UpVector, 48.0, TNBeachTrapKit::ShellTone(d));
 			}
 		}
@@ -387,9 +425,12 @@ void ATN_BeachSandDungeon::ApplySpec()
 	TNBeachTrapKit::FBuffers Castle;
 	TNBeachTrapKit::FBuffers Decor;
 	TNBeachTrapKit::FHulls Hulls;
-	BuildCastle(Castle, Decor, Hulls, Plan, Seed);
-	TNBeachTrapKit::SetMesh(CastleMesh, this, Castle);
-	TNBeachTrapKit::SetMesh(DecorMesh, this, Decor);
+	// Piezas que Arte puede sustituir (Docs/Arte_Assets.md); la colisión es la de los cascos.
+	TNArt::FPieceLog Log(TEXT("Dungeon"));
+	BuildCastle(Castle, Decor, Hulls, Plan, Seed, Log);
+	TNBeachTrapKit::SetMeshWithPieces(CastleMesh, this, Castle, Log);
+	TNBeachTrapKit::SetMeshWithPieces(DecorMesh, this, Decor, Log);
+	TNArt::SpawnPieceArt(CastleMesh, Log);
 	CastleCollision->SetCollisionConvexMeshes(Hulls);
 
 	// Sitios de las piezas de dentro.

@@ -33,7 +33,8 @@ def test_fusionada_sin_las_dos_validaciones_no_llega_a_done(valores, esperado):
 
 def test_validada_solo_para_miembros_de_un_lote():
     assert flujo.estado_objetivo("In review", LISTA, fusionada=False, en_lote=True) == ("Validada", False)
-    assert flujo.estado_objetivo("In review", LISTA, fusionada=False, en_lote=False) == (None, False)
+    # Una issue suelta también espera en Validada antes de fusionar (#282).
+    assert flujo.estado_objetivo("In review", LISTA, fusionada=False, en_lote=False) == ("Validada", False)
 
 
 @pytest.mark.parametrize("valores", [{}, {"Editor": "Funciona"}, {"Revisión IA": "Aprobada"}])
@@ -97,6 +98,15 @@ def test_fusion_antigua_no_arrastra_trabajo_en_marcha(estado):
 def test_fusion_mueve_lo_que_esperaba_la_fusion(estado):
     assert flujo.mueve_por_fusion(estado, con_pr_abierta=False)
     assert not flujo.mueve_por_fusion(estado, con_pr_abierta=True)
+
+
+def test_done_antes_de_fusionar_se_cierra_solo_con_las_dos_validaciones():
+    """#436: Done antes de fusionar (#282) se cierra al fusionarse, si está revisada y probada."""
+    lista = {"Revisión IA": "Aprobada", "Editor": "Funciona"}
+    assert flujo.cierra_por_fusion("Done", lista, con_pr_abierta=False)
+    assert not flujo.cierra_por_fusion("Done", lista, con_pr_abierta=True)
+    assert not flujo.cierra_por_fusion("Done", {**lista, "Editor": "Sin probar"}, con_pr_abierta=False)
+    assert not flujo.cierra_por_fusion("In progress", lista, con_pr_abierta=False)
 
 
 def test_esta_fusionada_solo_en_dev_y_sin_pr_abierta():

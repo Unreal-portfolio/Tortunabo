@@ -7,6 +7,7 @@
 #include "Lobby/TN_TutorialFauna.h"
 #include "Core/TN_ProjectMaterials.h"
 #include "Lobby/TN_TutorialCourse.h"
+#include "Art/TN_Art.h"
 #include "TN_TutorialLayout.h"
 #include "../World/ProcMap/TN_ProcMapFaunaMeshes.h"
 #include "../World/ProcMap/TN_ProcMapRuntimeMesh.h"
@@ -46,6 +47,41 @@ namespace TNTutorialFaunaDetail
 		const FTNFaunaSpec& Sp = TNFaunaSpec(Species);
 		return (Sp.Habitat == ETNFaunaHabitat::Land || Sp.Habitat == ETNFaunaHabitat::Shore) && Sp.Gait != ETNFaunaGait::Swim
 			&& Sp.Gait != ETNFaunaGait::Hover;
+	}
+
+	/**
+	 * Pieza de arte de cada animal que puede salir en el tutorial (Docs/Arte_Assets.md): el animal entero, que va en la pieza
+	 * del cuerpo; con sustituto, las demás piezas (cabeza, patas, alas, cola) no se ponen.
+	 */
+	FName FaunaSlot(ETNFaunaSpecies Species)
+	{
+		using SP = ETNFaunaSpecies;
+		switch (Species)
+		{
+			case SP::Monkey:      return TN_ART("Lobby.Tutorial.Fauna.Monkey");
+			case SP::Toucan:      return TN_ART("Lobby.Tutorial.Fauna.Toucan");
+			case SP::DartFrog:    return TN_ART("Lobby.Tutorial.Fauna.DartFrog");
+			case SP::Capybara:    return TN_ART("Lobby.Tutorial.Fauna.Capybara");
+			case SP::Crab:        return TN_ART("Lobby.Tutorial.Fauna.Crab");
+			case SP::BabyTurtle:  return TN_ART("Lobby.Tutorial.Fauna.BabyTurtle");
+			case SP::Gull:        return TN_ART("Lobby.Tutorial.Fauna.Gull");
+			case SP::Sandpiper:   return TN_ART("Lobby.Tutorial.Fauna.Sandpiper");
+			case SP::Lizard:      return TN_ART("Lobby.Tutorial.Fauna.Lizard");
+			case SP::Meerkat:     return TN_ART("Lobby.Tutorial.Fauna.Meerkat");
+			case SP::Roadrunner:  return TN_ART("Lobby.Tutorial.Fauna.Roadrunner");
+			case SP::Vulture:     return TN_ART("Lobby.Tutorial.Fauna.Vulture");
+			case SP::Ibex:        return TN_ART("Lobby.Tutorial.Fauna.Ibex");
+			case SP::Marmot:      return TN_ART("Lobby.Tutorial.Fauna.Marmot");
+			case SP::Eagle:       return TN_ART("Lobby.Tutorial.Fauna.Eagle");
+			case SP::FiddlerCrab: return TN_ART("Lobby.Tutorial.Fauna.FiddlerCrab");
+			case SP::TreeFrog:    return TN_ART("Lobby.Tutorial.Fauna.TreeFrog");
+			case SP::Mudskipper:  return TN_ART("Lobby.Tutorial.Fauna.Mudskipper");
+			case SP::Cat:         return TN_ART("Lobby.Tutorial.Fauna.Cat");
+			case SP::Pigeon:      return TN_ART("Lobby.Tutorial.Fauna.Pigeon");
+			case SP::Hen:         return TN_ART("Lobby.Tutorial.Fauna.Hen");
+			case SP::Rabbit:      return TN_ART("Lobby.Tutorial.Fauna.Rabbit");
+			default:              return NAME_None;
+		}
 	}
 
 	/** Una acción de reposo al azar de las de su ficha (Look si no tiene). */
@@ -212,8 +248,17 @@ void ATN_TutorialFauna::Init(const ATN_TutorialCourse* InCourse)
 		K.BodyZ = static_cast<float>(Rig.BodyZ);
 		K.Height = static_cast<float>(Rig.Height);
 		K.FirstPart = PartISMs.Num();
+		// Pieza de arte del animal entero: en la primera pieza del cuerpo; con sustituto, las demás piezas no se ponen.
+		const FName Slot = TNTutorialFaunaDetail::FaunaSlot(static_cast<ETNFaunaSpecies>(K.Species));
+		const bool bArt = TNArt::Find(Slot) != nullptr;
+		bool bBodyDone = false;
 		for (FTNFaunaPart& Part : Parts)
 		{
+			const bool bBody = !bBodyDone && Part.Bone == ETNFaunaBone::Body && !Part.bGlow;
+			if (bArt && !bBody)
+			{
+				continue;
+			}
 			UStaticMesh* Mesh = TNProcRuntimeMesh::MakeStaticMesh(this, Part.Mesh, Part.bGlow ? Glow : Solid, false, 0.f, 1.f, 0.f);
 			if (!Mesh)
 			{
@@ -239,6 +284,11 @@ void ATN_TutorialFauna::Init(const ATN_TutorialCourse* InCourse)
 			ISM->SetWorldTransform(FTransform::Identity);
 			ISM->SetCullDistances(FMath::RoundToInt(WakeRadius), FMath::RoundToInt(WakeRadius + 1000.f));
 			ISM->AddInstances(Xf, false, false);
+			if (bBody)
+			{
+				TNArt::ApplyToInstances(ISM, Slot);
+				bBodyDone = true;
+			}
 			PartISMs.Add(ISM);
 			PartMeshes.Add(Mesh);
 			PartBone.Add(static_cast<uint8>(Part.Bone));
@@ -343,8 +393,9 @@ void ATN_TutorialFauna::Tick(float DeltaSeconds)
 			const int32 Part = K.FirstPart + p;
 			if (UInstancedStaticMeshComponent* ISM = PartISMs[Part])
 			{
+				// El tramo que ha cambiado (con el ajuste de la malla de arte, si la pieza la tiene).
 				const TArrayView<const FTransform> Range(PartXf[Part].GetData() + First, Count);
-				ISM->BatchUpdateInstancesTransforms(First, Range, false, true, false);
+				TNArt::UpdateInstances(ISM, First, Range, false, true, false);
 			}
 		}
 		K.DirtyMin = MAX_int32;

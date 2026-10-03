@@ -1374,6 +1374,15 @@ namespace
 	}
 }
 
+void AMP_GamePlayerController::ServerExecRPC_Implementation(const FString& Msg)
+{
+	// Sin esto, un invitado con `ServerExec TN.Ghost.Become 1` (o TN.Race.*, TN.Tutorial.Station) lo ejecutaba en el anfitrión.
+	if (TNIsHostDebugCallAllowed(this, TEXT("ServerExec")))
+	{
+		Super::ServerExecRPC_Implementation(Msg);
+	}
+}
+
 void AMP_GamePlayerController::TNStorm(const FString& Where, float Ahead)
 {
 	ServerStormTest(Where, Ahead);

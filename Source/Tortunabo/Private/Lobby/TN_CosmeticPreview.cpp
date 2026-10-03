@@ -1,4 +1,6 @@
 #include "Lobby/TN_CosmeticPreview.h"
+#include "Art/TN_Art.h"
+#include "Art/TN_ArtMeshComponent.h"
 #include "Core/TN_CosmeticLook.h"
 #include "Animation/AnimationAsset.h"
 #include "Components/PointLightComponent.h"
@@ -49,6 +51,22 @@ namespace TNPreviewDetail
 		Prim->SetVisibleInSceneCaptureOnly(true);
 		Prim->SetCastShadow(true);
 		Prim->LightingChannels = StudioChannel();
+	}
+
+	/**
+	 * La malla de arte de la peana (si la hay) es otro componente del escaparate: solo se ve en la captura, con las mismas
+	 * luces y sombras de estudio, y entra en la lista de lo que dibuja el captor (el componente generado deja de dibujarse).
+	 */
+	void AddStudioArt(const UStaticMeshComponent* Base, USceneCaptureComponent2D* Cap)
+	{
+		for (USceneComponent* Child : Base->GetAttachChildren())
+		{
+			if (UTN_ArtMeshComponent* Art = Cast<UTN_ArtMeshComponent>(Child))
+			{
+				SetupStudioPrimitive(Art);
+				Cap->ShowOnlyComponent(Art);
+			}
+		}
 	}
 
 	void SetupStudioLight(UPointLightComponent* Light, float Candelas, const FLinearColor& Color)
@@ -177,6 +195,7 @@ void ATN_CosmeticPreview::BeginPlay()
 	Capture->ShowOnlyComponent(Turtle);
 	Capture->ShowOnlyComponent(Helmet);
 	Capture->ShowOnlyComponent(Pedestal);
+	AddStudioArt(Pedestal, Capture);
 
 	if (IdleAnim) { Turtle->PlayAnimation(IdleAnim, true); }
 	ApplyLookNow(Look);
@@ -210,7 +229,7 @@ void ATN_CosmeticPreview::BuildPedestal()
 		B.AddPrism(Fan, PedestalTop + 1.8, PedestalTop - 1.0, Pal(k == 0 ? 0xFF9A80 : 0xFFD4BA));
 	}
 	UMaterialInterface* VertexColorMat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Cosmetics/Materials/M_CosmeticVertexColor.M_CosmeticVertexColor"));
-	Pedestal->SetStaticMesh(TNProcRuntimeMesh::MakeStaticMesh(this, B, VertexColorMat));
+	TNArt::SetMesh(Pedestal, TNProcRuntimeMesh::MakeStaticMesh(this, B, VertexColorMat), TN_ART("Lobby.CosmeticPreview.Pedestal"));
 }
 
 void ATN_CosmeticPreview::ApplyLookNow(const FTN_TurtleLook& InLook)

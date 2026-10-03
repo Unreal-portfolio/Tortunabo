@@ -1,5 +1,6 @@
 #include "Lobby/TN_TutorialPractice.h"
 #include "Lobby/TN_TutorialCourse.h"
+#include "Art/TN_Art.h"
 #include "../World/ProcMap/TN_ProcMapFaunaMeshes.h"
 #include "../World/ProcMap/TN_ProcMapRuntimeMesh.h"
 #include "Playground/TN_PlaygroundMeshKit.h"
@@ -38,6 +39,21 @@ namespace TNTutorialDummyDetail
 			const FVector C(52.0 * FMath::Cos(A), 52.0 * FMath::Sin(A), 0.0);
 			TNPlaygroundKit::AddStarfish(B, C, FVector(FMath::Cos(A), FMath::Sin(A), 0.0), FVector::UpVector, 13.0, 4.0, TNPlaygroundKit::Rgb(0xFFD23F, 0.3f));
 			TNPlaygroundKit::AddStarfish(B, C, -FVector(FMath::Cos(A), FMath::Sin(A), 0.0), FVector::UpVector, 13.0, 4.0, TNPlaygroundKit::Rgb(0xFFD23F, 0.3f));
+		}
+	}
+
+	/** Pieza de arte de cada parte del cangrejo (Docs/Arte_Assets.md): cada una se mueve por su cuenta. */
+	FName PartSlot(TNFauna::ETNFaunaBone Bone)
+	{
+		using EB = TNFauna::ETNFaunaBone;
+		switch (Bone)
+		{
+			case EB::Body:  return TN_ART("Lobby.Tutorial.DummyCrab.Shell");
+			case EB::LegFL: return TN_ART("Lobby.Tutorial.DummyCrab.LegsLeft");
+			case EB::LegFR: return TN_ART("Lobby.Tutorial.DummyCrab.LegsRight");
+			case EB::ClawL: return TN_ART("Lobby.Tutorial.DummyCrab.ClawLeft");
+			case EB::ClawR: return TN_ART("Lobby.Tutorial.DummyCrab.ClawRight");
+			default:        return NAME_None;
 		}
 	}
 
@@ -118,6 +134,7 @@ void ATN_TutorialDummy::BuildCrab()
 		Comp->bEvaluateWorldPositionOffset = false;
 		Comp->SetupAttachment(SceneRoot);
 		Comp->RegisterComponent();
+		TNArt::ApplyToComponent(Comp, TNTutorialDummyDetail::PartSlot(Part.Bone));
 		Meshes.Add(Mesh);
 		Parts.Add(Comp);
 		PartBone.Add(static_cast<uint8>(Part.Bone));
@@ -134,6 +151,7 @@ void ATN_TutorialDummy::BuildCrab()
 		Stars->SetupAttachment(SceneRoot);
 		Stars->RegisterComponent();
 		Stars->SetVisibility(false);
+		TNArt::ApplyToComponent(Stars, TN_ART("Lobby.Tutorial.DummyCrab.Stars"));
 		Meshes.Add(StarMesh);
 	}
 	Animate(0.f);

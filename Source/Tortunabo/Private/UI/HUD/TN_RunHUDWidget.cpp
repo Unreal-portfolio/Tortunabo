@@ -90,8 +90,14 @@ namespace TNRunHUDDetail
 	/** Márgenes de caja (fracción de la textura) de los carteles con arte de TNHUDArt. */
 	const FMargin CardMargin(0.16f, 0.2f, 0.16f, 0.34f);
 	const FMargin RibbonMargin(0.14f, 0.f, 0.14f, 0.f);
+	/** Lado del salvavidas del distintivo (px). */
+	constexpr float BadgeRingSize = 196.f;
+	/** Relleno a cada lado del nombre dentro de la cinta (px). */
+	constexpr float BadgeNamePadding = 28.f;
 	/** Ancho máximo del nombre bajo el salvavidas (px): uno más largo se encoge en vez de ensanchar la cinta. */
-	constexpr float BadgeNameMaxWidth = 220.f;
+	constexpr float BadgeNameMaxWidth = 140.f;
+	// La cinta nunca es más ancha que el salvavidas: si lo fuera, la columna centrada lo movería (#147).
+	static_assert(BadgeNameMaxWidth + 2.f * BadgeNamePadding <= BadgeRingSize, "La cinta del nombre no cabe bajo el salvavidas");
 	const FMargin TagMargin(0.2f, 0.f, 0.2f, 0.f);
 	const FMargin ChatBubbleMargin(0.26f, 0.3f, 0.18f, 0.45f);
 
@@ -375,7 +381,7 @@ void UTN_RunHUDWidget::BuildTree()
 		Badge = Make<UImage>(Tree, TEXT("TurtleBadge"));
 		BadgeMID = MakeUIMID(this, TEXT("/Game/UI/HUD/M_UI_TurtleBadge.M_UI_TurtleBadge"));
 		if (BadgeMID) { Badge->SetBrushFromMaterial(BadgeMID); }
-		AddAt(Ring, MakeSize(Tree, Badge, 196.f, 196.f), HAlign_Center, VAlign_Center);
+		AddAt(Ring, MakeSize(Tree, Badge, BadgeRingSize, BadgeRingSize), HAlign_Center, VAlign_Center);
 		FaceImage = MakeImage(Tree, TNHUDFaces::TurtleFace(ETNTurtleFace::Happy), FVector2D(104.f, 104.f));
 		FaceImage->SetRenderTransformPivot(FVector2D(0.5f, 0.85f));
 		AddAt(Ring, FaceImage, HAlign_Center, VAlign_Center);
@@ -402,7 +408,7 @@ void UTN_RunHUDWidget::BuildTree()
 		NameShrink->SetContent(NameText);
 		USizeBox* NameFit = MakeSize(Tree, NameShrink, 0.f, 0.f);
 		NameFit->SetMaxDesiredWidth(BadgeNameMaxWidth);
-		if (UVerticalBoxSlot* S = Col->AddChildToVerticalBox(MakeCard(Tree, TNHUDArt::RibbonTexture(), RibbonMargin, NameFit, FMargin(40.f, 17.f, 40.f, 19.f))))
+		if (UVerticalBoxSlot* S = Col->AddChildToVerticalBox(MakeCard(Tree, TNHUDArt::RibbonTexture(), RibbonMargin, NameFit, FMargin(BadgeNamePadding, 17.f, BadgeNamePadding, 19.f))))
 		{
 			S->SetHorizontalAlignment(HAlign_Center);
 			S->SetPadding(FMargin(0.f, -8.f, 0.f, 0.f));

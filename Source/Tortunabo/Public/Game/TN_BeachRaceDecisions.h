@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Game/TN_BeachRaceGameState.h"
 
 /**
  * Reglas de la carrera en la playa (ATN_BeachRaceGameMode) como lógica pura: sin mundo ni controladores, todo entra por
@@ -44,5 +45,35 @@ namespace TNBeachRaceRules
 			Best = Candidates.IndexOfByPredicate([](const FTimeLimitCandidate& Candidate) { return Candidate.bEligible; });
 		}
 		return Best;
+	}
+
+	/**
+	 * @brief ¿Se quita este objeto suelto al preparar la ronda siguiente? (#71)
+	 *
+	 * Lo suelto es de la ronda en que apareció: los objetos que se sueltan (pickups), las bolas que se paran, las conchas
+	 * trampa y las cajas de objetos no pasan a la ronda N+1 como objetos gratis o trampas (la tortuga que los dejó ya no
+	 * existe y la playa es otra). Se respeta lo que se colocó a mano en el nivel (no es de ninguna ronda) y lo que ya se
+	 * está destruyendo.
+	 * @param bPlacedInLevel El actor viene del nivel (AActor::IsNetStartupActor), no se creó jugando.
+	 * @param bBeingDestroyed Ya no es válido o se está destruyendo (IsValid, IsActorBeingDestroyed).
+	 */
+	inline bool ShouldClearRoundLeftover(bool bPlacedInLevel, bool bBeingDestroyed)
+	{
+		return !bPlacedInLevel && !bBeingDestroyed;
+	}
+
+	/**
+	 * @brief ¿La carrera deja jugar? (#72) Los enemigos, las trampas y los objetos de carrera (mina, cangrejo, gaviota, disco,
+	 *        protector solar, nube de tormenta...) lo miran antes de golpear.
+	 *
+	 * No deja jugar al acabar la cuenta de meta («¡TIEMPO!» y «¡TODAS AL AGUA!»: gusanos y recuento), en el recuento de
+	 * conchas, en el título del sprint final ni en el podio. A propósito, la fase Waiting cuenta como carrera (3, 2, 1
+	 * incluidos): si la fase se quedara en Waiting por lo que sea, se sigue atacando.
+	 */
+	inline bool IsRaceLive(ETNBeachRacePhase Phase, ETNBeachFinishCountdown Countdown)
+	{
+		return Phase != ETNBeachRacePhase::RoundResults && Phase != ETNBeachRacePhase::Champion
+			&& Phase != ETNBeachRacePhase::SprintIntro && Countdown != ETNBeachFinishCountdown::TimeUp
+			&& Countdown != ETNBeachFinishCountdown::AllIn;
 	}
 }

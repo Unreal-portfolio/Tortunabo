@@ -23,9 +23,9 @@ Una issue `sin-revision` es código que ya está en `dev` por push directo, sin 
 
 - A `dev` solo se llega por la PR de la rama de la issue o del lote: nunca `git push` a `dev` ni se trabaja sobre ella (el ruleset lo rechaza).
 
-- Requisitos: Revisión IA = Aprobada; compila en DebugGame si toca `Source/`, `Config/`, `Plugins/` o `.uproject` (`necesita-unreal`); sin conflictos con `dev`; sin issue `colision` abierta sobre la PR (`tablero.py colisiones`).
+- **A `dev` solo entra lo que está en Done** (#282). Requisitos: todas las issues de la PR con Revisión IA = Aprobada **y** Editor = Funciona probado en la rama (Validada; en un lote, `lote estado` en verde); compila en DebugGame si toca `Source/`, `Config/`, `Plugins/` o `.uproject` (`necesita-unreal`); sin conflictos con `dev`; sin issue `colision` abierta sobre la PR (`tablero.py colisiones`). Nunca se fusiona algo sin probar para probarlo después en `dev`.
 - **PR de un lote** (lleva «Refs #<lote>»): `tablero.py lote estado <lote>`. Si falla (algún miembro no está en Validada, o tiene una `decision` pendiente o una conversación sin contestar, `peticion`), **no la fusiones** y di qué falta.
-- `gh pr merge <pr> --merge` y, sin que te lo pidan, `tablero.py sync --aplicar`: Editor = Funciona → Done y se cierra; si no, QA editor. En un lote, todos pasan a Done a la vez y el lote se cierra.
+- Con todo en Validada: pasa las issues a Done (`tablero.py estado <n> Done`), `gh pr merge <pr> --merge --delete-branch` y, sin que te lo pidan, `tablero.py sync --aplicar` (cierra las issues y el lote).
 - Cada issue que pase a Done lleva su resumen: `tablero.py resumen <n> --que "<qué fallaba>" [--por-que "<causa>"] --como "<arreglo>" --pr <pr>`. El lote, uno del conjunto.
 
 ## Decisiones, organización y objetos (solo aprobadores)
