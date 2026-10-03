@@ -4,6 +4,7 @@
 #include "Vehicles/TN_BuggyData.h"
 #include "Vehicles/TN_BuggyInput.h"
 #include "Vehicles/TN_BuggyTurretComponent.h"
+#include "Vehicles/TN_RallyTracerFX.h"
 #include "Vehicles/TN_RallyTurretLogic.h"
 #include "Camera/CameraComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -329,7 +330,42 @@ void ATN_BuggyGunnerPawn::RequestFire(bool bSpecial)
 	{
 		return;
 	}
-	ServerFire(bSpecial, static_cast<float>(LocalAim.Yaw), static_cast<float>(LocalAim.Pitch));
+	// La dirección en mundo es la que ve esta máquina (la de la mira): con ping, el servidor tiene el buggy girado de otra
+	// manera y con solo el apuntado relativo el disparo salía desviado (#333).
+	const FRotator Aim = TNRallyTurret::ClampAim(LocalAim);
+	const FVector WorldDir = Buggy ? TNRallyTurret::AimWorldDirection(Buggy->GetActorRotation(), Aim) : FVector::ZeroVector;
+	if (!HasAuthority())
+	{
+		SpawnLocalTracer(bSpecial, Aim, WorldDir);
+	}
+	ServerFire(bSpecial, static_cast<float>(LocalAim.Yaw), static_cast<float>(LocalAim.Pitch), WorldDir);
+}
+
+void ATN_BuggyGunnerPawn::SpawnLocalTracer(bool bSpecial, const FRotator& Aim, const FVector& WorldDir) const
+{
+	const UTN_BuggyTurretComponent* Turret = Buggy ? Buggy->GetTurret() : nullptr;
+	UWorld* World = GetWorld();
+	if (!Turret || !World || WorldDir.IsNearlyZero() || Buggy->AreWeaponsLocked() || Turret->IsGunnerKnocked())
+	{
+		return;
+	}
+	// Lo mismo que comprobará el servidor con el estado replicado: calor del coco y cargas de la especial.
+	const bool bFireSpecial = bSpecial || TNRallyTurret::IsSpecial(Turret->GetSelectedAmmo());
+	const ETNRallyAmmo Ammo = bFireSpecial ? Turret->GetSpecialAmmo() : ETNRallyAmmo::Coco;
+	const bool bCanFire = bFireSpecial ? (Ammo != ETNRallyAmmo::None && Turret->GetSpecialCharges() > 0) : !Turret->IsOverheated();
+	if (!bCanFire)
+	{
+		return;
+	}
+	const TNRallyTurret::FAmmoSpec Spec = TNRallyTurret::SpecFor(Ammo);
+	const FVector Muzzle = TNRallyTurret::MuzzleWorldLocation(Turret->GetComponentLocation(), Buggy->GetActorRotation(), Aim,
+		UTN_BuggyTurretComponent::MuzzleDistanceCm, UTN_BuggyTurretComponent::MuzzleSideCm);
+	// Como el proyectil del servidor: hereda la velocidad del buggy salvo la burbuja.
+	const FVector Inherited = Ammo == ETNRallyAmmo::Burbuja ? FVector::ZeroVector : Buggy->GetVelocity();
+	const ATN_RallyTracerFX* Tracer = ATN_RallyTracerFX::Spawn(World, Ammo, Muzzle, WorldDir * Spec.SpeedCms + Inherited,
+		World->GetGravityZ() * Spec.GravityScale);
+	UE_LOG(LogTNBuggy, Verbose, TEXT("%s: trazador local de %s %s"), *Buggy->GetName(), *UEnum::GetValueAsString(Ammo),
+		Tracer ? TEXT("creado") : TEXT("sin crear (máquina sin pantalla)"));
 }
 
 void ATN_BuggyGunnerPawn::RequestCycleAmmo(int32 Direction)
@@ -369,12 +405,12 @@ void ATN_BuggyGunnerPawn::ServerSetAim_Implementation(float Yaw, float Pitch)
 	}
 }
 
-bool ATN_BuggyGunnerPawn::ServerFire_Validate(bool bSpecial, float Yaw, float Pitch)
+bool ATN_BuggyGunnerPawn::ServerFire_Validate(bool bSpecial, float Yaw, float Pitch, FVector_NetQuantizeNormal WorldDir)
 {
-	return TNRallyTurret::IsAimFinite(Yaw, Pitch);
+	return TNRallyTurret::IsAimFinite(Yaw, Pitch) && !WorldDir.ContainsNaN();
 }
 
-void ATN_BuggyGunnerPawn::ServerFire_Implementation(bool bSpecial, float Yaw, float Pitch)
+void ATN_BuggyGunnerPawn::ServerFire_Implementation(bool bSpecial, float Yaw, float Pitch, FVector_NetQuantizeNormal WorldDir)
 {
 	if (!IsSeatedGunner())
 	{
@@ -382,7 +418,11 @@ void ATN_BuggyGunnerPawn::ServerFire_Implementation(bool bSpecial, float Yaw, fl
 	}
 	UTN_BuggyTurretComponent* Turret = Buggy->GetTurret();
 	Turret->SetAimRelative(FRotator(Pitch, Yaw, 0.f));
-	const FVector Dir = Turret->GetAimWorldDirection();
+	const FVector ServerDir = Turret->GetAimWorldDirection();
+	const FVector Dir = TNRallyTurret::ResolveClientFireDirection(ServerDir, WorldDir);
+	UE_LOG(LogTNBuggy, Verbose, TEXT("%s: dirección del cliente a %.1f° de la del servidor (%s)"), *Buggy->GetName(),
+		FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(FVector::DotProduct(ServerDir, FVector(WorldDir).GetSafeNormal()), -1.0, 1.0))),
+		Dir.Equals(ServerDir) ? TEXT("manda la del servidor") : TEXT("manda la del cliente"));
 	const bool bFired = bSpecial ? Turret->TryFire(true, Dir) : Turret->TryFireSelected(Dir);
 	UE_LOG(LogTNBuggy, Verbose, TEXT("%s: la artillera %s pide disparo %s: %s"), *Buggy->GetName(), *GetNameSafe(Controller),
 		bSpecial ? TEXT("especial") : TEXT("de la munición seleccionada"), bFired ? TEXT("sale") : TEXT("rechazado (cadencia, calor, cargas o noqueo)"));

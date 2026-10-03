@@ -115,6 +115,19 @@ namespace TNRallyTurret
 	/** Dirección en mundo del apuntado relativo, sobre la rotación del buggy (solo su guiñada, cabeceo y alabeo). */
 	TORTUNABO_API FVector AimWorldDirection(const FRotator& BuggyRotation, const FRotator& RelativeAim);
 
+	/**
+	 * Separación máxima (grados) entre la dirección en mundo que manda la artillera y la que calcula el servidor con su
+	 * orientación del buggy (#333). Con 150 ms de ping y el buggy girando a tope, la diferencia llega a unos 9°.
+	 */
+	constexpr float MaxClientAimErrorDeg = 12.f;
+
+	/**
+	 * Dirección del disparo de la artillera (#333): la que vio el cliente (ClientDir, en mundo) si es finita, no nula y se
+	 * separa como mucho MaxErrorDeg de ServerDir; si no, ServerDir. Devuelve siempre un vector unitario.
+	 */
+	TORTUNABO_API FVector ResolveClientFireDirection(const FVector& ServerDir, const FVector& ClientDir,
+		float MaxErrorDeg = MaxClientAimErrorDeg);
+
 	/** Apuntado relativo que corresponde a una dirección en mundo (para la IA y la conductora sola). Ya limitado. */
 	TORTUNABO_API FRotator RelativeAimFromWorld(const FRotator& BuggyRotation, const FVector& WorldDir);
 

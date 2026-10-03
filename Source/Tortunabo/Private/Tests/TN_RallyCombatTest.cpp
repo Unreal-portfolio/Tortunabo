@@ -204,4 +204,29 @@ bool FTNRallyCombatTurtleLaunchTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNRallyCombatClientAimTest,
+	"Tortunabo.Rally.Combat.ClientAimTolerance",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNRallyCombatClientAimTest::RunTest(const FString& Parameters)
+{
+	using namespace TNRallyTurret;
+	const FVector Server(1.f, 0.f, 0.f);
+	const auto Yawed = [](float Deg) { return FRotator(0.f, Deg, 0.f).Vector(); };
+	const auto Pitched = [](float Deg) { return FRotator(Deg, 0.f, 0.f).Vector(); };
+
+	// El caso del ping: 9° de giro entre lo que vio el cliente y lo que aplica el servidor.
+	TestTrue(TEXT("9° de guiñada: manda la del cliente"), ResolveClientFireDirection(Server, Yawed(9.f)).Equals(Yawed(9.f), 1e-4f));
+	TestTrue(TEXT("11,9° de cabeceo: manda la del cliente"), ResolveClientFireDirection(Server, Pitched(11.9f)).Equals(Pitched(11.9f), 1e-4f));
+	TestTrue(TEXT("12,5°: se rechaza y manda la del servidor"), ResolveClientFireDirection(Server, Yawed(12.5f)).Equals(Server, 1e-4f));
+	TestTrue(TEXT("hacia atrás: se rechaza"), ResolveClientFireDirection(Server, -Server).Equals(Server, 1e-4f));
+	TestTrue(TEXT("sin dirección del cliente: la del servidor"), ResolveClientFireDirection(Server, FVector::ZeroVector).Equals(Server, 1e-4f));
+	const FVector NaNDir(std::numeric_limits<float>::quiet_NaN(), 0.f, 0.f);
+	TestTrue(TEXT("NaN: la del servidor"), ResolveClientFireDirection(Server, NaNDir).Equals(Server, 1e-4f));
+	TestTrue(TEXT("sale unitaria aunque llegue larga"), FMath::IsNearlyEqual(ResolveClientFireDirection(Server, Yawed(5.f) * 37.f).Size(), 1.0, 1e-4));
+	TestTrue(TEXT("tolerancia propia más estrecha"), ResolveClientFireDirection(Server, Yawed(9.f), 5.f).Equals(Server, 1e-4f));
+	TestTrue(TEXT("la tolerancia por defecto cubre el desvío medido (9°)"), MaxClientAimErrorDeg >= 9.f && MaxClientAimErrorDeg <= 15.f);
+	return true;
+}
+
 #endif

@@ -135,6 +135,18 @@ namespace TNRallyTurret
 		return ClampAim(Local.Rotation());
 	}
 
+	FVector ResolveClientFireDirection(const FVector& ServerDir, const FVector& ClientDir, float MaxErrorDeg)
+	{
+		const FVector Server = ServerDir.GetSafeNormal();
+		if (ClientDir.ContainsNaN() || ClientDir.IsNearlyZero())
+		{
+			return Server;
+		}
+		const FVector Client = ClientDir.GetSafeNormal();
+		const double CosMax = FMath::Cos(FMath::DegreesToRadians(static_cast<double>(FMath::Max(MaxErrorDeg, 0.f))));
+		return FVector::DotProduct(Server, Client) >= CosMax ? Client : Server;
+	}
+
 	FVector MuzzleWorldLocation(const FVector& PivotWorld, const FRotator& BuggyRotation, const FRotator& RelativeAim, float ForwardCm,
 		float SideCm)
 	{

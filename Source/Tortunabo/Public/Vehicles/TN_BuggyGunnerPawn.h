@@ -113,8 +113,15 @@ private:
 	UFUNCTION(Server, Unreliable, WithValidation)
 	void ServerSetAim(float Yaw, float Pitch);
 
+	/**
+	 * Disparo con el apuntado relativo (Yaw, Pitch) y la dirección en mundo que vio el cliente (#333): el servidor usa la
+	 * del cliente si se separa como mucho TNRallyTurret::MaxClientAimErrorDeg de la que calcula con su orientación.
+	 */
 	UFUNCTION(Server, Reliable, WithValidation)
-	void ServerFire(bool bSpecial, float Yaw, float Pitch);
+	void ServerFire(bool bSpecial, float Yaw, float Pitch, FVector_NetQuantizeNormal WorldDir);
+
+	/** Cliente: trazador local inmediato hacia WorldDir si la torreta, tal como se ve aquí, puede disparar (#333). */
+	void SpawnLocalTracer(bool bSpecial, const FRotator& Aim, const FVector& WorldDir) const;
 
 	UFUNCTION(Server, Reliable, WithValidation)
 	void ServerCycleAmmo(int32 Direction);
