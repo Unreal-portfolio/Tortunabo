@@ -59,13 +59,15 @@ namespace TNProcMap
 	{
 		const FGenParams& P = L.Params;
 		const int32 N = FMath::Max(1, P.GridSize);
+		const int32 GridX = FMath::Max(1, L.GridW());
 		L.WorldSize = static_cast<double>(N) * P.ModuleSize;
-		L.RasterW = FMath::Max(4, FMath::RoundToInt(L.WorldSize / P.CellSize));
-		L.RasterH = L.RasterW;
+		L.WorldSizeX = static_cast<double>(GridX) * P.ModuleSize;
+		L.RasterW = FMath::Max(4, FMath::RoundToInt(L.WorldSizeX / P.CellSize));
+		L.RasterH = FMath::Max(4, FMath::RoundToInt(L.WorldSize / P.CellSize));
 		const int32 W = L.RasterW;
 		const int32 H = L.RasterH;
 		const int32 NumCells = W * H;
-		const int32 NumModules = N * N;
+		const int32 NumModules = GridX * N;
 
 		// ── Semillas en rejilla con jitter ──────────────────────────────────
 		L.Modules.Reset();
@@ -75,10 +77,10 @@ namespace TNProcMap
 		const double Jitter = 0.22 * P.ModuleSize;
 		for (int32 j = 0; j < N; ++j)
 		{
-			for (int32 i = 0; i < N; ++i)
+			for (int32 i = 0; i < GridX; ++i)
 			{
-				FModule& M = L.Modules[j * N + i];
-				M.Id = j * N + i;
+				FModule& M = L.Modules[j * GridX + i];
+				M.Id = j * GridX + i;
 				M.GridCoord = FIntPoint(i, j);
 				M.Seed = FVector2D((i + 0.5) * P.ModuleSize + Rng.Range(-Jitter, Jitter),
 					(j + 0.5) * P.ModuleSize + Rng.Range(-Jitter, Jitter));
@@ -282,8 +284,8 @@ namespace TNProcMap
 				}
 			}
 		}
-		// Frontera mínima para poder colocar un portal con holgura (~70 m).
-		const int32 MinShared = FMath::Max(6, FMath::RoundToInt(7000.0 / P.CellSize));
+		// Frontera mínima para poder colocar un portal con holgura (~70 m; en módulos pequeños, el 40 % del lado).
+		const int32 MinShared = FMath::Max(6, FMath::RoundToInt(FMath::Min(7000.0, 0.4 * P.ModuleSize) / P.CellSize));
 		for (FModule& M : L.Modules)
 		{
 			for (int32 Other = 0; Other < NumModules; ++Other)
@@ -329,7 +331,7 @@ namespace TNProcMap
 				const int32 Idx = y * W + x;
 				L.ModuleDist[Idx] *= static_cast<float>(P.CellSize);
 				const FVector2D C = L.CellCenter(x, y);
-				const double EdgeSides = FMath::Min(FMath::Min(C.X, L.WorldSize - C.X), C.Y) - SideExtra;
+				const double EdgeSides = FMath::Min(FMath::Min(C.X, L.WorldSizeX - C.X) - P.SideMargin, C.Y) - SideExtra;
 				const double EdgeNorth = (L.WorldSize - C.Y) - NorthExtra;
 				const double Edge = FMath::Min(EdgeSides, EdgeNorth);
 				L.BorderDist[Idx] = static_cast<float>(FMath::Min(static_cast<double>(L.ModuleDist[Idx]), Edge));

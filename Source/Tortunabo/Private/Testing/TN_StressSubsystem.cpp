@@ -58,6 +58,9 @@ namespace TNStressDetail
 		Item.SetNumberField(TEXT("spikes_on_efficiency_core_pct"), Spikes > 0 ? 100.0 * SpikesOnE / Spikes : 0.0);
 	}
 
+	/** Clases con Tick que salen en el informe de cada fase (actores y componentes juntos, de más a menos). */
+	constexpr int32 TopTickingClasses = 30;
+
 	UTN_StressSubsystem* FromWorld(UWorld* World)
 	{
 		return World ? World->GetSubsystem<UTN_StressSubsystem>() : nullptr;
@@ -425,9 +428,9 @@ void UTN_StressSubsystem::EndPhase(int32 Index)
 		Phase.TopTicking.Add(TPair<FString, int32>(Pair.Key, Pair.Value));
 	}
 	Phase.TopTicking.Sort([](const TPair<FString, int32>& A, const TPair<FString, int32>& B) { return A.Value > B.Value; });
-	if (Phase.TopTicking.Num() > 12)
+	if (Phase.TopTicking.Num() > TNStressDetail::TopTickingClasses)
 	{
-		Phase.TopTicking.SetNum(12);
+		Phase.TopTicking.SetNum(TNStressDetail::TopTickingClasses);
 	}
 }
 

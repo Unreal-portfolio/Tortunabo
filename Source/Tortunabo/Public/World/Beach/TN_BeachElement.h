@@ -84,6 +84,19 @@ public:
 	 */
 	virtual void ForceNetUpdate() override;
 
+	/**
+	 * Tick por distancia (UTN_BeachTickWakeSubsystem, #59): a partir de esta distancia (cm) a la tortuga, el caparazón o la
+	 * cámara local más cercanos, el elemento apaga su Tick. 0 (por defecto): no se duerme nunca. Solo para lo que en su
+	 * Tick no hace nada que se note sin nadie cerca (sensores de pisada, animaciones de reposo).
+	 */
+	virtual float GetTickWakeDistance() const { return 0.f; }
+
+	/** Tiene algo en marcha (mecha, explosión, puerta abierta, tortuga enganchada…): sigue despierto aunque no haya nadie. */
+	virtual bool IsTickBusy() const { return false; }
+
+	/** Lo llama el subsistema al encender o apagar el Tick (p. ej., para dejar quieto lo que parpadea). */
+	virtual void OnTickWakeChanged(bool bAwake) {}
+
 protected:
 	/**
 	 * Servidor: la red del elemento en la ronda (relevancia por distancia, dormancy y frecuencia). La aplica SpawnElement
@@ -92,6 +105,7 @@ protected:
 	virtual void ApplyRoundNetProfile();
 
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	/** Construye lo visual y la colisión a partir de Spec (en todas las máquinas; puede llamarse más de una vez). */
 	virtual void ApplySpec() {}
@@ -108,4 +122,7 @@ private:
 	/** La red de la ronda lo duerme (ApplyRoundNetProfile con WantsNetDormancy): ForceNetUpdate lo despierta un rato. */
 	bool bRoundNetDormancy = false;
 	FTimerHandle NetSleepTimer;
+
+	/** Apuntado en UTN_BeachTickWakeSubsystem (GetTickWakeDistance > 0 al empezar). */
+	bool bTickWakeRegistered = false;
 };

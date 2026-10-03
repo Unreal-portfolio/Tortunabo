@@ -2,6 +2,8 @@
 #include "World/TN_ChunkDecisions.h"
 #include "World/TN_FinishLineVolume.h"
 #include "Game/TN_SurvivalRules.h"
+#include "World/ProcMap/TN_ProcMapGenerator.h"
+#include "World/ProcMap/TN_ProcMapSurvival.h"
 #include "Core/TN_Log.h"
 
 #include "Components/BoxComponent.h"
@@ -22,6 +24,8 @@ ATN_ChunkManager::ATN_ChunkManager()
 	// Los chunks que spawnea tienen SetReplicates(true) activado en SpawnAlignedChunk,
 	// por lo que UE los envía automáticamente a todos los clientes.
 	bReplicates = false;
+
+	LevelMapSettings = TSoftObjectPtr<UTN_ProcMapSettings>(FSoftObjectPath(TEXT("/Game/ProcMap/DA_ProcMapSettings.DA_ProcMapSettings")));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -39,18 +43,18 @@ void ATN_ChunkManager::BeginPlay()
 		return;
 	}
 
+	// Supervivencia: un mapa generado por nivel, sin chunks. ATN_SurvivalGameMode genera los siguientes.
+	if (bLevelMode)
+	{
+		BuildLevel(1);
+		return;
+	}
+
 	// Validar que hay al menos un pool configurado
 	if (EasyChunkClasses.Num() == 0 && MediumChunkClasses.Num() == 0 && HardChunkClasses.Num() == 0)
 	{
 		UE_LOG(LogTortunabo, Error, TEXT("[ChunkManager] No hay chunks configurados en ningún pool. "
 			"Asigna BPs en EasyChunkClasses / MediumChunkClasses / HardChunkClasses."));
-		return;
-	}
-
-	// Supervivencia: niveles enteros, sin buffer ni streaming. ATN_SurvivalGameMode genera los siguientes.
-	if (bLevelMode)
-	{
-		BuildLevel(1);
 		return;
 	}
 
@@ -539,71 +543,70 @@ FVector ATN_ChunkManager::GetSafeReviveLocation() const
 // Modo por niveles (Supervivencia)
 // ─────────────────────────────────────────────────────────────────────────────
 
-void ATN_ChunkManager::DestroyAllChunks()
-{
-	if (ActiveEndTrigger.IsValid())
-	{
-		ActiveEndTrigger->OnComponentBeginOverlap.RemoveDynamic(this, &ATN_ChunkManager::OnChunkEndOverlap);
-	}
-	ActiveEndTrigger = nullptr;
-
-	for (const TWeakObjectPtr<AActor>& Chunk : ActiveChunks)
-	{
-		if (Chunk.IsValid())
-		{
-			Chunk->Destroy();
-		}
-	}
-	ActiveChunks.Reset();
-}
-
-void ATN_ChunkManager::BuildLevel(int32 Level)
+bool ATN_ChunkManager::BuildLevel(int32 Level)
 {
 	if (!HasAuthority())
 	{
-		return;
+		return false;
 	}
 
-	DestroyAllChunks();
-	LevelPath.Reset();
-	PassedChunkCount = 0;
-	bFinalSpawned = false;
-	NextSpawnTransform = GetActorTransform();
-	LevelPath.Add(NextSpawnTransform.GetLocation());
-
-	// Sin EndTrigger ni CleanupChunks: el nivel entero existe desde el principio.
-	for (const ETNChunkDifficulty Difficulty : TNSurvivalLogic::LevelDifficulties(Level, ChunksPerLevel))
+	ATN_ProcMapGenerator* Generator = EnsureLevelGenerator();
+	if (!Generator)
 	{
-		if (AActor* Chunk = SpawnChunkOfDifficulty(Difficulty))
-		{
-			ActiveChunks.Add(Chunk);
-			LevelPath.Add(NextSpawnTransform.GetLocation());
-		}
+		UE_LOG(LogTortunabo, Error, TEXT("[ChunkManager] No se pudo crear el generador del nivel %d."), Level);
+		return false;
 	}
 
-	SpawnFinalChunk();
-
-	// La meta del camino: la línea de meta del chunk final (hijo suyo); si no se encuentra, su centro.
-	AActor* FinalChunk = bFinalSpawned && ActiveChunks.Num() > 0 ? ActiveChunks.Last().Get() : nullptr;
-	if (FinalChunk)
+	const int32 Difficulty = TNSurvivalLogic::LevelMapDifficulty(Level);
+	const int32 BaseSeed = LevelSeed + FMath::Max(1, Level) - 1;
+	// En el servidor la construcción es síncrona: al volver ya se sabe si la semilla dio mapa. Si no, otra determinista.
+	for (int32 Attempt = 0; Attempt < 3; ++Attempt)
 	{
-		FVector Finish = FinalChunk->GetComponentsBoundingBox().GetCenter();
-		for (TActorIterator<ATN_FinishLineVolume> It(GetWorld()); It; ++It)
+		const int32 Seed = BaseSeed + Attempt * 100003;
+		Generator->ServerGenerateSurvival(Seed, Difficulty);
+		if (Generator->IsMapReady())
 		{
-			if (It->GetParentActor() == FinalChunk || It->GetAttachParentActor() == FinalChunk)
-			{
-				Finish = It->GetActorLocation();
-				break;
-			}
+			UE_LOG(LogTortunabo, Log, TEXT("[ChunkManager] Nivel %d: mapa de Supervivencia con semilla %d y dificultad %d (camino de %.0f m)."),
+				Level, Seed, Difficulty, Generator->GetMainPathLength() / 100.f);
+			return true;
 		}
-		LevelPath.Add(Finish);
+		UE_LOG(LogTortunabo, Warning, TEXT("[ChunkManager] Nivel %d: la semilla %d no dio mapa, probando otra."), Level, Seed);
+	}
+	UE_LOG(LogTortunabo, Error, TEXT("[ChunkManager] Nivel %d sin mapa."), Level);
+	return false;
+}
+
+ATN_ProcMapGenerator* ATN_ChunkManager::EnsureLevelGenerator()
+{
+	if (LevelGenerator)
+	{
+		return LevelGenerator;
 	}
 
-	UE_LOG(LogTortunabo, Log, TEXT("[ChunkManager] Nivel %d generado: %d chunks + final, camino de %d puntos."),
-		Level, ActiveChunks.Num() - (FinalChunk ? 1 : 0), LevelPath.Num());
+	// El mapa avanza en +Y (salida al sur) y su ancho va en X: girado para que avance como los chunks (X del manager)
+	// y centrado a lo ancho, con la salida donde empezaría el primer chunk.
+	const TNProcMap::FGenParams Params = TNProcMap::MakeSurvivalParams(0u, TNProcMap::SurvivalMinDifficulty);
+	const double Width = Params.GridSizeX * Params.ModuleSize;
+	const FRotator Rotation(0.0, GetActorRotation().Yaw - 90.0, 0.0);
+	const FVector Location = GetActorLocation() + FRotator(0.0, GetActorRotation().Yaw, 0.0).RotateVector(LevelMapOffset)
+		- Rotation.RotateVector(FVector(Width * 0.5, 0.0, 0.0));
+
+	UClass* Class = LevelGeneratorClass ? LevelGeneratorClass.Get() : ATN_ProcMapGenerator::StaticClass();
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	LevelGenerator = GetWorld()->SpawnActor<ATN_ProcMapGenerator>(Class, FTransform(Rotation, Location), SpawnParams);
+	if (LevelGenerator)
+	{
+		LevelGenerator->SetSettingsIfMissing(LevelMapSettings.LoadSynchronous());
+	}
+	return LevelGenerator;
 }
 
 float ATN_ChunkManager::GetRemainingDistance(const FVector& Location) const
 {
-	return TNSurvivalLogic::RemainingAlongPath(LevelPath, Location);
+	if (!LevelGenerator || !LevelGenerator->IsMapReady())
+	{
+		return 0.f;
+	}
+	return FMath::Max(0.f, LevelGenerator->GetMainPathLength() - LevelGenerator->GetPathProgress(Location));
 }

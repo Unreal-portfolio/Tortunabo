@@ -83,8 +83,8 @@ Actores replicados: ~634-665 en la base, 968 (heavy) con todo. Muy por debajo de
 
 ## Pendiente
 
-- **Render y GPU no medidos**: en `-nullrhi` `GGameThreadTime`, `GRenderThreadTime` y el tiempo de GPU valen 0. Medir con ventana: `UnrealEditor-Win64-DebugGame.exe <uproject> /Game/Maps/Run/LVL_BeachRace -game -windowed -ResX=1280 -ResY=720 -TNStress=heavy -TNQuitWhenDone`.
+- ~~Render y GPU no medidos~~: medidos con ventana el 2026-10-02 en [`Rendimiento_GPU_2026-10-02.md`](Rendimiento_GPU_2026-10-02.md) (#58). En reposo limita la GPU (9,7 ms de 11,5); con `heavy`, el hilo de render (17,2 ms) y el de juego (11,7 ms). Script: `Scripts/tools/medir_render_gpu.py`.
 - El monkey del cliente remoto (para `net_corrections`) no arrancó, ver hallazgo 4. Hacerlo a mano con `TN.Monkey 60 9` en la ventana del cliente mientras el servidor corre `heavy`.
-- Sin `stat unit` de verdad: el fotograma es el tiempo real entre ticks con `t.MaxFPS 0`, no el hilo de juego aislado.
+- ~~Sin `stat unit` de verdad~~: hilos de juego y render, RHI y GPU por separado en [`Rendimiento_GPU_2026-10-02.md`](Rendimiento_GPU_2026-10-02.md). Las cifras de este informe son de DebugGame headless; en Development el hilo de juego cuesta 2,5-3 veces menos.
 - Pausa/reanudar sin probar (solo con interfaz).
 - Sin perfil por clase de coste de Tick: los costes por grupo salen de restar fases. Falta Insights.

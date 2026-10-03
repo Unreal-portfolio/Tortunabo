@@ -35,6 +35,7 @@ void ATN_ProcMapGenerator::BuildScatter()
 {
 	using namespace TNProcMap;
 	const double World = Layout.WorldSize;
+	const double WorldX = Layout.WorldSizeX;
 
 	// Exclusiones: estructuras, huevos, géiseres, huecos, puzles y tramos no tallados del camino.
 	FTNProcKeepOut Keep;
@@ -89,7 +90,7 @@ void ATN_ProcMapGenerator::BuildScatter()
 			const bool bWalls = Layer.Zone == ETNProcScatterZone::Walls;
 			const double Blend = 6000.0;
 			FVector2D Min = bWalls ? LatMin : FVector2D(FMath::Max(0.0, BMin[b].X - Blend), FMath::Max(0.0, BMin[b].Y - Blend));
-			FVector2D Max = bWalls ? LatMax : FVector2D(FMath::Min(World, BMax[b].X + Blend), FMath::Min(World, BMax[b].Y + Blend));
+			FVector2D Max = bWalls ? LatMax : FVector2D(FMath::Min(WorldX, BMax[b].X + Blend), FMath::Min(World, BMax[b].Y + Blend));
 			if (bWalls)
 			{
 				// En los muros solo el bioma dominante de esa zona del borde.
@@ -128,8 +129,8 @@ void ATN_ProcMapGenerator::BuildScatter()
 					const double H = TerrainHeightMap(P);
 					const FVector N = TerrainNormalMap(P);
 					const double Edge = PathDistanceMap(P);
-					const bool bInside = P.X >= 0.0 && P.Y >= 0.0 && P.X <= World && P.Y <= Layout.CoastY(P.X);
-					const double EdgeDist = FMath::Min(FMath::Min(P.X, World - P.X), P.Y);
+					const bool bInside = P.X >= 0.0 && P.Y >= 0.0 && P.X <= WorldX && P.Y <= Layout.CoastY(P.X);
+					const double EdgeDist = FMath::Min(FMath::Min(P.X, WorldX - P.X), P.Y);
 					const bool bWallZone = !bInside || EdgeDist < Layout.WallInset(P.X) + 1000.0;
 
 					bool bOk = false;

@@ -10,6 +10,33 @@ class UPointLightComponent;
 class UStaticMeshComponent;
 class UTN_BeachMineSynthComponent;
 
+/** Tick por distancia de la mina (#59; lógica pura, tests Tortunabo.Perf.BeachTickWake). */
+namespace TNBeachMineTick
+{
+	/**
+	 * Distancia (cm) a la que apaga su Tick: el sensor (tapa de 70-112 cm de radio) despierta de sobra antes de que llegue
+	 * nadie y, más lejos, el destello del piloto (8 % de cada 1,6 s) no se distingue.
+	 */
+	inline constexpr float WakeDistance = 4000.f;
+
+	/** Segundos tras la explosión, además del rearme, en que siguen vivos el humo, los trozos y el polvo de rearmarse. */
+	inline constexpr double AfterBlastSeconds = 4.0;
+
+	/** En marcha: con la mecha encendida o desde la explosión hasta que se ha rearmado y se han posado los efectos. */
+	inline bool IsBusy(float TriggeredAt, float ExplodedAt, float RearmSeconds, double ServerNow)
+	{
+		if (TriggeredAt > ExplodedAt)
+		{
+			return true;
+		}
+		if (ExplodedAt < 0.f)
+		{
+			return false;
+		}
+		return ServerNow < static_cast<double>(ExplodedAt) + FMath::Max(0.f, RearmSeconds) + AfterBlastSeconds;
+	}
+}
+
 /**
  * Mina de juguete medio enterrada (Docs/Modo_Carrera.md, «Mina»): de un montoncito de arena removida asoman la tapa y el
  * pincho de la espoleta (y en algunas, una banderita roja de aviso a un lado); un piloto rojo parpadea despacio. Cuatro
@@ -29,8 +56,9 @@ class UTN_BeachMineSynthComponent;
  *
  * Red: lo decide el servidor (sensor en su Tick) y replica dos horas del servidor, TriggeredAt (pisada) y ExplodedAt
  * (explosión); cada máquina anima el parpadeo, la explosión, el cráter y el rearme con su reloj del servidor suavizado, y
- * quien llega tarde ve ya el cráter. El lanzamiento y el empujón a las de alrededor los aplica solo el servidor: el dueño
- * los recibe con el movimiento replicado, sin repetirlos en local (antes el empujón se aplicaba dos veces).
+ * quien llega tarde ve ya el cráter. El lanzamiento en bola y el empujón a las de alrededor los decide solo el servidor.
+ * El empujón de la tortuga de un cliente lo estrena su dueño en su siguiente movimiento y el servidor en ese mismo
+ * (UTN_TurtleMovementComponent::LaunchFromServer): sin corrección ni doble empujón (#18).
  */
 UCLASS()
 class TORTUNABO_API ATN_BeachMine : public ATN_BeachElement
@@ -42,9 +70,15 @@ public:
 
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+	virtual float GetTickWakeDistance() const override { return TNBeachMineTick::WakeDistance; }
+	virtual bool IsTickBusy() const override;
+	virtual void OnTickWakeChanged(bool bAwake) override;
 
 	/** Armada (se puede pisar) con el estado replicado a la hora del servidor Now. */
 	bool IsArmedAt(double Now) const;
+
+	/** Servidor (pruebas, TN.Beach.Mine.Blast): salta como si la pisaran ahora, sin nadie encima. false si no está armada. */
+	bool TriggerForTest();
 
 	/** Segundos entre el clic y la explosión (parpadeo y pitidos). */
 	UPROPERTY(EditAnywhere, Category = "Mina", meta = (ClampMin = "0.1", ClampMax = "3.0"))
@@ -139,6 +173,9 @@ private:
 	FVector GetBackDirection() const;
 
 	void UpdateVisuals(double Now, float DeltaSeconds);
+
+	/** Con pantalla: enciende el Tick si estaba dormida por distancia (llega un cambio replicado). */
+	void WakeForNews();
 
 	/** Crea las partículas la primera vez que hacen falta (casi todas las minas de la ronda no llegan a explotar). */
 	void EnsureFX();
