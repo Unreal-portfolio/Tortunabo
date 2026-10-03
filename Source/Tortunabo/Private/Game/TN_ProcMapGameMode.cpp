@@ -842,21 +842,25 @@ void ATN_ProcMapGameMode::FinishRespawn(TWeakObjectPtr<APlayerController> WeakPC
 		return;
 	}
 
-	Turtle->SetActorHiddenInGame(false);
-	Turtle->SetActorEnableCollision(true);
-	PC->ClientIgnoreMoveInput(false);
-
 	// Se recalcula: la tormenta ha podido pasar la pila durante la espera.
 	FTransform At;
 	if (!FindRespawnTransform(PC, At))
 	{
+		Turtle->SetActorHiddenInGame(false);
+		Turtle->SetActorEnableCollision(true);
+		PC->ClientIgnoreMoveInput(false);
 		UE_LOG(LogTortunabo, Log, TEXT("[ProcMapGameMode] %s: la tormenta ya pasó su pila → eliminado."), *GetNameSafe(PC));
 		Super::MarkPlayerDead(PC);
 		return;
 	}
 
+	// Primero a la pila y después visible y con colisión: con la colisión puesta donde cayó, el volumen de muerte
+	// la volvía a matar y el teletransporte la soltaba invisible y sin colisión (#519).
 	GrantReviveImmunity(PC);
 	Turtle->SetActorLocationAndRotation(At.GetLocation(), At.GetRotation(), false, nullptr, ETeleportType::TeleportPhysics);
+	Turtle->SetActorHiddenInGame(false);
+	Turtle->SetActorEnableCollision(true);
+	PC->ClientIgnoreMoveInput(false);
 	if (UCharacterMovementComponent* Move = Turtle->GetCharacterMovement())
 	{
 		Move->StopMovementImmediately();
