@@ -25,8 +25,8 @@ namespace TNChaosDriverDetail
 {
 	/** Una tarea que pasa de esto se da por terminada (atascos, catapulta que no dispara...). */
 	constexpr float TaskTimeout = 12.f;
-	/** Sin llegar al cazo en este tiempo, se deja a la tortuga delante de él (solo en el anfitrión). */
-	constexpr float CatapultAssistAfter = 5.f;
+	/** Sin llegar al cazo en este tiempo (3 s: en el peor caso las cuatro disparan sin parar), se deja a la tortuga delante de él (solo en el anfitrión). */
+	constexpr float CatapultAssistAfter = 3.f;
 	/** Catapultas a más de esto no se eligen. */
 	constexpr double CatapultSearchRadius = 6000.0;
 	/** Velocidad a partir de la cual una tortuga del cazo se da por lanzada. */
@@ -73,7 +73,10 @@ namespace TNChaosDriverDetail
 		return nullptr;
 	}
 
-	/** Centro del cazo y punto desde el que se entra andando (por el borde bajo, lejos del eje). */
+	/**
+	 * Centro del cazo y punto desde el que se entra andando, en el espacio del eje del brazo (ArmPivot, X hacia el cubito): el cazo
+	 * ocupa de -LongArm (750 cm) a -LongArm + BowlLength (-450 cm), como en ATN_BeachCatapult::WhereOnArm (con SizeScale 1).
+	 */
 	bool BowlPoints(const ATN_BeachCatapult* Catapult, FVector& OutBowl, FVector& OutApproach, const UPrimitiveComponent*& OutBowlComponent)
 	{
 		const UPrimitiveComponent* Bowl = FindPrimitive(Catapult, TEXT("BowlCollision"));
@@ -83,9 +86,9 @@ namespace TNChaosDriverDetail
 			return false;
 		}
 		OutBowlComponent = Bowl;
-		OutBowl = Bowl->Bounds.Origin;
-		const FVector Away = (OutBowl - Pivot->GetComponentLocation()).GetSafeNormal2D();
-		OutApproach = OutBowl + Away * 380.0;
+		const FTransform& Frame = Pivot->GetComponentTransform();
+		OutBowl = Frame.TransformPosition(FVector(-600.0, 0.0, 40.0));
+		OutApproach = Frame.TransformPosition(FVector(-1050.0, 0.0, 0.0));
 		return true;
 	}
 
@@ -576,7 +579,8 @@ bool UTN_StressChaosSubsystem::TickCatapult(FDriver& Driver, ATortugaCharacter* 
 		return true;
 	}
 	const double ToBowl = FVector::Dist2D(Turtle->GetActorLocation(), Bowl);
-	const bool bOnBowl = Turtle->GetMovementBase() == BowlComponent || (ToBowl < 100.0 && FMath::Abs(Turtle->GetActorLocation().Z - Bowl.Z) < 200.0);
+	// En el cazo de verdad: lo que pisa es su colisión (lo mismo que mira la catapulta para armarse).
+	const bool bOnBowl = Turtle->GetMovementBase() == BowlComponent;
 	if (Driver.Stage < 2 && Turtle->IsInShell())
 	{
 		InputShell(Turtle);
@@ -584,10 +588,11 @@ bool UTN_StressChaosSubsystem::TickCatapult(FDriver& Driver, ATortugaCharacter* 
 	}
 	if (Driver.Stage < 2 && !Driver.bAssisted && !bClientOnly && Driver.TaskClock > TNChaosDriverDetail::CatapultAssistAfter)
 	{
-		// No llega andando (el brazo o el desnivel se lo impiden): se la deja delante del cazo y entra andando.
+		// No llega andando (el brazo, el borde o el desnivel se lo impiden): se la deja caer en el cazo. Lo que se mide (armar,
+		// aviso, disparo, vuelo de la bola y su réplica) es lo de siempre; solo se ahorra el paseo.
 		Driver.bAssisted = true;
 		++CurrentActions().CatapultAssists;
-		Turtle->SetActorLocation(Approach + FVector(0.0, 0.0, 120.0), false, nullptr, ETeleportType::TeleportPhysics);
+		Turtle->SetActorLocation(Bowl + FVector(0.0, 0.0, 110.0), false, nullptr, ETeleportType::TeleportPhysics);
 		Driver.Stage = 1;
 	}
 	switch (Driver.Stage)
@@ -604,7 +609,15 @@ bool UTN_StressChaosSubsystem::TickCatapult(FDriver& Driver, ATortugaCharacter* 
 			return false;
 		case 1:
 			AimAt(Driver, Turtle, Bowl);
-			InputMove(Turtle, FVector2D(0.f, 0.7f));
+			InputMove(Turtle, FVector2D(0.f, ToBowl > 60.0 ? 0.7f : 0.f));
+			// Pegada al borde sin subir: un salto la mete (el borde bajo del cazo tiene un escalón).
+			if (!bOnBowl && ToBowl < 200.0 && Driver.StageClock > 1.f)
+			{
+				Driver.StageClock = 0.f;
+				InputJump(Turtle);
+			}
+			UE_CLOG(bVerbose && FMath::Fmod(Driver.TaskClock, 1.f) < DeltaTime, LogTortunabo, Log, TEXT("[Estrés] caos: %s hacia el cazo de %s (a %.0f cm, pisa %s)."),
+				*GetNameSafe(Turtle), *GetNameSafe(Catapult), ToBowl, *GetNameSafe(Turtle->GetMovementBase()));
 			if (bOnBowl)
 			{
 				Driver.Stage = 2;
@@ -625,6 +638,9 @@ bool UTN_StressChaosSubsystem::TickCatapult(FDriver& Driver, ATortugaCharacter* 
 				Driver.StageClock = 0.f;
 				return false;
 			}
+			UE_CLOG(bVerbose && Driver.StageClock > 4.f, LogTortunabo, Log, TEXT("[Estrés] caos: %s no sale de %s (pisa %s, bola %d, cargada %d, tic %d)."),
+				*GetNameSafe(Turtle), *GetNameSafe(Catapult), *GetNameSafe(Turtle->GetMovementBase()), Turtle->IsInShell() ? 1 : 0,
+				Catapult->IsLoaded(ATN_BeachEnemy::ServerNow(GetWorld())) ? 1 : 0, Catapult->IsActorTickEnabled() ? 1 : 0);
 			return Driver.StageClock > 4.f;
 		default:
 		{

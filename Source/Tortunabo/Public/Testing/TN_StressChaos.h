@@ -33,7 +33,7 @@ private:
  *   pantalla partida apagada para que la GPU pinte una sola vista, como en el PC de cada jugador) juegan solas por los mismos
  *   caminos que la entrada real: Move, ToggleShell, TryInteract (coger y lanzar a la compañera) y TryUseEquippedItem, que
  *   acaban en los RPC de servidor de siempre. Nada de teletransportes para las acciones: solo, si una tortuga no llega al
- *   cazo de una catapulta en 7 s, se la deja delante del cazo (se cuenta en el informe como «ayuda»).
+ *   cazo de una catapulta en 3 s, se la deja caer en el cazo (se cuenta en el informe como «ayuda»).
  * - En un cliente (-TNStress=caos en un mundo NM_Client), su tortuga juega igual (sin crear nada): su entrada viaja por red y
  *   las correcciones del servidor se cuentan en su propio informe.
  *
@@ -191,6 +191,8 @@ private:
 	double LastSlowSample = 0.0;
 	double MemoryStartMB = 0.0;
 	double CommitStartMB = 0.0;
+	/** Presupuesto de VRAM que Windows da al proceso (DXGI), última muestra. */
+	double VramBudgetMB = -1.0;
 	FRandomStream Stream;
 	TArray<FDriver> Drivers;
 	TArray<TWeakObjectPtr<AActor>> Spawned;

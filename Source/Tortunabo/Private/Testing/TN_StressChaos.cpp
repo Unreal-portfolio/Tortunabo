@@ -30,6 +30,7 @@
 #include "World/Beach/TN_BeachTypes.h"
 #include "World/TN_InkProjectile.h"
 #include "World/TN_ThrowableItemActor.h"
+#include "World/ProcMap/TN_PathStorm.h"
 
 #if PLATFORM_WINDOWS
 #include "Windows/AllowWindowsPlatformTypes.h"
@@ -53,7 +54,7 @@ namespace TNChaosDetail
 	 * VRAM que usa este proceso (DXGI QueryVideoMemoryInfo, segmento local) en el adaptador con más memoria dedicada. Se carga
 	 * dxgi.dll a mano para no añadir dependencias de enlace al módulo. -1 si no se puede leer.
 	 */
-	double ProcessVramMB()
+	double ProcessVramMB(double* OutBudgetMB = nullptr)
 	{
 		using FCreateFactory = HRESULT(WINAPI*)(REFIID, void**);
 		static FCreateFactory CreateFactory = nullptr;
@@ -90,6 +91,10 @@ namespace TNChaosDetail
 				{
 					BestDedicated = Desc.DedicatedVideoMemory;
 					Best = ToMB(Info.CurrentUsage);
+					if (OutBudgetMB)
+					{
+						*OutBudgetMB = ToMB(Info.Budget);
+					}
 				}
 				Adapter3->Release();
 			}
@@ -100,7 +105,7 @@ namespace TNChaosDetail
 		return Best;
 	}
 #else
-	double ProcessVramMB() { return -1.0; }
+	double ProcessVramMB(double* OutBudgetMB = nullptr) { return -1.0; }
 #endif
 
 	/** Memoria de texturas según el RHI (streaming + no streaming), MB; -1 sin RHI. */
@@ -151,7 +156,9 @@ void UTN_StressChaosSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 #if !UE_BUILD_SHIPPING
 	// -TNStress=caos [-TNStressSeconds=<por fase>] [-TNStressWarmup=20] [-TNChaosEnemies=1] [-TNQuitWhenDone]. En un cliente solo
 	// arranca en el mundo conectado (no en el menú del que sale antes de entrar en la partida).
-	if (!TNChaos::IsChaosName(TNTestReport::CommandLineValue(TEXT("-TNStress"))))
+	// Una vez por proceso: si la partida acaba y se viaja (al lobby, por ejemplo), no se vuelve a empezar allí.
+	static bool bStartedFromCommandLine = false;
+	if (bStartedFromCommandLine || !TNChaos::IsChaosName(TNTestReport::CommandLineValue(TEXT("-TNStress"))))
 	{
 		return;
 	}
@@ -163,6 +170,7 @@ void UTN_StressChaosSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 	const FString Seconds = TNTestReport::CommandLineValue(TEXT("-TNStressSeconds"));
 	const FString Warmup = TNTestReport::CommandLineValue(TEXT("-TNStressWarmup"));
 	const FString Enemies = TNTestReport::CommandLineValue(TEXT("-TNChaosEnemies"));
+	bStartedFromCommandLine = true;
 	StartChaos(Seconds.IsEmpty() ? 20.f : FMath::Clamp(FCString::Atof(*Seconds), 5.f, 300.f), Warmup.IsEmpty() ? 20.f : FCString::Atof(*Warmup),
 		Enemies.IsEmpty() ? 1.f : FMath::Clamp(FCString::Atof(*Enemies), 0.f, 10.f), FParse::Param(FCommandLine::Get(), TEXT("TNQuitWhenDone")));
 #endif
@@ -448,6 +456,18 @@ void UTN_StressChaosSubsystem::SampleFrame(FPhaseData& Phase)
 
 void UTN_StressChaosSubsystem::SampleSlow(FPhaseData& Phase)
 {
+	if (!bClientOnly)
+	{
+		// La tormenta del cooperativo avanza y mata a quien se queda atrás: con las tortugas jugando en el sitio acabaría la
+		// partida a los ~2 min (viaje al lobby). Se mantiene parada; la de bañistas de la carrera sigue (patea, no acaba la ronda).
+		for (TActorIterator<ATN_PathStorm> It(GetWorld()); It; ++It)
+		{
+			if (It->IsStormActive())
+			{
+				It->StopStorm();
+			}
+		}
+	}
 	const double Memory = TNTestReport::UsedPhysicalMB();
 	Phase.CommitMaxMB = FMath::Max(Phase.CommitMaxMB, TNChaosDetail::ToMB(FPlatformMemory::GetStats().UsedVirtual));
 	Phase.MemorySumMB += Memory;
@@ -455,7 +475,7 @@ void UTN_StressChaosSubsystem::SampleSlow(FPhaseData& Phase)
 	++Phase.MemorySamples;
 	if (FApp::CanEverRender())
 	{
-		const double Vram = TNChaosDetail::ProcessVramMB();
+		const double Vram = TNChaosDetail::ProcessVramMB(&VramBudgetMB);
 		Phase.VramMaxMB = FMath::Max(Phase.VramMaxMB, Vram);
 		Phase.VramEndMB = Vram;
 	}
@@ -602,6 +622,7 @@ TSharedRef<FJsonObject> UTN_StressChaosSubsystem::BuildReport(const TCHAR* Reaso
 	Root->SetNumberField(TEXT("drivers"), Drivers.Num());
 	Root->SetNumberField(TEXT("memory_start_mb"), MemoryStartMB);
 	Root->SetNumberField(TEXT("commit_start_mb"), CommitStartMB);
+	Root->SetNumberField(TEXT("vram_budget_mb"), VramBudgetMB);
 	Root->SetNumberField(TEXT("memory_peak_mb"), TNTestReport::PeakPhysicalMB());
 	Root->SetBoolField(TEXT("high_qos_applied"), bHighQoSApplied);
 	Root->SetBoolField(TEXT("cpu_hybrid"), TNCpuCore::IsHybrid());
