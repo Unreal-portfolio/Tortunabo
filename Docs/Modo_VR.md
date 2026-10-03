@@ -194,10 +194,10 @@ ajuste). Con un menú o una rueda a la vista no cambia. Es la misma cámara que 
    distancia y escala del panel (`PanelPlacement`), botones de los mandos en los menús (`MenuKeys`), panel curvo
    (`CurvedPanel`), gatillos y agarres analógicos (`AnalogButton`), umbral del gatillo en el juego y gatillo apretado al
    abrir un menú (`TriggerThreshold`), velocidad de la mano respecto del cuerpo (`HandVelocity`), arco del menú sin gafas
-   (`SimulatedMenuArc`) y tecla de cambiar de cámara (`CameraKey`). Y siete de las manos (`TN_VRHandsTest.cpp`): media de la
+   (`SimulatedMenuArc`) y tecla de cambiar de cámara (`CameraKey`). Y ocho de las manos (`TN_VRHandsTest.cpp`): media de la
    velocidad para lanzar (`HandVelocityWindow`), agarre enganchado (`GrabStrain`), viñeta de confort (`ComfortVignette`),
-   sitio del HUD (`HudProbe`), botones con la punta (`Poke`) y, con un mundo de prueba, mano contra una pared (`HandBlock`) y objeto que lleva otro
-   (`GrabHolder`). Sin ventana:
+   sitio del HUD (`HudProbe`), botones con la punta (`Poke`), gatillo entre el menú y el juego (`TriggerMenuLatch`) y, con
+   un mundo de prueba, mano contra una pared (`HandBlock`) y objeto que lleva otro (`GrabHolder`). Sin ventana:
    `UnrealEditor-Cmd Tortunabo.uproject -ExecCmds="Automation RunTests Tortunabo.VR; Quit" -nullrhi -unattended`.
 2. **Modo simulado** en PIE (1 o 2 jugadores): consola `TN.VR 2` en la ventana que quieras probar. Lista de pruebas abajo.
 3. **Meta XR Simulator** (opcional, para probar el modo gafas de verdad sin gafas): el simulador de Meta hace de gafas y
@@ -311,8 +311,8 @@ Para que todo lo nuevo se vea y funcione en VR:
 
 Sin gafas (modo simulado, PIE):
 
-1. `Automation RunTests Tortunabo.VR`: las dieciocho pasan (también `TriggerThreshold`, `HandVelocity`, `SimulatedMenuArc`,
-   `CameraKey` y las siete de las manos).
+1. `Automation RunTests Tortunabo.VR`: las diecinueve pasan (también `TriggerThreshold`, `HandVelocity`, `SimulatedMenuArc`,
+   `CameraKey` y las ocho de las manos).
 2. Menú principal con `-vrsim` (o `TN.VR 2` en la consola y volver al menú): el menú sale en un panel delante; el ratón
    mueve el puntero sobre el panel y el clic pulsa los botones; la rueda baja las listas; «Ajustes» y «Crear partida» van.
    Los botones del editor (parar PIE) se siguen pudiendo pulsar con el menú abierto.
@@ -406,6 +406,9 @@ Con las Quest, el pulido de las manos del 03-10-2026:
     mano delante de la cara, el HUD no se viene a la cara.
 48. Botón del mapa (o interruptor del procedural): tocarlo con la punta de la aleta lo pulsa una vez (vibra); dejar la mano
     apoyada no lo vuelve a pulsar; apartarla y volver, sí. Pasar la mano despacio por encima no lo pulsa.
+49. Abrir la tienda (o el general) con el gatillo y cerrarla con el clic del láser en «Cerrar» sin soltar el gatillo: no se
+    vuelve a abrir; soltar y apretar otra vez junto al tendero, sí. Abrirla con el gatillo y soltarlo dentro: al cerrarla con
+    B, el gatillo no interactúa solo.
 
 
 ## Dudas para la prueba con gafas
@@ -413,8 +416,10 @@ Con las Quest, el pulido de las manos del 03-10-2026:
 Cosas que no se pueden comprobar sin gafas y que pueden fallar (anotadas en la revisión del 30-09-2026). Si alguna falla,
 abrir un fallo del objeto «Modo VR» con lo que se vio.
 
-- **Cerrar un menú con el gatillo apretado**: el procesador de menús se come los ejes del gatillo; al cerrarlo, Enhanced
-  Input puede ver una pulsación nueva de `IA_Interact` e interactuar sin querer.
+- **Gatillo y agarre al cerrar un menú**: con el menú delante el procesador deja pasar al juego la suelta de los ejes
+  (que no se quede con el valor de antes del menú) y, si el gatillo se apretó en el menú, no deja pasar nada de él hasta
+  soltarlo (`TNVRHands::ShouldEatTriggerAxis`). Depende de que OpenXR mande el eje cuando cambia: comprobar la prueba 49.
+
 - **Stick mantenido al abrir un menú**: el primer fotograma puede mover el foco un paso.
 - **Gatillo rondando el 55 % en el juego**: el disparador «Down» no tiene histéresis; en las interacciones de mantener
   (rebuscar, cofres) un gatillo justo en el umbral podría cortarlas.
