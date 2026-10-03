@@ -119,7 +119,7 @@ dificultades) por lo que más destaca de cada uno dentro de su dificultad; la ta
   placa en la rama 44 %, gaviotas 62–76 %, quad en la playa 88 %). No cuenta en el reparto ni sale en las partidas;
   se abre con `ServerTravel /Game/Maps/Run/LVL_ProcMap?ProcMode=Survival?ProcSeed=6?ProcDifficulty=Hard`.
 - Las zonas lentas que coloca el generador pintan un charco de sirope del tamaño de su caja (`M_SlowZoneSyrupDecal`,
-  creado con `Scripts/create_slowzone_decal.py`); las del Clásico las siguen marcando las plataformas del chunk.
+  creado con `Scripts/create_survival_decals.py`); las del Clásico las siguen marcando las plataformas del chunk.
 
 ### Trampas sobre el mapa (#516)
 
@@ -135,3 +135,22 @@ los marcadores (cáscaras en verde, zonas lentas en azul, medusas en magenta, ca
 blanco y sus sombrillas en cian). Los actores solo se crean en partida (PIE): p. ej.
 `ServerTravel /Game/Maps/Run/LVL_ProcMap?ProcMode=Survival?ProcSeed=63?ProcDifficulty=Easy`. Una semilla fuera del
 catálogo sale sin trampas.
+
+### Quads, puente que se rompe y placas (#517)
+
+`TNSurvivalCatalog::PlaceTerrainTraps` coloca las trampas que dependen de la forma del terreno; el test de colocación
+comprueba que cada una encuentra su sitio en los 50 mapas.
+
+- **Puente que se rompe** (`ATN_ProcBreakableBridge`, la plataforma del Clásico con malla puesta desde código): un
+  tablón de 1,4 m de ancho en lugar de la viga del hueco más cercano al % (solo huecos de viga del camino principal;
+  el generador no construye esa viga). Aguanta 1,6 s con alguien encima: corriendo se cruza, andando se cae a la zona
+  de muerte del hueco. Reaparece a los 5 s. Los cuatro puentes del catálogo que caían en huecos de salto (88, 126, 3
+  y 46) se cambiaron por cáscaras tras el aterrizaje.
+- **Quads** (`ATN_ProcQuadCrossing`): franjas amarillas y negras de lado a lado del camino y, cada 10 s, un
+  `BP_QuadActor` que lo cruza de un lado a otro (15 m más allá de cada borde) y mata con las ruedas. En los 2,5 s
+  antes de cada paso las franjas parpadean en rojo, igual en todas las máquinas (reloj del servidor).
+- **Placas** (`ATN_ProcShortcutLock`): una compuerta (`ATN_ProcSabotageGate`, levantada) corta la rama a 9 m de su
+  entrada y la abren las placas (`BP_PressurePlate` en modo Latched) que hay a 3 m: basta un jugador pisándolas una
+  tras otra. Se reinician solas al pasar de nivel, porque el mapa se rehace.
+
+Debug Draw: cruces de quads en naranja, puentes en marrón y atajos (compuerta y placas) en amarillo.

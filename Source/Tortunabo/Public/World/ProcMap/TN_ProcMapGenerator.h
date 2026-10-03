@@ -255,8 +255,13 @@ private:
 	/** Servidor: decorados del camino que se pueden rebuscar (ATN_ProcSearchSpot); no en el modo de solo terreno. */
 	void SpawnSearchSpots();
 	void SpawnHazards();
-	/** Supervivencia (#516): calcula dónde van las trampas del mapa del catálogo (en todas las máquinas y en el editor). */
+	/**
+	 * Supervivencia (#516, #517): calcula dónde van las trampas del mapa del catálogo (en todas las máquinas y en el
+	 * editor). Antes de las mallas: el hueco con puente que se rompe se construye sin su viga.
+	 */
 	void PlanSurvivalTraps();
+	/** ¿El hueco Feature lleva puente que se rompe en lugar de viga? */
+	bool IsSurvivalBreakableGap(int32 Feature) const;
 	/** Crea las trampas del plan: las replicadas y las de lógica de servidor en el servidor; las zonas lentas en cada máquina. */
 	void SpawnSurvivalTraps();
 	/** Marcadores de las trampas del plan (Debug Draw), también en el editor. */
@@ -357,6 +362,8 @@ private:
 
 	/** Trampas del mapa del catálogo de Supervivencia (vacío fuera de Supervivencia o con una semilla fuera del catálogo). */
 	TArray<TNSurvivalCatalog::FTrapPlacement> SurvivalTrapPlan;
+	/** Quads, puentes que se rompen y placas del mapa del catálogo (#517). */
+	TNSurvivalCatalog::FTerrainTrapPlan SurvivalTerrainPlan;
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UPrimitiveComponent>> BoundaryWalls;

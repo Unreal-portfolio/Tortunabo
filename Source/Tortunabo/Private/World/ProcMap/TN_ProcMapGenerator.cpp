@@ -327,6 +327,7 @@ void ATN_ProcMapGenerator::Clear()
 	}
 	BoundaryWalls.Reset();
 	SurvivalTrapPlan.Reset();
+	SurvivalTerrainPlan = TNSurvivalCatalog::FTerrainTrapPlan();
 
 	for (AActor* Actor : SpawnedActors)
 	{

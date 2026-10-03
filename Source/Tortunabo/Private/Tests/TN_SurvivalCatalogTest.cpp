@@ -166,6 +166,28 @@ bool FTNSurvivalCatalogPlacementTest::RunTest(const FString& Parameters)
 			Free = FMath::Max(Free, Half - Edge);
 			TestTrue(What + FString::Printf(TEXT(": paso libre %.0f cm >= %.0f"), Free, MinFreePassage), Free >= MinFreePassage);
 		}
+
+		// #517: cada puente encuentra su viga, cada placa su rama y cada quad un punto libre del camino.
+		const FTerrainTrapPlan Terrain = PlaceTerrainTraps(L, M.Seed);
+		int32 Quads = 0, Bridges = 0, Shortcuts = 0;
+		for (const FTrapSpot& T : TrapsOf(M.Seed))
+		{
+			Quads += T.Trap == ETrap::Quad ? T.Count : 0;
+			Bridges += T.Trap == ETrap::BreakableBridge ? 1 : 0;
+			Shortcuts += T.Trap == ETrap::PressurePlate ? 1 : 0;
+		}
+		TestEqual(Ctx + TEXT(": cruces de quads"), Terrain.Quads.Num(), Quads);
+		TestEqual(Ctx + TEXT(": puentes que se rompen sobre una viga"), Terrain.Bridges.Num(), Bridges);
+		TestEqual(Ctx + TEXT(": atajos con placas en una rama"), Terrain.Shortcuts.Num(), Shortcuts);
+		for (const FQuadCrossing& Q : Terrain.Quads)
+		{
+			TestEqual(Ctx + TEXT(": quad fuera de huecos, salida, meta y uniones"), L.Main[Q.Sample].Flags & BlockedFlags, 0u);
+		}
+		for (const FBreakableBridge& B : Terrain.Bridges)
+		{
+			TestTrue(Ctx + TEXT(": el puente sustituye a una viga"), L.Features.IsValidIndex(B.Feature)
+				&& TNProcMap::GapStyleOf(L.Features[B.Feature]) == TNProcMap::EGapStyle::Beam);
+		}
 	}
 	return true;
 }

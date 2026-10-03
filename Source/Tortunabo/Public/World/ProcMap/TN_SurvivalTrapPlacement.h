@@ -21,7 +21,7 @@
 
 namespace TNSurvivalCatalog
 {
-	/** Trampas que coloca #516. Los quads, el puente que se rompe y las placas son de #517. */
+	/** Trampas que coloca #516 (PlaceLooseTraps). Los quads, el puente que se rompe y las placas son de #517 (PlaceTerrainTraps). */
 	inline bool IsLooseTrap(ETrap T)
 	{
 		return T == ETrap::BananaPeel || T == ETrap::SlowZone || T == ETrap::Jellyfish || T == ETrap::Crab || T == ETrap::Seagull;
@@ -314,4 +314,163 @@ namespace TNSurvivalCatalog
 		return Out;
 	}
 
+
+	// ─────────────────────────────────────────────────────────────────────────
+	// #517: quads, puente que se rompe y placas (las trampas que dependen de la forma del terreno)
+	// ─────────────────────────────────────────────────────────────────────────
+
+	/** Los quads cruzan hasta 15 m más allá de cada borde del camino. */
+	constexpr double QuadCrossingMargin = 1500.0;
+	/** Distancia máxima (% del recorrido) entre la trampa del catálogo y su hueco o su rama. */
+	constexpr double TerrainTrapMaxPctDistance = 8.0;
+	/** Placas y compuerta: a cuántos cm de la entrada de la rama, y separación entre placas a lo ancho. */
+	constexpr double ShortcutPlateAlong = 300.0;
+	constexpr double ShortcutGateAlong = 900.0;
+	constexpr double ShortcutPlateSpacing = 250.0;
+	/** La compuerta es más ancha que la rama para que no se pueda rodear. */
+	constexpr double ShortcutGateMargin = 400.0;
+
+	/** Cruce de quads perpendicular al camino, de lado a lado. */
+	struct FQuadCrossing
+	{
+		int32 Sample = INDEX_NONE;
+		/** Centro del cruce (espacio del mapa, Z = cota del camino). */
+		FVector Location = FVector::ZeroVector;
+		/** Dirección en que cruza (grados): la izquierda del camino. */
+		double YawDeg = 0.0;
+		/** De centro a cada extremo del recorrido del quad (cm). */
+		double HalfSpan = 0.0;
+		/** Medio ancho del camino (cm): lo que pintan las franjas de aviso. */
+		double PathHalfWidth = 0.0;
+	};
+
+	/** Puente que se rompe en lugar de la viga de un hueco que se cruza andando (EGapStyle::Beam). */
+	struct FBreakableBridge
+	{
+		/** Índice del hueco en FLayout::Features: el generador no le pone la viga. */
+		int32 Feature = INDEX_NONE;
+		/** Centro del puente (espacio del mapa); Z = cota del camino en el hueco. */
+		FVector Location = FVector::ZeroVector;
+		/** Dirección del camino a través del hueco (grados). */
+		double YawDeg = 0.0;
+		/** Largo de labio a labio (cm), el mismo que tenía la viga. */
+		double Length = 0.0;
+	};
+
+	/** Atajo de una rama: una compuerta la corta y la abren las placas de su entrada (Latched: basta un jugador). */
+	struct FPlateShortcut
+	{
+		int32 Branch = INDEX_NONE;
+		TArray<FVector> Plates;
+		FVector Gate = FVector::ZeroVector;
+		double GateYawDeg = 0.0;
+		double GateWidth = 0.0;
+	};
+
+	struct FTerrainTrapPlan
+	{
+		TArray<FQuadCrossing> Quads;
+		TArray<FBreakableBridge> Bridges;
+		TArray<FPlateShortcut> Shortcuts;
+	};
+
+	inline double YawOf(const FVector2D& Dir) { return FMath::RadiansToDegrees(FMath::Atan2(Dir.Y, Dir.X)); }
+
+	/** Los quads, puentes y placas de un mapa del catálogo sobre su layout. Vacío si la semilla no está en el catálogo. */
+	inline FTerrainTrapPlan PlaceTerrainTraps(const TNProcMap::FLayout& L, uint32 Seed)
+	{
+		using namespace Placement;
+		FTerrainTrapPlan Out;
+		const TArray<TNProcMap::FPathSample>& M = L.Main;
+		if (M.Num() < 2 || !FindMap(Seed)) { return Out; }
+		const double Total = M.Last().S;
+		auto PctOf = [&M, Total](int32 i) { return M.IsValidIndex(i) ? 100.0 * M[i].S / Total : -1000.0; };
+
+		for (const FTrapSpot& Spot : TrapsOf(Seed))
+		{
+			const double From = Total * Spot.FromPct / 100.0;
+			const double To = Total * Spot.ToPct / 100.0;
+			const double Pct = (Spot.FromPct + Spot.ToPct) * 0.5;
+			switch (Spot.Trap)
+			{
+				case ETrap::Quad:
+				{
+					for (const double S : Spread(From, To, Spot.Count, 1500.0))
+					{
+						const int32 i = NearestFree(M, SampleAtDistance(M, S));
+						if (i == INDEX_NONE) { continue; }
+						FQuadCrossing Q;
+						Q.Sample = i;
+						Q.Location = FVector(M[i].P, M[i].Z);
+						Q.YawDeg = YawOf(LeftOf(M[i].Dir));
+						Q.PathHalfWidth = M[i].Width * 0.5;
+						Q.HalfSpan = Q.PathHalfWidth + QuadCrossingMargin;
+						Out.Quads.Add(Q);
+					}
+					break;
+				}
+				case ETrap::BreakableBridge:
+				{
+					// La viga del camino principal más cercana al %.
+					int32 Best = INDEX_NONE;
+					double BestDist = TerrainTrapMaxPctDistance;
+					for (int32 f = 0; f < L.Features.Num(); ++f)
+					{
+						const TNProcMap::FFeature& F = L.Features[f];
+						if (F.Type != TNProcMap::EFeature::Gap || F.BranchIndex != INDEX_NONE || TNProcMap::GapStyleOf(F) != TNProcMap::EGapStyle::Beam) { continue; }
+						const double D = FMath::Abs(PctOf(F.PathIndex) - Pct);
+						if (D <= BestDist) { BestDist = D; Best = f; }
+					}
+					if (Best == INDEX_NONE) { break; }
+					const TNProcMap::FFeature& F = L.Features[Best];
+					FBreakableBridge B;
+					B.Feature = Best;
+					B.Location = F.Location;
+					B.YawDeg = YawOf(F.Dir);
+					// Como la viga (TN_ProcMapGenerator_Build.cpp): 70 cm sobre cada labio.
+					B.Length = F.Length + 140.0;
+					Out.Bridges.Add(B);
+					break;
+				}
+				case ETrap::PressurePlate:
+				{
+					// La rama que sale más cerca del %.
+					int32 Best = INDEX_NONE;
+					double BestDist = TerrainTrapMaxPctDistance;
+					for (int32 b = 0; b < L.Branches.Num(); ++b)
+					{
+						const TNProcMap::FBranch& Br = L.Branches[b];
+						if (Br.FromBranch != INDEX_NONE || Br.Samples.Num() < 4) { continue; }
+						const double D = FMath::Abs(PctOf(Br.ForkSample) - Pct);
+						if (D <= BestDist) { BestDist = D; Best = b; }
+					}
+					if (Best == INDEX_NONE) { break; }
+					const TArray<TNProcMap::FPathSample>& B = L.Branches[Best].Samples;
+					auto AlongBranch = [&B](double Along)
+					{
+						for (int32 k = 0; k < B.Num(); ++k) { if (B[k].S - B[0].S >= Along) { return k; } }
+						return B.Num() - 1;
+					};
+					FPlateShortcut Sc;
+					Sc.Branch = Best;
+					const TNProcMap::FPathSample& G = B[AlongBranch(ShortcutGateAlong)];
+					Sc.Gate = FVector(G.P, G.Z);
+					Sc.GateYawDeg = YawOf(G.Dir);
+					Sc.GateWidth = G.Width + ShortcutGateMargin;
+					const TNProcMap::FPathSample& P = B[AlongBranch(ShortcutPlateAlong)];
+					const int32 N = FMath::Max(1, static_cast<int32>(Spot.Count));
+					for (int32 k = 0; k < N; ++k)
+					{
+						const double Lateral = (k - (N - 1) * 0.5) * ShortcutPlateSpacing;
+						Sc.Plates.Add(FVector(P.P + LeftOf(P.Dir) * Lateral, P.Z));
+					}
+					Out.Shortcuts.Add(Sc);
+					break;
+				}
+				default:
+					break;
+			}
+		}
+		return Out;
+	}
 }

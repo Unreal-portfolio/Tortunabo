@@ -148,7 +148,7 @@ void ATN_SlowZoneVolume::SetZoneExtent(const FVector& Extent)
 	TriggerBox->SetBoxExtent(Extent, true);
 
 	// El charco: un decal que proyecta hacia abajo desde el centro de la caja y llega al suelo aunque el camino suba o baje
-	// dentro de la zona. Sin el material (no se ha ejecutado Scripts/create_slowzone_decal.py) la zona frena sin verse.
+	// dentro de la zona. Sin el material (no se ha ejecutado Scripts/create_survival_decals.py) la zona frena sin verse.
 	static TWeakObjectPtr<UMaterialInterface> CachedMaterial;
 	UMaterialInterface* Material = CachedMaterial.Get();
 	if (!Material)
