@@ -63,7 +63,9 @@ solo terreno; carrera clásica), la sala (su nombre, de quién es, pública o pr
 «cerrada» si lo está: [Salas](Salas.md); sin sala, la sesión como antes; sin sesión, si eres el anfitrión, un invitado
 o una partida local) y los jugadores con su cara, su
 nombre, «Tú», «Anfitrión» (corona) o su ping, y su icono de voz: micrófono para ti y altavoz para los demás, que late
-cuando habla y sale tachado si está silenciado.
+cuando habla y sale tachado si está silenciado. Un invitado ve también su propio ping («Tú · 42 ms»); el anfitrión no
+tiene ping contra nadie y una partida local tampoco (`TNPlayerRowRules`, #256). El ping se lee al hacer la lista (al abrir
+el menú o cuando alguien entra o sale), no se refresca mientras está abierto.
 
 **Portada**: Continuar, Ajustes, Controles, Sala (en red), Volver al lobby, Menú principal (anfitrión) o Salir de la
 partida (invitado) y Salir al escritorio. Abajo, la ayuda de la opción enfocada y los atajos.
@@ -191,7 +193,7 @@ pasa con los sintetizadores del proyecto, que viven mucho más).
 | Ajuste | Cómo se aplica |
 |---|---|
 | Voz de los compañeros | Clase `TN_Voice` (todas las voces). |
-| Voz de cada compañero (0-200 %) y silenciarlo | Multiplicador de volumen del componente de reproducción de su voz (`PlaybackVolume` × el tuyo; 0 si está silenciado), cada fotograma. Se guarda por su id de la plataforma (Steam) o, si no hay, por su nombre, así que se recuerda entre partidas. |
+| Voz de cada compañero (0-200 %) y silenciarlo | Multiplicador de volumen del componente de reproducción de su voz (`PlaybackVolume` × el tuyo; 0 si está silenciado), cada fotograma. Además, la voz de un silenciado ni se descodifica ni se reproduce (`UProximityVoiceComponent::PlayRemoteVoice`), y su jugador se saca del peón o, si este no tiene `PlayerState`, del último que tuvo (`GetSpeakerState`, #248). Se guarda por su id de la plataforma (Steam) o, si no hay, por su nombre, así que se recuerda entre partidas. |
 | Silenciar mi micrófono | `UProximityVoiceComponent::SetTransmitEnabled(false)`: se sigue capturando (el medidor vive) pero no se envía nada y la tortuga deja de «hablar» en el acto. |
 | Modo: voz abierta o pulsar para hablar | Con pulsar para hablar, la salida solo se abre con la tecla pulsada (`IsInputKeyDown`); encima sigue haciendo falta superar el umbral. |
 | Tecla y botón para hablar | Una fila de tecla (la misma que en la página de controles): V y cruceta abajo de serie, y cualquier otra que se pulse. Si otra acción la tenía, se cambian entre sí (ver Controles). |
