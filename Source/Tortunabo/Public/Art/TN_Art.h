@@ -50,9 +50,14 @@ namespace TNArt
 		TArray<TObjectPtr<UMaterialInterface>> Materials;
 		FTransform Adjust = FTransform::Identity;
 		bool bUseArtCollision = false;
+		/** Hueso o socket de la tortuga (piezas Turtle.*; NAME_None = el de la tabla). */
+		FName Bone;
 	};
 
-	/** «Zona.Parte[.Parte...]»: zona Lobby, ProcMap o Beach; cada parte empieza por mayúscula y solo lleva letras y cifras. */
+	/**
+	 * «Zona.Parte[.Parte...]»: zona Lobby, ProcMap, Beach o Turtle (piezas pegadas a la tortuga, TNTurtleArt); cada parte
+	 * empieza por mayúscula y solo lleva letras y cifras.
+	 */
 	TORTUNABO_API bool IsValidSlotName(const FString& Name);
 
 	/** Zona de un nombre («Lobby» de «Lobby.Castle.Tower»). */
