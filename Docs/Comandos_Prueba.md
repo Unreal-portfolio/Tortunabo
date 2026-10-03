@@ -249,6 +249,7 @@ No existen en la build Shipping.
 | Comando | Qué hace |
 |---|---|
 | `TN.Rooms.FakeError <locked\|full\|kicked\|other>` | Simula que el servidor no te deja entrar (sala cerrada, llena, expulsado u otro motivo): pantalla de vuelta al menú y el aviso en «Unirse». Sin segunda instancia. |
+| `TN.Rooms.FakeError build` | Simula que tu versión del juego no es la del anfitrión (NetChecksumMismatch): vuelta al menú y el aviso de dos líneas en «Unirse», encima de la ayuda. |
 | `TN.Rooms.FakeError <joinfull\|gone\|noaddress>` | Simula que falla la entrada en la sesión (llena, ya no existe, sin dirección del anfitrión): el aviso sale en el menú de salas sin recargarlo. |
 
 ## Cooperativo (mapa procedural y lobby)

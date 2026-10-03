@@ -71,7 +71,7 @@ namespace
 
 	FAutoConsoleCommandWithWorldAndArgs MPGameInstance_FakeRoomErrorCommand(
 		TEXT("TN.Rooms.FakeError"),
-		TEXT("Simula un fallo al entrar en una sala: TN.Rooms.FakeError <locked|full|kicked|other|joinfull|gone|noaddress>."),
+		TEXT("Simula un fallo al entrar en una sala: TN.Rooms.FakeError <locked|full|kicked|other|build|joinfull|gone|noaddress>."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&MPGameInstance_HandleFakeRoomError));
 #endif
 }
@@ -2316,10 +2316,20 @@ void UMP_GameInstance::DebugFakeRoomError(const FString& Kind)
 	else if (K == TEXT("kicked")) { Reason = TNRoomKeys::RefuseKicked(); }
 	else if (K == TEXT("other")) { Reason = TEXT("TNRoom:Prueba"); }
 
-	if (!Reason.IsEmpty())
+	// Versión distinta a la del anfitrión (NetChecksumMismatch, #245): el aviso de dos líneas en «Unirse».
+	const bool bBuildMismatch = K == TEXT("build");
+	if (bBuildMismatch || !Reason.IsEmpty())
 	{
-		UE_LOG(LogTortunabo, Display, TEXT("[Salas] Prueba: rechazo del servidor «%s»."), *Reason);
-		HandleRoomRefused(Reason);
+		if (bBuildMismatch)
+		{
+			UE_LOG(LogTortunabo, Display, TEXT("[Salas] Prueba: versión distinta a la del anfitrión."));
+			HandleChecksumMismatch(TEXT("prueba (TN.Rooms.FakeError build)"));
+		}
+		else
+		{
+			UE_LOG(LogTortunabo, Display, TEXT("[Salas] Prueba: rechazo del servidor «%s»."), *Reason);
+			HandleRoomRefused(Reason);
+		}
 		// En el menú, HandleRoomRefused no viaja: se recarga como hace el motor tras un fallo al conectar.
 		UWorld* World = GetWorld();
 		if (World && IsMenuWorld(World))
@@ -2338,7 +2348,7 @@ void UMP_GameInstance::DebugFakeRoomError(const FString& Kind)
 	else if (K == TEXT("noaddress")) { Result = EOnJoinSessionCompleteResult::CouldNotRetrieveAddress; }
 	else
 	{
-		UE_LOG(LogTortunabo, Display, TEXT("[Salas] TN.Rooms.FakeError <locked|full|kicked|other|joinfull|gone|noaddress>"));
+		UE_LOG(LogTortunabo, Display, TEXT("[Salas] TN.Rooms.FakeError <locked|full|kicked|other|build|joinfull|gone|noaddress>"));
 		return;
 	}
 	UE_LOG(LogTortunabo, Display, TEXT("[Salas] Prueba: JoinSession falla con «%s»."), *K);
