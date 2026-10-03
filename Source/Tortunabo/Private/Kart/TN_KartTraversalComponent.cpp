@@ -167,6 +167,11 @@ void UTN_KartTraversalComponent::TickComponent(float DeltaTime, ELevelTick TickT
 	const bool bWasFloating = bFloating;
 	const float AboveFloatLine = static_cast<float>(Location.Z) - (SurfaceZ + FloatLineCm);
 	bFloating = bWater && AboveFloatLine < (bFloating ? TNKartTraversalDetail::LeaveWaterAboveCm : TNKartTraversalDetail::EnterWaterAboveCm);
+	if (bFloating != bWasFloating && Kart->HasAuthority())
+	{
+		UE_LOG(LogTNRally, Verbose, TEXT("[Karts] %s %s en (%.0f, %.0f, %.0f)."), *Kart->GetName(), bFloating ? TEXT("flota") : TEXT("sale del agua"),
+			Location.X, Location.Y, Location.Z);
+	}
 
 	// La física, donde se simula el chasis: el servidor y la conductora local.
 	if (Kart->HasAuthority() || Kart->IsLocallyControlled())
