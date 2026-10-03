@@ -9,6 +9,8 @@ sin copiar los binarios. La galería (galeria_assets.py) importa este módulo pa
 - Autor: autor del primer commit que añadió el .uasset (siguiendo los renombrados); «solo local» si no está versionado.
 - Uso: referencias desde mapas y Blueprints según el AssetRegistry; si no hay, las indirectas (DataTable, DataAsset) y
   las rutas escritas en Source/ o Config/; «sin usar» si no hay ninguna.
+- Nota: la de la regla de origen y, si está sin usar, «Pendiente: #N» con la issue que lo aplicará
+  (catalogo_pendientes.PENDING, #287). Avisa de los assets sin usar que no tienen issue.
 
 Uso (editor cerrado):
   UnrealEditor-Win64-DebugGame-Cmd.exe Tortunabo.uproject -run=pythonscript
@@ -19,9 +21,13 @@ import csv
 import os
 import re
 import subprocess
+import sys
 from collections import Counter
 
 import unreal
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import catalogo_pendientes as pendientes  # noqa: E402  (después de añadir Scripts/tools al path)
 
 CSV_REL = "Art/catalogo_assets.csv"
 LOG_PREFIX = "[Catalogo]"
@@ -374,6 +380,9 @@ def report(rows):
 def main():
     rows, mesh_total = build_catalog()
     check(rows, mesh_total)
+    rows = pendientes.annotate(rows)
+    for path in pendientes.unlinked(rows):
+        unreal.log_warning(f"{LOG_PREFIX} sin usar y sin issue que lo aplique (catalogo_pendientes.PENDING): {path}")
     path = write_csv(rows)
     report(rows)
     log(f"{len(rows)} filas ({mesh_total} mallas de esta rama) en {path}")
