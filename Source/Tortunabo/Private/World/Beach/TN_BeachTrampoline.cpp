@@ -3,6 +3,7 @@
 #include "Player/TN_ShellBody.h"
 #include "Core/TN_Log.h"
 #include "Components/BoxComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
 #include "Engine/CollisionProfile.h"
@@ -678,6 +679,35 @@ void ATN_BeachTrampoline::NotifyTurtleBounced(ACharacter* Turtle, float Strength
 	{
 		SpreadBounceFX(Turtle, Strength);
 	}
+}
+
+double ATN_BeachTrampoline::DropOntoTrampoline(const ACharacter& Character, double MaxDrop)
+{
+	const UWorld* World = Character.GetWorld();
+	const UCapsuleComponent* Capsule = Character.GetCapsuleComponent();
+	if (!World || !Capsule || MaxDrop <= 0.0)
+	{
+		return TNTrampolineRules::NoTrampolineBelow;
+	}
+	// La cápsula en vertical con el canal de los personajes, sin chocar con otras tortugas: los toques llegan antes que el
+	// primer bloqueo, así que el sensor (solapa) cuenta aunque el cuerpo (bloquea) esté debajo.
+	const FVector From = Capsule->GetComponentLocation();
+	const FVector To = From - FVector(0.0, 0.0, MaxDrop);
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(TNTrampolineBelow), false, &Character);
+	FCollisionResponseParams Response;
+	Capsule->InitSweepCollisionParams(Params, Response);
+	Response.CollisionResponse.SetResponse(ECC_Pawn, ECR_Ignore);
+	TArray<FHitResult> Hits;
+	World->SweepMultiByChannel(Hits, From, To, Capsule->GetComponentQuat(), Capsule->GetCollisionObjectType(), Capsule->GetCollisionShape(), Params,
+		Response);
+	for (const FHitResult& Hit : Hits)
+	{
+		if (Cast<ATN_BeachTrampoline>(Hit.GetActor()))
+		{
+			return FMath::Max(0.0, static_cast<double>(Hit.Distance));
+		}
+	}
+	return TNTrampolineRules::NoTrampolineBelow;
 }
 
 void ATN_BeachTrampoline::BounceShells(double Now)

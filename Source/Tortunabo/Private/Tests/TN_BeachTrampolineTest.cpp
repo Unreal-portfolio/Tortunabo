@@ -142,4 +142,63 @@ bool FTNBeachTrampolineSameStepTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNBeachTrampolineLongFallTest,
+	"Tortunabo.Beach.Trampoline.LongFallNoShell",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNBeachTrampolineLongFallTest::RunTest(const FString& Parameters)
+{
+	using namespace TNBeachTrampolineTest;
+	const FBounceTuning Tuning;
+
+	TestFalse(TEXT("Sin trampolín debajo, la caída larga hace bola"), HoldsAutoShell(NoTrampolineBelow));
+	TestTrue(TEXT("Con un trampolín a 2 m, no"), HoldsAutoShell(200.0));
+	TestTrue(TEXT("Ya tocándolo, tampoco"), HoldsAutoShell(0.0));
+	TestFalse(TEXT("Con el trampolín fuera del alcance, sí"), HoldsAutoShell(AutoShellLookDown + 1.0));
+
+	// Caídas de 5 a 9 m sobre el sensor (#21): la bola automática de los 5 m la decide solo el servidor (ATortugaCharacter::
+	// TickFallRules); el cliente dueño no la predice y rebota como tortuga. Si el servidor la mete en la bola, rebota un
+	// caparazón con física (o nada) y el cliente se corrige; sobre el trampolín los dos tienen que rebotar igual.
+	constexpr double AutoShellFallHeight = 500.0;
+	for (double DropMeters = 5.0; DropMeters <= 9.0; DropMeters += 1.0)
+	{
+		const double ApexZ = SensorTopZ + 100.0 * DropMeters;
+		FStepState Client;
+		Client.Feet = FVector(0.0, 0.0, ApexZ);
+		Client.Velocity = FVector::ZeroVector;
+		FStepState Server = Client;
+		int32 ClientBounce = INDEX_NONE;
+		int32 ServerBounce = INDEX_NONE;
+		bool bServerShelled = false;
+		for (int32 Step = 0; Step < 120 && (ClientBounce == INDEX_NONE || ServerBounce == INDEX_NONE); ++Step)
+		{
+			if (ClientBounce == INDEX_NONE && SimulateStep(Client, Tuning))
+			{
+				ClientBounce = Step;
+			}
+			if (!bServerShelled && ApexZ - Server.Feet.Z > AutoShellFallHeight
+				&& !HoldsAutoShell(FMath::Max(0.0, Server.Feet.Z - SensorTopZ)))
+			{
+				bServerShelled = true;
+			}
+			if (bServerShelled)
+			{
+				break;
+			}
+			if (ServerBounce == INDEX_NONE && SimulateStep(Server, Tuning))
+			{
+				ServerBounce = Step;
+			}
+		}
+		const FString Drop = FString::Printf(TEXT("%.0f m"), DropMeters);
+		TestFalse(FString::Printf(TEXT("Caída de %s sobre el trampolín: el servidor no hace bola"), *Drop), bServerShelled);
+		TestTrue(FString::Printf(TEXT("Caída de %s: el cliente rebota"), *Drop), ClientBounce != INDEX_NONE);
+		TestEqual(FString::Printf(TEXT("Caída de %s: el servidor rebota en el mismo paso"), *Drop), ServerBounce, ClientBounce);
+		TestTrue(FString::Printf(TEXT("Caída de %s: con la misma velocidad y en el mismo sitio"), *Drop),
+			Server.Velocity.Equals(Client.Velocity, 0.01) && Server.Feet.Equals(Client.Feet, 0.01));
+	}
+	return true;
+}
+
 #endif

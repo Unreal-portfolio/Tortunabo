@@ -62,6 +62,24 @@ namespace TNTrampolineRules
 		return FVector(Horizontal.X, Horizontal.Y, Up);
 	}
 
+	/** Distancia (cm) bajo la cápsula hasta la que un trampolín deja una caída larga sin bola automática. */
+	constexpr double AutoShellLookDown = 3000.0;
+
+	/** Lo que devuelve la búsqueda del trampolín bajo la cápsula cuando no hay ninguno al alcance. */
+	constexpr double NoTrampolineBelow = -1.0;
+
+	/**
+	 * La caída larga (ATortugaCharacter::TickFallRules, solo en el servidor) no mete a la tortuga en el caparazón si cae
+	 * sobre un trampolín a DropToTrampoline cm o menos (NoTrampolineBelow si no hay ninguno debajo). Con la bola, el
+	 * servidor rebotaba un caparazón con física (o nada) mientras el cliente dueño, que aún no sabía de la bola, rebotaba
+	 * como tortuga: correcciones de 50-110 cm en las caídas de más de 5 m (#21). Se mira en cada fotograma: si al final no
+	 * cae sobre él, la bola llega igual.
+	 */
+	inline bool HoldsAutoShell(double DropToTrampoline)
+	{
+		return DropToTrampoline >= 0.0 && DropToTrampoline <= AutoShellLookDown;
+	}
+
 	/** Fuerza de la deformación y del boing (de 0,35 a 1) para un rebote de velocidad vertical Up. */
 	inline float BounceStrength(double Up, const FBounceTuning& Tuning)
 	{

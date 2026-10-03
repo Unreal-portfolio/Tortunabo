@@ -123,6 +123,13 @@ public:
 	/** Rebote nuevo (no al repetir pasos tras una corrección): deformación y boing (no más de uno por BounceCooldown). */
 	void NotifyTurtleBounced(ACharacter* Turtle, float Strength);
 
+	/**
+	 * Distancia (cm) que le queda a la cápsula de Character para tocar un trampolín si cae en vertical, o
+	 * TNTrampolineRules::NoTrampolineBelow si lo primero que hay debajo (a menos de MaxDrop, sin contar personajes) no es
+	 * un trampolín. Lo pide la caída larga para no meterla en el caparazón (TNTrampolineRules::HoldsAutoShell).
+	 */
+	static double DropOntoTrampoline(const ACharacter& Character, double MaxDrop);
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void ApplySpec() override;
