@@ -63,6 +63,20 @@ bool FTNTravelFailureTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Rechazado por el GameMode → no arrancó"), DidTravelStart(false, false, false));
 	TestFalse(TEXT("Rechazado aunque haya otro viaje → no es suyo"), DidTravelStart(false, true, true));
 
+	// El mapa al que va un ServerTravel, para comprobar antes de avisar a los invitados que existe.
+	const FURL LobbyURL(nullptr, TEXT("/Game/Maps/Lobby/LVL_Lobby?listen"), TRAVEL_Absolute);
+	TestEqual(TEXT("Viaje absoluto: el mapa de la URL, sin opciones"),
+		TravelMapPackage(LobbyURL, TEXT("/Game/Maps/TN_Inventado?game=X"), true), FString(TEXT("/Game/Maps/TN_Inventado")));
+	TestEqual(TEXT("Viaje relativo con mapa: el de la URL"),
+		TravelMapPackage(LobbyURL, TEXT("/Game/Maps/TN_Inventado"), false), FString(TEXT("/Game/Maps/TN_Inventado")));
+	TestEqual(TEXT("Viaje relativo sin mapa (?Restart): el mapa en el que se está"),
+		TravelMapPackage(LobbyURL, TEXT("?Restart"), false), FString(TEXT("/Game/Maps/Lobby/LVL_Lobby")));
+
+	// Solo se anula el viaje al menú que deja pedido UEngine::HandleDisconnect, no otro.
+	TestTrue(TEXT("«?closed» es el viaje del motor tras el fallo"), IsEngineDisconnectTravel(TEXT("?closed")));
+	TestFalse(TEXT("Sin viaje pedido no hay nada que anular"), IsEngineDisconnectTravel(FString()));
+	TestFalse(TEXT("Un viaje de verdad se respeta"), IsEngineDisconnectTravel(TEXT("/Game/Maps/Lobby/LVL_Menu")));
+
 	TestTrue(TEXT("Cada acción tiene su nombre para el registro"),
 		FCString::Strcmp(ActionName(ETravelFailureAction::StayInLobby), ActionName(ETravelFailureAction::StayInMenu)) != 0
 		&& FCString::Strcmp(ActionName(ETravelFailureAction::ReturnHostToLobby), ActionName(ETravelFailureAction::ReturnToMenu)) != 0);

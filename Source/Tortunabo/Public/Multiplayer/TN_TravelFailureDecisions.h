@@ -79,6 +79,27 @@ namespace TNTravel
 		return bAccepted && (bInSeamlessTravel || bHasNextURL);
 	}
 
+	/**
+	 * El paquete del mapa al que va un ServerTravel(URL, bAbsolute) pedido desde un mundo cuya última URL es LastURL, como lo
+	 * calcula AGameModeBase::ProcessServerTravel (una URL relativa sin mapa, p. ej. «?Restart», se queda en el mapa de LastURL).
+	 * Vacío si la URL no es válida (de eso ya se encarga el motor).
+	 */
+	inline FString TravelMapPackage(const FURL& LastURL, const FString& URL, bool bAbsolute)
+	{
+		FURL Base = LastURL; // FURL pide la base sin const.
+		const FURL Next(&Base, *URL, bAbsolute ? TRAVEL_Absolute : TRAVEL_Relative);
+		return Next.Valid ? Next.Map : FString();
+	}
+
+	/**
+	 * true si TravelURL es el viaje que UEngine::HandleDisconnect deja pedido tras un fallo (SetClientTravel «?closed»: la
+	 * entrada por defecto, el menú). Solo ese se anula para que el anfitrión siga en su sesión; cualquier otro viaje se respeta.
+	 */
+	inline bool IsEngineDisconnectTravel(const FString& TravelURL)
+	{
+		return TravelURL.Equals(TEXT("?closed"), ESearchCase::IgnoreCase);
+	}
+
 	/** Para el registro. */
 	inline const TCHAR* ActionName(ETravelFailureAction Action)
 	{

@@ -1,8 +1,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Containers/Ticker.h"
 #include "Engine/EngineBaseTypes.h"
+#include "Multiplayer/TN_TravelFailureDecisions.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "TN_TravelFailureSubsystem.generated.h"
 
@@ -21,19 +21,26 @@ class UWorld;
  * Si el anfitrión llega al lobby, el aviso del menú se retira (no saldría horas después). Vive aparte de UMP_GameInstance
  * y solo usa su API pública.
  *
- * Por qué el ServerTravel al lobby espera un tick: en un viaje sin cortes (el de HQ y Run) el motor avisa del fallo DENTRO de
- * AGameModeBase::ProcessServerTravel, cuando World->NextURL aún vale la URL fallida (se vacía al volver), y UWorld::ServerTravel
- * no hace nada si NextURL no está vacío (devuelve true igualmente). Pedido en el acto, el viaje al lobby se perdía y el
- * anfitrión no volvía al lobby (ver abajo adónde lo mandaba el motor). Un tick después NextURL ya está vacío; y como
- * ServerTravel devuelve true aunque no haga nada, se comprueba que el viaje ha arrancado de verdad (DidTravelStart). Si no
- * arranca, se oculta la pantalla de carga y se cae al menú. La pantalla de carga solo se enseña cuando el viaje ya está en marcha.
+ * Antes de viajar: ATN_HQGameMode y ATN_RunGameMode (los que viajan sin cortes) comprueban en CanServerTravel que el mapa
+ * existe (CanServerTravelTo). Si no, el viaje no empieza: AGameModeBase::ProcessServerTravel no llega a mandar a los invitados
+ * al mapa que falta (antes fallaban también ellos y volvían al menú por su cuenta) y el fallo se atiende aquí sin pasar por
+ * UEngine::OnTravelFailure, que lo trataría como una desconexión. Lo que se escapa de esa comprobación (un mapa que existe pero
+ * no carga, un viaje duro) sigue llegando por UEngine::OnTravelFailure.
  *
- * Y el motor ya ha decidido mandar al anfitrión al menú: UEngine::HandleTravelFailure, enlazado antes que este subsistema,
- * llama a UEngine::HandleDisconnect, que deja pedido un viaje a «?closed» (la entrada por defecto) para el próximo tick y le
- * quita ?Listen a la última URL; el LoadMap de ese viaje cancelaría incluso un viaje sin cortes recién arrancado. Por eso, cuando
- * el anfitrión se queda en su sesión (lobby en pie o lobby recargado), este subsistema anula ese viaje y devuelve el ?Listen
- * (KeepHostInSession). (El motor también llama a AGameMode::AbortMatch; en el lobby da igual, nada usa el estado de partida
- * del motor, y al recargarlo el GameMode es uno nuevo.)
+ * Todo lo del anfitrión que se queda espera al fotograma siguiente (ScheduleAfterFailure, FCoreDelegates::OnBeginFrame, antes
+ * de UEngine::Tick y su TickWorldTravel):
+ *  - El ServerTravel al lobby: en un viaje sin cortes el motor avisa del fallo DENTRO de AGameModeBase::ProcessServerTravel,
+ *    cuando World->NextURL aún vale la URL fallida, y UWorld::ServerTravel no hace nada si NextURL no está vacío (devuelve true
+ *    igualmente). En el fotograma siguiente NextURL ya está vacío; y como ServerTravel devuelve true aunque no haga nada, se comprueba que
+ *    el viaje ha arrancado de verdad (DidTravelStart). Si no arranca, se oculta la pantalla de carga y se cae al menú. La
+ *    pantalla de carga solo se enseña cuando el viaje ya está en marcha.
+ *  - Seguir en la sesión (KeepHostInSession): UEngine::HandleTravelFailure se enlazó antes que este subsistema y Broadcast
+ *    recorre los delegados del último al primero, así que corre DESPUÉS: llama a UEngine::HandleDisconnect, que deja pedido un
+ *    viaje a «?closed» (la entrada por defecto, el menú) para el próximo tick y le quita ?Listen a la última URL; el LoadMap de
+ *    ese viaje cancelaría incluso un viaje sin cortes recién arrancado. Hecho en el acto, el motor lo deshacía justo después
+ *    (el anfitrión acababa en el menú y los invitados veían que se había cortado la conexión). En el fotograma siguiente se anula ese viaje
+ *    y se devuelve el ?Listen. (El motor también llama a AGameMode::AbortMatch; en el lobby da igual, nada usa el estado de
+ *    partida del motor, y al recargarlo el GameMode es uno nuevo.)
  *
  * El lobby "en pie": ATN_HQGameMode::BeginMatchTravel destruye las tortugas ANTES de pedir el viaje y el castillo no les quita
  * el «listo» (Docs/Pantalla_Carga.md), así que tras un lanzamiento fallido el lobby no se puede jugar: se recarga con el mismo
@@ -58,17 +65,35 @@ public:
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;
 
+	/**
+	 * Para AGameModeBase::CanServerTravel: false si el mapa de ServerTravel(URL, bAbsolute) no existe; entonces el fallo ya
+	 * está atendido (como uno de UEngine::OnTravelFailure, pero sin la desconexión del motor) y el viaje no debe empezar.
+	 */
+	static bool CanServerTravelTo(UWorld* World, const FString& URL, bool bAbsolute);
+
+	/** true si el paquete del mapa existe (o está cargado), como lo comprueba el motor al viajar. */
+	static bool DoesTravelMapExist(FString MapPackage);
+
 private:
 	void HandleTravelFailure(UWorld* World, ETravelFailure::Type FailureType, const FString& ErrorString);
 
 	/** Mapa cargado: se reinicia la cuenta de fallos y, si no es el menú, se retira el aviso del fallo. */
 	void HandlePostLoadMap(UWorld* LoadedWorld);
 
-	/** Un tick después del fallo: el anfitrión pide el ServerTravel al lobby (ver arriba por qué no en el acto). */
-	bool TickLobbyTravel(float DeltaTime);
+	/** Deja el aviso del fallo para el menú (lo enseña si se acaba allí). */
+	void LeaveMenuNotice(UMP_GameInstance& GI);
 
-	/** Anula el viaje al lobby que esperaba su tick (otro fallo manda, o el subsistema se apaga). */
-	void CancelLobbyTravel();
+	/** Deja para el fotograma siguiente lo que hace el anfitrión que se queda (ver arriba por qué no en el acto). */
+	void ScheduleAfterFailure(UWorld* World, TNTravel::ETravelFailureAction Action);
+
+	/** Al empezar el fotograma siguiente al fallo: el anfitrión sigue en su sesión y, si toca, pide el ServerTravel al lobby. */
+	void HandleBeginFrameAfterFailure();
+
+	/** ServerTravel al lobby del que se salió; si no arranca, al menú. */
+	void TravelHostToLobby(UMP_GameInstance& GI, UWorld& World);
+
+	/** Anula lo que esperaba al fotograma siguiente (otro fallo manda, o el subsistema se apaga). */
+	void CancelAfterFailure();
 
 	/** Cierra la sesión y lleva al menú, que enseña el aviso pendiente. */
 	void SendToMenu(UMP_GameInstance& GI, UWorld* World);
@@ -78,9 +103,10 @@ private:
 	FDelegateHandle TravelFailureHandle;
 	FDelegateHandle PostLoadMapHandle;
 
-	/** Tick del viaje al lobby que espera y el mundo desde el que se pedirá. */
-	FTSTicker::FDelegateHandle LobbyTravelTicker;
-	TWeakObjectPtr<UWorld> LobbyTravelWorld;
+	/** Lo que espera al fotograma siguiente al fallo: el enlace a OnBeginFrame, el mundo y qué hacer. */
+	FDelegateHandle AfterFailureHandle;
+	TWeakObjectPtr<UWorld> AfterFailureWorld;
+	TNTravel::ETravelFailureAction AfterFailureAction = TNTravel::ETravelFailureAction::StayInLobby;
 
 	/** Fallos de viaje seguidos desde el último mapa cargado. */
 	int32 FailureCount = 0;

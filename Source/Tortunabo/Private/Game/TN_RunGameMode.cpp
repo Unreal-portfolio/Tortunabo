@@ -6,6 +6,7 @@
 #include "Player/MP_GamePlayerController.h"
 #include "Player/TortugaCharacter.h"
 #include "Multiplayer/MP_GameInstance.h"
+#include "Multiplayer/TN_TravelFailureSubsystem.h"
 #include "World/TN_RescuePickup.h"
 #include "Player/TN_InventoryComponent.h"
 #include "World/TN_DeathZoneVolume.h"
@@ -1224,6 +1225,11 @@ void ATN_RunGameMode::HandleSeamlessTravelPlayer(AController*& C)
 	}
 
 	Super::HandleSeamlessTravelPlayer(C);
+}
+
+bool ATN_RunGameMode::CanServerTravel(const FString& URL, bool bAbsolute)
+{
+	return Super::CanServerTravel(URL, bAbsolute) && UTN_TravelFailureSubsystem::CanServerTravelTo(GetWorld(), URL, bAbsolute);
 }
 
 void ATN_RunGameMode::PostSeamlessTravel()

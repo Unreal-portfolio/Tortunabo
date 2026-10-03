@@ -8,6 +8,8 @@
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/IConsoleManager.h"
+#include "TimerManager.h"
+#include "Misc/CoreDelegates.h"
 #include "UObject/UObjectGlobals.h"
 
 namespace TNTravelFailureDetail
@@ -41,10 +43,12 @@ namespace TNTravelFailureDetail
 	}
 
 	/**
-	 * El anfitrión sigue en su sesión (se queda en el lobby o lo recarga). UEngine::HandleTravelFailure, enlazado antes que este
-	 * subsistema, ya ha llamado a UEngine::HandleDisconnect: deja pedido un viaje a «?closed» (la entrada por defecto, el menú)
-	 * para el próximo tick del motor, cuyo LoadMap cancelaría hasta un viaje sin cortes en marcha, y le quita ?Listen a la última
-	 * URL. Se anula lo uno y se devuelve lo otro.
+	 * El anfitrión sigue en su sesión (se queda en el lobby o lo recarga). Si el fallo llegó por UEngine::OnTravelFailure,
+	 * UEngine::HandleTravelFailure lo atiende DESPUÉS que este subsistema (Broadcast recorre los delegados del último al primero)
+	 * y, con UEngine::HandleDisconnect, deja pedido un viaje a «?closed» (la entrada por defecto, el menú) para el próximo tick
+	 * del motor, cuyo LoadMap cancelaría hasta un viaje sin cortes en marcha, y le quita ?Listen a la última URL. Por eso esto se
+	 * llama al empezar el fotograma siguiente al fallo (HandleBeginFrameAfterFailure): se anula ese viaje (solo ese) y se
+	 * devuelve el ?Listen.
 	 */
 	void KeepHostInSession(const UWorld* World)
 	{
@@ -53,16 +57,45 @@ namespace TNTravelFailureDetail
 		{
 			return;
 		}
-		Context->TravelURL.Reset();
+		if (TNTravel::IsEngineDisconnectTravel(Context->TravelURL))
+		{
+			UE_LOG(LogTortunabo, Display, TEXT("[MP] Se anula el viaje al menú que pidió el motor tras el fallo."));
+			Context->TravelURL.Reset();
+		}
 		if (World->GetNetMode() == NM_ListenServer && !Context->LastURL.HasOption(TEXT("Listen")))
 		{
 			Context->LastURL.AddOption(TEXT("Listen"));
 		}
 	}
 
+	/** Argumento de TN.Travel.Fail que simula el fallo por el camino del motor en vez de pedir el viaje. */
+	const TCHAR* const EngineFailureArg = TEXT("motor");
+
+	/** Provoca el fallo de prueba: Target es «motor» o el mapa (vacío: uno que no existe). */
+	void RunTestFailure(UWorld* World, const FString& Target)
+	{
+		if (!World || !GEngine)
+		{
+			return;
+		}
+		if (Target.Equals(EngineFailureArg, ESearchCase::IgnoreCase))
+		{
+			UE_LOG(LogTortunabo, Display, TEXT("[MP] TN.Travel.Fail: fallo simulado por UEngine::OnTravelFailure."));
+			GEngine->BroadcastTravelFailure(World, ETravelFailure::ServerTravelFailure, TEXT("TN.Travel.Fail motor"));
+			return;
+		}
+		// Un mapa que no existe a propósito, montado en dos trozos para que Tortunabo.Cook.StringPathsAreCooked no lo tome
+		// por una ruta que haya que cocinar.
+		const FString Map = Target.IsEmpty() ? FString(TEXT("/Game/Maps/")) + TEXT("TN_MapaQueNoExiste") : Target;
+		UE_LOG(LogTortunabo, Display, TEXT("[MP] TN.Travel.Fail: ServerTravel a «%s» (no existe)."), *Map);
+		World->ServerTravel(Map);
+	}
+
 	/**
-	 * Prueba: TN.Travel.Fail [mapa] pide un ServerTravel a un mapa que no existe, que es lo que pasa con un mapa sin cocinar
-	 * (en un juego con viaje sin cortes, el fallo llega dentro de ProcessServerTravel; en PIE, con net.AllowPIESeamlessTravel 1).
+	 * Prueba: TN.Travel.Fail [mapa | motor] [segundos]. Con un mapa (por defecto uno que no existe) pide un ServerTravel a él, que
+	 * es lo que pasa con un mapa sin cocinar (lo para CanServerTravel en HQ y Run). Con «motor» simula un fallo que llega por
+	 * UEngine::OnTravelFailure (un mapa que existe pero no carga), con la desconexión que pide el motor detrás. Con segundos, lo
+	 * hace pasado ese tiempo (para dar tiempo a que entren invitados en una prueba sin ventana con -ExecCmds).
 	 */
 	void HandleTestCommand(const TArray<FString>& Args, UWorld* World)
 	{
@@ -71,16 +104,26 @@ namespace TNTravelFailureDetail
 			UE_LOG(LogTortunabo, Display, TEXT("[MP] TN.Travel.Fail: hace falta un mundo de anfitrión o servidor."));
 			return;
 		}
-		// Un mapa que no existe a propósito, montado en dos trozos para que Tortunabo.Cook.StringPathsAreCooked no lo tome
-		// por una ruta que haya que cocinar.
-		const FString Map = Args.Num() > 0 ? Args[0] : FString(TEXT("/Game/Maps/")) + TEXT("TN_MapaQueNoExiste");
-		UE_LOG(LogTortunabo, Display, TEXT("[MP] TN.Travel.Fail: ServerTravel a «%s» (no existe)."), *Map);
-		World->ServerTravel(Map);
+		TArray<FString> Rest = Args;
+		const float DelaySeconds = (Rest.Num() > 0 && Rest.Last().IsNumeric()) ? FCString::Atof(*Rest.Pop()) : 0.f;
+		const FString Target = Rest.Num() > 0 ? Rest[0] : FString();
+		if (DelaySeconds <= 0.f)
+		{
+			RunTestFailure(World, Target);
+			return;
+		}
+		UE_LOG(LogTortunabo, Display, TEXT("[MP] TN.Travel.Fail: dentro de %.1f s."), DelaySeconds);
+		FTimerHandle Handle;
+		const TWeakObjectPtr<UWorld> WeakWorld(World);
+		World->GetTimerManager().SetTimer(Handle, FTimerDelegate::CreateLambda([WeakWorld, Target]()
+		{
+			RunTestFailure(WeakWorld.Get(), Target);
+		}), DelaySeconds, false);
 	}
 
 	FAutoConsoleCommandWithWorldAndArgs TestCommand(
 		TEXT("TN.Travel.Fail"),
-		TEXT("Pide un ServerTravel a un mapa que no existe para probar el viaje fallido: TN.Travel.Fail [/Game/Ruta/Mapa]."),
+		TEXT("Prueba del viaje fallido: TN.Travel.Fail [/Game/Ruta/Mapa | motor] [segundos]. Sin argumentos, ServerTravel a un mapa que no existe; motor simula un fallo de UEngine::OnTravelFailure."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&HandleTestCommand));
 }
 
@@ -101,7 +144,7 @@ void UTN_TravelFailureSubsystem::Initialize(FSubsystemCollectionBase& Collection
 
 void UTN_TravelFailureSubsystem::Deinitialize()
 {
-	CancelLobbyTravel();
+	CancelAfterFailure();
 	if (GEngine)
 	{
 		GEngine->OnTravelFailure().Remove(TravelFailureHandle);
@@ -113,6 +156,40 @@ void UTN_TravelFailureSubsystem::Deinitialize()
 UMP_GameInstance* UTN_TravelFailureSubsystem::GetTNGameInstance() const
 {
 	return Cast<UMP_GameInstance>(GetGameInstance());
+}
+
+bool UTN_TravelFailureSubsystem::DoesTravelMapExist(FString MapPackage)
+{
+	// Como el motor al viajar: nombres largos o cortos, sin el prefijo de PIE, y los paquetes ya cargados (un mapa sin guardar en PIE).
+	return !MapPackage.IsEmpty() && GEngine && GEngine->MakeSureMapNameIsValid(MapPackage);
+}
+
+bool UTN_TravelFailureSubsystem::CanServerTravelTo(UWorld* World, const FString& URL, bool bAbsolute)
+{
+	const FWorldContext* Context = (GEngine && World) ? GEngine->GetWorldContextFromWorld(World) : nullptr;
+	if (!Context)
+	{
+		return true; // Sin contexto no se puede resolver el mapa: decide el motor.
+	}
+	const FString MapPackage = TNTravel::TravelMapPackage(Context->LastURL, URL, bAbsolute);
+	if (MapPackage.IsEmpty() || DoesTravelMapExist(MapPackage))
+	{
+		return true; // URL mala (la rechaza el motor) o mapa que existe.
+	}
+
+	const FString Error = FString::Printf(TEXT("el mapa «%s» no está en esta build (sin cocinar o mal escrito)"), *MapPackage);
+	UGameInstance* GameInstance = World->GetGameInstance();
+	UTN_TravelFailureSubsystem* Self = GameInstance ? GameInstance->GetSubsystem<UTN_TravelFailureSubsystem>() : nullptr;
+	if (Self)
+	{
+		// Sin pasar por UEngine::OnTravelFailure: el viaje no ha empezado, así que no es una desconexión (el motor pediría el menú).
+		Self->HandleTravelFailure(World, ETravelFailure::PackageMissing, Error);
+	}
+	else
+	{
+		GEngine->BroadcastTravelFailure(World, ETravelFailure::PackageMissing, Error);
+	}
+	return false;
 }
 
 void UTN_TravelFailureSubsystem::HandleTravelFailure(UWorld* World, ETravelFailure::Type FailureType, const FString& ErrorString)
@@ -128,13 +205,11 @@ void UTN_TravelFailureSubsystem::HandleTravelFailure(UWorld* World, ETravelFailu
 		return;
 	}
 
-	// El último fallo manda: un viaje al lobby que esperaba su tick por un fallo anterior ya no toca.
-	CancelLobbyTravel();
+	// El último fallo manda: lo que esperaba al fotograma siguiente por un fallo anterior ya no toca.
+	CancelAfterFailure();
 
-	const ENetMode NetMode = World ? World->GetNetMode() : NM_Standalone;
-	const bool bInMenu = GI->IsInMenuWorld(World);
-	const bool bLobbyIntact = TNTravelFailureDetail::IsLobbyIntact(World, GI->LobbyReturnMapPath);
-	const TNTravel::ETravelFailureAction Action = TNTravel::DecideTravelFailure(NetMode, bInMenu, bLobbyIntact, FailureCount);
+	const TNTravel::ETravelFailureAction Action = TNTravel::DecideTravelFailure(World ? World->GetNetMode() : NM_Standalone,
+		GI->IsInMenuWorld(World), TNTravelFailureDetail::IsLobbyIntact(World, GI->LobbyReturnMapPath), FailureCount);
 	++FailureCount;
 	UE_LOG(LogTortunabo, Error, TEXT("[MP] Fallo de viaje %s: %s → %s (fallo %d seguido)."),
 		ETravelFailure::ToString(FailureType), *ErrorString, TNTravel::ActionName(Action), FailureCount);
@@ -147,87 +222,103 @@ void UTN_TravelFailureSubsystem::HandleTravelFailure(UWorld* World, ETravelFailu
 	if (Action == TNTravel::ETravelFailureAction::StayInMenu)
 	{
 		GI->OnRoomNotice.Broadcast(TNTravelFailureDetail::FailedNotice(), true);
-		// Tras un viaje duro fallido el anfitrión acaba aquí con su sesión de Steam viva y sin invitados (ver arriba).
+		// Tras un viaje duro fallido el anfitrión acaba aquí con su sesión de Steam viva y sin invitados (ver el .h).
 		GI->DestroyCurrentSession();
 		return;
 	}
-
-	const bool bHostStays = Action == TNTravel::ETravelFailureAction::StayInLobby || Action == TNTravel::ETravelFailureAction::ReturnHostToLobby;
-	if (bHostStays)
-	{
-		TNTravelFailureDetail::KeepHostInSession(World);
-	}
 	if (Action == TNTravel::ETravelFailureAction::StayInLobby)
 	{
-		UE_LOG(LogTortunabo, Warning, TEXT("[MP] El lobby sigue en pie: no hay a dónde volver."));
+		UE_LOG(LogTortunabo, Warning, TEXT("[MP] El lobby sigue en pie: el anfitrión se queda en él con su sesión."));
+		ScheduleAfterFailure(World, Action);
 		return;
 	}
 
-	// Por si se acaba en el menú (el motor también vuelve a la entrada por defecto si nadie lo impide): allí sale el aviso.
+	// Por si se acaba en el menú: allí sale el aviso (si el anfitrión llega al lobby, HandlePostLoadMap lo retira).
+	LeaveMenuNotice(*GI);
+	if (Action == TNTravel::ETravelFailureAction::ReturnHostToLobby && World)
+	{
+		ScheduleAfterFailure(World, Action);
+		return;
+	}
+	SendToMenu(*GI, World);
+}
+
+void UTN_TravelFailureSubsystem::LeaveMenuNotice(UMP_GameInstance& GI)
+{
 	FTNMenuNotice Notice;
 	Notice.Text = TNTravelFailureDetail::FailedNotice();
 	Notice.bError = true;
 	Notice.bOpenJoin = false;
-	GI->SetMenuNotice(Notice);
+	GI.SetMenuNotice(Notice);
 	bNoticePending = true;
-
-	if (Action == TNTravel::ETravelFailureAction::ReturnHostToLobby && World)
-	{
-		// En un tick, no ahora: dentro de ProcessServerTravel World->NextURL aún no está vacío y ServerTravel no haría nada.
-		LobbyTravelWorld = World;
-		LobbyTravelTicker = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateUObject(this, &UTN_TravelFailureSubsystem::TickLobbyTravel));
-		return;
-	}
-
-	SendToMenu(*GI, World);
 }
 
-bool UTN_TravelFailureSubsystem::TickLobbyTravel(float /*DeltaTime*/)
+void UTN_TravelFailureSubsystem::ScheduleAfterFailure(UWorld* World, TNTravel::ETravelFailureAction Action)
 {
-	LobbyTravelTicker.Reset();
-	UWorld* World = LobbyTravelWorld.Get();
-	LobbyTravelWorld.Reset();
+	// Al empezar el fotograma siguiente (FCoreDelegates::OnBeginFrame): siempre después de UEngine::HandleTravelFailure y antes
+	// del UEngine::TickWorldTravel que haría el viaje a «?closed», venga de donde venga el fallo. El ticker del núcleo no vale:
+	// va después de UEngine::Tick, pero antes de los comandos diferidos (-ExecCmds), así que un fallo pedido desde ellos lo
+	// encontraba ya pasado y el motor viajaba al menú antes.
+	CancelAfterFailure();
+	AfterFailureWorld = World;
+	AfterFailureAction = Action;
+	AfterFailureHandle = FCoreDelegates::OnBeginFrame.AddUObject(this, &UTN_TravelFailureSubsystem::HandleBeginFrameAfterFailure);
+}
+
+void UTN_TravelFailureSubsystem::HandleBeginFrameAfterFailure()
+{
+	UWorld* World = AfterFailureWorld.Get();
+	CancelAfterFailure();
 
 	UMP_GameInstance* GI = GetTNGameInstance();
 	if (!GI || !World || World->GetGameInstance() != GI)
 	{
-		// El mundo ya no está: otro mapa ha ocupado su lugar y el viaje del fallo ya no tiene sentido.
-		return false;
+		// El mundo ya no está: otro mapa ha ocupado su lugar y lo que se iba a hacer ya no tiene sentido.
+		return;
 	}
-	if (World->IsInSeamlessTravel() || !World->NextURL.IsEmpty())
+	TNTravelFailureDetail::KeepHostInSession(World);
+	if (AfterFailureAction == TNTravel::ETravelFailureAction::ReturnHostToLobby)
+	{
+		TravelHostToLobby(*GI, *World);
+	}
+}
+
+void UTN_TravelFailureSubsystem::TravelHostToLobby(UMP_GameInstance& GI, UWorld& World)
+{
+	// No en el acto: dentro de ProcessServerTravel World->NextURL aún no está vacío y ServerTravel no haría nada.
+	if (World.IsInSeamlessTravel() || !World.NextURL.IsEmpty())
 	{
 		UE_LOG(LogTortunabo, Warning, TEXT("[MP] Ya hay otro viaje en marcha: no se pide el del lobby."));
-		return false;
+		return;
 	}
 
-	const FString LobbyURL = TNTravel::LobbyTravelURL(GI->LobbyReturnMapPath);
+	const FString LobbyURL = TNTravel::LobbyTravelURL(GI.LobbyReturnMapPath);
 	UE_LOG(LogTortunabo, Warning, TEXT("[MP] El anfitrión vuelve al lobby con todos: %s"), *LobbyURL);
 	const int32 FailuresBefore = FailureCount;
-	const bool bAccepted = World->ServerTravel(LobbyURL);
+	const bool bAccepted = World.ServerTravel(LobbyURL);
 	if (FailureCount != FailuresBefore)
 	{
 		// El propio viaje al lobby ha fallado (un lobby sin cocinar): HandleTravelFailure ya ha actuado, y al ser el segundo
 		// fallo seguido ha mandado al menú.
-		return false;
+		return;
 	}
-	if (!TNTravel::DidTravelStart(bAccepted, World->IsInSeamlessTravel(), !World->NextURL.IsEmpty()))
+	if (!TNTravel::DidTravelStart(bAccepted, World.IsInSeamlessTravel(), !World.NextURL.IsEmpty()))
 	{
 		UE_LOG(LogTortunabo, Error, TEXT("[MP] El viaje al lobby %s no ha arrancado: se oculta la pantalla de carga y se vuelve al menú."), *LobbyURL);
-		GI->HideLoadingScreen();
-		SendToMenu(*GI, World);
-		return false;
+		GI.HideLoadingScreen();
+		SendToMenu(GI, &World);
+		return;
 	}
 
 	// Ya viaja: ahora sí, la pantalla de carga con el motivo.
-	GI->ShowLoadingScreen(NSLOCTEXT("TNRooms", "TravelFailedLobby", "No se ha podido cargar la partida: volvéis al lobby.").ToString());
-	return false;
+	GI.ShowLoadingScreen(NSLOCTEXT("TNRooms", "TravelFailedLobby", "No se ha podido cargar la partida: volvéis al lobby.").ToString());
 }
 
-void UTN_TravelFailureSubsystem::CancelLobbyTravel()
+void UTN_TravelFailureSubsystem::CancelAfterFailure()
 {
-	FTSTicker::RemoveTicker(LobbyTravelTicker);
-	LobbyTravelTicker.Reset();
-	LobbyTravelWorld.Reset();
+	FCoreDelegates::OnBeginFrame.Remove(AfterFailureHandle);
+	AfterFailureHandle.Reset();
+	AfterFailureWorld.Reset();
 }
 
 void UTN_TravelFailureSubsystem::SendToMenu(UMP_GameInstance& GI, UWorld* World)

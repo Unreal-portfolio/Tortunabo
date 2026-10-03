@@ -20,7 +20,7 @@ las plazas y los expulsados los aplica el servidor al entrar (PreLogin), no solo
 | `UMP_MainMenuWidget` | `UI/Menu/MP_MainMenuWidget.*` | Los botones del Blueprint: «Crear partida» y «Unirse» abren las pantallas de salas; «Salir». |
 | `UTN_PauseMenuWidget` | `UI/Pause/TN_PauseMenuWidget.*` | Cabecera con la sala y página «Sala»: código, cerrar y abrir, invitar y quién está dentro con el «⋮» para expulsar. |
 | `TNRoomArt` | `Private/UI/Menu/TN_RoomArt.h` | Iconos pintados en código: «⋮», candado y el grupo de tortugas del botón «Sala». |
-| `UTN_TravelFailureSubsystem` | `Multiplayer/TN_TravelFailureSubsystem.*`, `TN_TravelFailureDecisions.h` | Qué pasa cuando un viaje de mapa falla (mapa sin cocinar, paquete que falta): el anfitrión recarga el lobby, el invitado vuelve al menú con el aviso. Ver [Viaje de mapa fallido](#viaje-de-mapa-fallido). |
+| `UTN_TravelFailureSubsystem` | `Multiplayer/TN_TravelFailureSubsystem.*`, `TN_TravelFailureDecisions.h` | Qué pasa cuando un viaje de mapa falla (mapa sin cocinar, paquete que falta): el viaje a un mapa que no existe no empieza, el anfitrión se queda en el lobby o lo recarga con todos y, si aun así falla, el invitado vuelve al menú con el aviso. Ver [Viaje de mapa fallido](#viaje-de-mapa-fallido). |
 
 ## Ajustes de la sesión
 
@@ -144,25 +144,36 @@ partida) nadie vuelve a pasar por el PreLogin; solo quien se reconecta tras perd
 
 ## Viaje de mapa fallido
 
-`UTN_TravelFailureSubsystem` escucha `UEngine::OnTravelFailure` (mapa sin cocinar, paquete que falta, URL mala). Sin él, un
-`ServerTravel` fallido dejaba al invitado colgado en la pantalla de carga y sin mensaje. La regla es pura
-(`TNTravel::DecideTravelFailure`, tests `Tortunabo.Net.TravelFailure`):
+`UTN_TravelFailureSubsystem` atiende los viajes de mapa fallidos (mapa sin cocinar, paquete que falta, URL mala). Sin él, un
+`ServerTravel` fallido dejaba al invitado colgado en la pantalla de carga y sin mensaje. Le llegan por dos caminos:
+
+- **Antes de viajar.** `ATN_HQGameMode` y `ATN_RunGameMode` (los que viajan sin cortes) comprueban en `CanServerTravel` que el
+  mapa existe (`UTN_TravelFailureSubsystem::CanServerTravelTo`, como lo mira el motor). Si no existe, el viaje no empieza: los
+  invitados no reciben el `ClientTravel` al mapa que falta (antes fallaban también y volvían al menú por su cuenta) y el fallo
+  se atiende sin pasar por `UEngine::OnTravelFailure`, que lo trataría como una desconexión.
+- **`UEngine::OnTravelFailure`**: lo que se escapa de esa comprobación (un mapa que existe pero no carga, un viaje duro).
+
+La regla es pura (`TNTravel::DecideTravelFailure`, tests `Tortunabo.Net.TravelFailure`):
 
 | Quién y dónde | Qué pasa |
 |---|---|
-| Anfitrión, primer fallo, fuera del lobby o en un lobby que ya había empezado la cuenta atrás | **Un tick después**, `ServerTravel` al lobby del que salió (`LobbyReturnMapPath`); la pantalla de carga dice «No se ha podido cargar la partida: volvéis al lobby.». Si el viaje no arranca, se oculta la pantalla de carga y va al menú. |
-| Anfitrión en un lobby en pie (sin cuenta atrás ni pausa antes de viajar) | No viaja: no hay a dónde volver. Se quita la pantalla de carga y se queda donde está. |
+| Anfitrión, primer fallo, fuera del lobby o en un lobby que ya había empezado la cuenta atrás | **Al fotograma siguiente**, `ServerTravel` al lobby del que salió (`LobbyReturnMapPath`); la pantalla de carga dice «No se ha podido cargar la partida: volvéis al lobby.». Si el viaje no arranca, se oculta la pantalla de carga y va al menú. |
+| Anfitrión en un lobby en pie (sin cuenta atrás ni pausa antes de viajar) | No viaja: no hay a dónde volver. Se quita la pantalla de carga y se queda donde está, con su sesión y sus invitados. |
 | Invitado, partida sin red o segundo fallo seguido | Sesión cerrada y al menú, con «No se ha podido cargar la partida y has vuelto al menú.». |
 | Ya en el menú | Solo el aviso; se cierra la sesión de Steam que quedara. |
 
-- **Por qué un tick después.** En el viaje sin cortes (el de lobby y partida) el motor avisa del fallo *dentro* de
+- **Por qué al fotograma siguiente.** En el viaje sin cortes (el de lobby y partida) el motor avisa del fallo *dentro* de
   `ProcessServerTravel`, con `World->NextURL` aún lleno (se vacía al volver), y `UWorld::ServerTravel` no hace nada si
-  `NextURL` no está vacío, pero devuelve `true`. Por eso el subsistema espera un tick y luego comprueba el efecto
+  `NextURL` no está vacío, pero devuelve `true`. Por eso el subsistema espera al fotograma siguiente y luego comprueba el efecto
   (`TNTravel::DidTravelStart`: viaje sin cortes en marcha o `NextURL` puesto), no el valor devuelto.
-- **El motor ya manda al anfitrión al menú.** `UEngine::HandleTravelFailure` (enlazado antes) llama a `HandleDisconnect`, que
-  deja pedido un viaje a `?closed` (la entrada por defecto, el menú) para el tick siguiente y le quita `?Listen` a la última URL;
-  su `LoadMap` cancelaría hasta un viaje sin cortes recién arrancado. Cuando el anfitrión se queda en su sesión, el subsistema
-  anula ese viaje y devuelve el `?Listen` (`KeepHostInSession`).
+- **El motor ya manda al anfitrión al menú.** Si el fallo llega por `UEngine::OnTravelFailure`, `UEngine::HandleTravelFailure`
+  lo atiende *después* que el subsistema (se enlazó antes y `Broadcast` recorre los delegados del último al primero): llama a
+  `HandleDisconnect`, que deja pedido un viaje a `?closed` (la entrada por defecto, el menú) para el tick siguiente y le quita
+  `?Listen` a la última URL; su `LoadMap` cancelaría hasta un viaje sin cortes recién arrancado. Por eso, cuando el anfitrión se
+  queda en su sesión, el subsistema espera al principio del fotograma siguiente (`FCoreDelegates::OnBeginFrame`, antes del
+  `TickWorldTravel` siguiente), anula ese viaje (solo si es `?closed`) y devuelve el `?Listen` (`KeepHostInSession`). Hecho en
+  el acto, el motor lo deshacía justo después: el anfitrión acababa en el menú y los invitados veían que se había cortado la
+  conexión.
 - **Un lobby «en pie».** `ATN_HQGameMode::BeginMatchTravel` destruye las tortugas *antes* de pedir el viaje y el castillo no les
   quita el «listo» ([Pantalla de carga](Pantalla_Carga.md)): tras un lanzamiento fallido el lobby no se puede jugar, así que
   se recarga con el mismo `ServerTravel` con que se vuelve de una partida. Solo un lobby que no lanzaba nada se deja como está.
@@ -172,9 +183,12 @@ partida) nadie vuelve a pasar por el PreLogin; solo quien se reconecta tras perd
   sería alojar una sala nueva desde el menú, sin los datos de la sala y con la carrera por el puerto de escucha de Steam de
   `OnCreateSessionComplete`: no se hace. En el juego empaquetado el lobby y las partidas viajan sin cortes, así que este
   camino solo lo recorren PIE y el viaje del menú al lobby.
-- **Los invitados** reciben el mismo viaje. Si el mapa también les falta (misma build), fallan igual y vuelven al menú por su
-  cuenta, con el aviso, mientras el anfitrión recarga el lobby; si lo tienen, el `ServerTravel` al lobby del anfitrión cancela
-  el suyo y lo siguen.
+- **Los invitados** no reciben un viaje a un mapa que no existe (se para en `CanServerTravel`): se quedan en el lobby o siguen
+  al anfitrión cuando lo recarga. Si el fallo es de los que llegan por `UEngine::OnTravelFailure` (ya se les había mandado el
+  viaje), fallan igual y vuelven al menú por su cuenta, con el aviso, mientras el anfitrión recarga el lobby; si el mapa
+  sí les carga, el `ServerTravel` al lobby del anfitrión cancela el suyo y lo siguen.
+- **Prueba:** `TN.Travel.Fail` en el anfitrión (con un invitado conectado): en el registro del anfitrión, un solo
+  `[MP] Fallo de viaje PackageMissing ... (fallo 1 seguido)`, ningún `LoadMap` a `LVL_Menu` y el invitado sigue en el lobby.
 
 ## Detalles
 
