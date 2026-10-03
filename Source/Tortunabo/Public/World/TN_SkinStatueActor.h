@@ -96,11 +96,14 @@ public:
 protected:
 	// ── Estatua de código (#50): si PreviewMesh está vacío y el Blueprint solo trae marcadores del motor ──────────
 
-	/** Tortuga de la estatua, vestida con el cosmético de la estatua como la del jugador (UTN_CosmeticLook). */
+	/**
+	 * Tortuga de la estatua, vestida con el cosmético de la estatua como la del jugador (UTN_CosmeticLook). Vacía (lo normal):
+	 * la del personaje (TNTurtleArt, #581), así que cambia con la malla de BP_TortugaCharacter.
+	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Cosmetic Statue|Art")
 	TSoftObjectPtr<USkeletalMesh> StatueTurtleMesh;
 
-	/** Animación de la que sale la pose fija y el segundo de la pose. */
+	/** Animación de la que sale la pose fija y el segundo de la pose. Vacía: el saludo de los ajustes de arte (TNTurtleArt). */
 	UPROPERTY(EditDefaultsOnly, Category = "Cosmetic Statue|Art")
 	TSoftObjectPtr<UAnimationAsset> StatuePose;
 

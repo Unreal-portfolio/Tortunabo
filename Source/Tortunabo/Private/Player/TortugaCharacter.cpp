@@ -12,6 +12,7 @@
 #include "Components/PostProcessComponent.h"
 #include "Player/TN_InventoryComponent.h"
 #include "Core/TN_CosmeticLook.h"
+#include "Art/TN_TurtleArt.h"
 #include "Player/TN_ShellBody.h"
 #include "Player/TN_ShellComponent.h"
 #include "Player/TN_ShellImpactFXComponent.h"
@@ -303,6 +304,10 @@ void ATortugaCharacter::BeginPlay()
 	}
 
 	CacheDefaultSkelMeshMaterials();
+
+	// Piezas de Arte de la tortuga (caparazón, casco de serie, ojos, lengua) aunque no llegue a vestirse con los cosméticos
+	// de un jugador (las tortugas de práctica del tutorial no tienen PlayerState). Al vestirse se vuelven a poner.
+	TNTurtleArt::ApplyPieces(GetMesh(), HelmetMeshComp && HelmetMeshComp->GetStaticMesh());
 
 	StartCosmeticRetryTimer();
 

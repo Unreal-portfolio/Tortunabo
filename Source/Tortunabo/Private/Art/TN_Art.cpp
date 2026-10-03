@@ -11,6 +11,7 @@
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "HAL/IConsoleManager.h"
+#include "Misc/PackageName.h"
 #include "Materials/MaterialInterface.h"
 #include "UObject/GCObject.h"
 #include "UObject/StrongObjectPtr.h"
@@ -127,7 +128,10 @@ namespace TNArtDetail
 				for (const TSoftObjectPtr<UTN_ArtCatalog>& Soft : Settings->Catalogs)
 				{
 					if (Soft.IsNull()) { continue; }
-					if (UTN_ArtCatalog* Cat = Soft.LoadSynchronous())
+					// Un catálogo que Arte aún no ha creado (DA_Arte_Tortuga hasta que se pone la primera pieza) no se intenta
+					// cargar: LoadSynchronous avisaría en cada mundo que empieza.
+					const bool bExists = Soft.Get() || FPackageName::DoesPackageExist(Soft.ToSoftObjectPath().GetLongPackageName());
+					if (UTN_ArtCatalog* Cat = bExists ? Soft.LoadSynchronous() : nullptr)
 					{
 						C.Catalogs.Add(Cat);
 						for (const FName& Unknown : TNArt::FindUnknownPieces(Cat))
@@ -453,7 +457,7 @@ bool TNArt::IsValidSlotName(const FString& Name)
 	TArray<FString> Parts;
 	Name.ParseIntoArray(Parts, TEXT("."), false);
 	if (Parts.Num() < 2) { return false; }
-	if (Parts[0] != TEXT("Lobby") && Parts[0] != TEXT("ProcMap") && Parts[0] != TEXT("Beach")) { return false; }
+	if (Parts[0] != TEXT("Lobby") && Parts[0] != TEXT("ProcMap") && Parts[0] != TEXT("Beach") && Parts[0] != TEXT("Turtle")) { return false; }
 	for (const FString& Part : Parts)
 	{
 		if (Part.IsEmpty() || !FChar::IsUpper(Part[0])) { return false; }
@@ -509,6 +513,7 @@ const TNArt::FResolved* TNArt::Find(FName Slot)
 			Result->Mesh = Mesh;
 			Result->Adjust = Entry->Adjust;
 			Result->bUseArtCollision = Entry->bUseArtCollision;
+			Result->Bone = Entry->Bone;
 			for (const TSoftObjectPtr<UMaterialInterface>& Mat : Entry->Materials)
 			{
 				Result->Materials.Add(Mat.IsNull() ? nullptr : Mat.LoadSynchronous());

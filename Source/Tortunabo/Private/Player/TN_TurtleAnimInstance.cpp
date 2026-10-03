@@ -1,4 +1,5 @@
 #include "Player/TN_TurtleAnimInstance.h"
+#include "Art/TN_TurtleArt.h"
 #include "Player/TortugaCharacter.h"
 #include "Player/TN_CarryComponent.h"
 #include "Player/TN_InventoryComponent.h"
@@ -1026,9 +1027,10 @@ bool FTNTurtleAnimProxy::Evaluate(FPoseContext& Output)
 void UTN_TurtleAnimInstance::NativeInitializeAnimation()
 {
 	Super::NativeInitializeAnimation();
-	IdleAnim = LoadObject<UAnimSequence>(nullptr, TEXT("/Game/Animations/Character/TortugaDemo/Anim/Old_Man_Idle.Old_Man_Idle"));
-	WalkAnim = LoadObject<UAnimSequence>(nullptr, TEXT("/Game/Animations/Character/TortugaDemo/Anim/Walking.Walking"));
-	CheerAnim = LoadObject<UAnimSequence>(nullptr, TEXT("/Game/Animations/Character/TortugaDemo/Anim/Yelling.Yelling"));
+	// Clips de la tortuga de los ajustes de arte (UTN_ArtSettings, «Tortuga|Animaciones»): con otro esqueleto, se cambian allí.
+	IdleAnim = TNTurtleArt::GetClip(ETNTurtleClip::Idle);
+	WalkAnim = TNTurtleArt::GetClip(ETNTurtleClip::Walk);
+	CheerAnim = TNTurtleArt::GetClip(ETNTurtleClip::Cheer);
 	if (const APawn* Owner = TryGetPawnOwner()) { PrevYaw = Owner->GetActorRotation().Yaw; }
 }
 

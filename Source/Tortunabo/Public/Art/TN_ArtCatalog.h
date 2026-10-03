@@ -38,6 +38,14 @@ struct TORTUNABO_API FTNArtOverride
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Arte")
 	bool bUseArtCollision = false;
 
+	/**
+	 * Solo piezas de la tortuga (Turtle.*): hueso o socket de su malla al que va pegada y cuya animación sigue. Vacío: el
+	 * de la tabla (Docs/Arte_Assets.md, «La tortuga»). La pieza se coloca igual con cualquier hueso: se exporta en el
+	 * espacio del cuerpo y el hueso solo dice a qué parte del cuerpo acompaña.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Arte")
+	FName Bone;
+
 	/** Qué es la pieza, de qué fichero sale, su tamaño y su pivote. Solo informa: lo reescribe Scripts/arte/rellenar_catalogos.py. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Arte", meta = (MultiLine = true))
 	FString Info;
@@ -46,8 +54,9 @@ struct TORTUNABO_API FTNArtOverride
 };
 
 /**
- * Catálogo de arte de una zona (DA_Arte_Lobby y DA_Arte_ProcMap en /Game/Art): el nombre de cada pieza
- * generada desde C++ («Lobby.Castle.Tower», «ProcMap.Rock.RoundBoulder»...) y, si Arte la ha hecho, su malla final. La lista de
+ * Catálogo de arte de una zona (DA_Arte_Lobby, DA_Arte_ProcMap y DA_Arte_Tortuga en /Game/Art): el nombre de cada pieza
+ * generada desde C++ («Lobby.Castle.Tower», «ProcMap.Rock.RoundBoulder»...) o pegada a la tortuga («Turtle.Shell») y, si Arte
+ * la ha hecho, su malla final. La lista de
  * nombres la da TN.Art.Slots y Scripts/arte/rellenar_catalogos.py la mete entera, vacía. Los catálogos que se usan están en
  * Ajustes del proyecto > Tortunavy > Arte (UTN_ArtSettings).
  */
