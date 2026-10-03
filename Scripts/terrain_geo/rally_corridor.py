@@ -15,6 +15,7 @@ Mide sobre la cara superior de la malla (máximo de los triángulos que cubren c
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -192,3 +193,22 @@ def corridor_report(variant_dir: Path, sampler: MeshSampler | None = None) -> di
             "min_width_m": round(float(widths.min()), 1), "min_radius_m": round(float(r.min()), 1),
             "min_above_water_m": round(float(zf.min() - WATER_M), 2),
             "checkpoints": checkpoint_report(manifest, pts, zf)}
+
+
+def corridor_fingerprint(variant_dir: Path, manifest: dict | None = None) -> dict:
+    """El corredor en coordenadas locales del marco (sin manifest["offset_uu"], el desplazamiento de #532): sha256
+    de cada trozo con colisión por su (col, fila) local y lo que el juego lee en coordenadas de mundo, redondeado a
+    0,1 uu. Dos variantes con la misma huella tienen el mismo corredor aunque la rejilla haya crecido."""
+    m = manifest or json.loads((variant_dir / "manifest.json").read_text(encoding="utf-8"))
+    ox, oy = m.get("offset_uu", [0.0, 0.0])
+    dr, dc = round(ox / m["cell_uu"]), round(oy / m["cell_uu"])
+
+    def local(p):
+        return [round(p[0] - ox, 1), round(p[1] - oy, 1)] + [round(v, 1) for v in p[2:]]
+
+    cells = {f"r{c['row'] - dr}c{c['col'] - dc}": hashlib.sha256((variant_dir / c["file"]).read_bytes()).hexdigest()
+             for c in m["cells"] if c.get("collision", True)}
+    return {"cells": cells, "road_uu": [local(p) for p in m["road_uu"]],
+            "checkpoints_uu": [local(p) for p in m["checkpoints_uu"]],
+            "start_uu": local(m["start_uu"]), "end_uu": local(m["end_uu"]), "start_yaw": m["start_yaw"],
+            "markers_uu": {k: [local(p) for p in v] for k, v in sorted(m["markers_uu"].items())}}

@@ -9,13 +9,14 @@ de Scripts/terrain_geo/data/ES_dem.png (el mismo MDE que E01) con otra escala y 
   - Calzada tallada: ROAD_W_M de firme más arcenes, perfil suavizado con pendiente <= MAX_GRADE_DEG, desmonte y
     terraplén a TALUD_DEG desde el borde del arcén. Sin túneles ni puentes en esta versión.
   - Corredor: los trozos de 100 m a menos de BAND_M del eje, con colisión. Fondo (BackgroundModel): el resto de
-    trozos de tierra de la rejilla cuadrada (también al este del rectángulo, hasta el Mediterráneo), mismo relieve
-    y misma exageración, decimados más y sin colisión: solo se ven; salirse del corredor es caer al agua de la
-    caja de muerte.
+    trozos de tierra de la rejilla ampliada (Layout: la península entera, PENINSULA_LONLAT, con Portugal y
+    Baleares; África, al sur de AFRICA_LINE, es mar), mismo relieve y misma exageración, decimados más y sin
+    colisión: solo se ven; salirse del corredor es caer al agua de la caja de muerte.
 
-Coordenadas del mundo como terrain_vol/layout.py: X = Norte, Y = Este, trozo (col, fila) centrado en
-(fila * 100, col * 100). El volumen es un rectángulo de ROWS x COLS trozos dentro de una rejilla cuadrada de
-max(ROWS, COLS) para las utilidades que la necesitan.
+Coordenadas como terrain_vol/layout.py: X = Norte, Y = Este, trozo (col, fila) centrado en (fila * 100, col * 100).
+Todo se calcula en las coordenadas LOCALES del marco del corredor (Frame: ROWS x COLS trozos desde el origen, las
+de la variante hasta #532): el fondo al oeste y al sur queda en filas y columnas negativas. Al escribir la variante,
+trozos y coordenadas se desplazan con Layout.offset_m (filas y columnas enteras), así que el corredor es el mismo.
 """
 
 from __future__ import annotations
@@ -54,9 +55,21 @@ MARGIN_M = 110.0
 LAND_BASE_M = 0.45
 LAND_CELL_M = WATER_M + 0.2      # un trozo de fondo se genera si alguna muestra queda por encima de esta cota
 LAND_PROBE_M = 2.0               # paso de las muestras con las que se decide si un trozo de fondo tiene tierra
+# Península entera (#532): (lon O, lat S, lon E, lat N) que la rejilla ampliada debe contener (Finisterre, Cabo de
+# São Vicente, Tarifa, Menorca, Estaca de Bares).
+PENINSULA_LONLAT = (-9.65, 35.92, 4.45, 43.85)
+# Al sur de esta línea (lon, lat) es África, que se trata como mar: pasa entre Tarifa y Ceuta y entre el Cabo de
+# Gata y Orán.
+AFRICA_LINE = ((-10.5, 35.90), (-5.55, 35.975), (-4.5, 36.20), (-2.3, 36.45), (4.6, 37.30))
+AFRICA_SEA_M = -200.0            # cota que se le da a África en el MDE del fondo
+BACKGROUND_PX_M = 1.0            # paso del raster del fondo ampliado (el del corredor es RASTER_PX_M)
+# Francia llega a los bordes norte y este de la rejilla: en esta franja la tierra baja al mar (con una costa irregular,
+# EDGE_WOBBLE_M) para que no acabe en un corte recto. Las costas de la península quedan a más de 90 m de esos bordes.
+EDGE_FADE_M = 60.0
+EDGE_WOBBLE_M = 15.0
 DESCRIPTION = ("España para el Rally (punto a punto): del Pirineo aragonés a la playa de Málaga por el Ebro, la "
                "Meseta, el Tajo y Despeñaperros, con el relieve real (1 m de juego = 0,4 km, exageración 4,5x); "
-               "calzada tallada de 14 m y, fuera del corredor, el resto de España de fondo (sin colisión).")
+               "calzada tallada de 14 m y, fuera del corredor, la península entera y Baleares de fondo (sin colisión).")
 
 # (nombre, lat, lon) de los hitos, en el orden de la marcha.
 HITOS = (
@@ -112,6 +125,50 @@ def make_frame() -> Frame:
     return Frame(proj, rows, cols)
 
 
+@dataclass(frozen=True)
+class Layout:
+    """Rejilla ampliada (#532): el marco del corredor más las filas (sur) y columnas (oeste) que hacen falta para
+    la península entera. El trozo local (col, fila) es (col + col0, fila + row0) en la variante, y todo lo que
+    está en coordenadas de mundo se desplaza offset_m."""
+    frame: Frame
+    row0: int
+    col0: int
+    rows: int
+    cols: int
+
+    @property
+    def grid(self) -> int:
+        return max(self.rows, self.cols)
+
+    @property
+    def offset_m(self) -> np.ndarray:
+        return np.array([self.row0 * CELL_M, self.col0 * CELL_M])
+
+    def local_cells(self) -> list[tuple[int, int]]:
+        """Trozos (col, fila) de la rejilla ampliada, en coordenadas locales del marco."""
+        return [(col, row) for row in range(-self.row0, self.rows - self.row0)
+                for col in range(-self.col0, self.cols - self.col0)]
+
+
+def make_layout(frame: Frame) -> Layout:
+    lon_w, lat_s, lon_e, lat_n = PENINSULA_LONLAT
+    lon_c, lat_c = frame.projection.center
+    x_s, x_n = frame.projection.to_game(lon_c, lat_s)[0], frame.projection.to_game(lon_c, lat_n)[0]
+    y_w, y_e = frame.projection.to_game(lon_w, lat_c)[1], frame.projection.to_game(lon_e, lat_c)[1]
+    row0 = max(0, int(math.ceil((MAP_MIN_M - float(x_s)) / CELL_M)))
+    col0 = max(0, int(math.ceil((MAP_MIN_M - float(y_w)) / CELL_M)))
+    rows = row0 + max(frame.rows, int(math.ceil((float(x_n) - MAP_MIN_M) / CELL_M)))
+    cols = col0 + max(frame.cols, int(math.ceil((float(y_e) - MAP_MIN_M) / CELL_M)))
+    return Layout(frame, row0, col0, rows, cols)
+
+
+def africa_mask(frame: Frame, X: np.ndarray, Y: np.ndarray) -> np.ndarray:
+    """True en los puntos de juego al sur de AFRICA_LINE (África)."""
+    lon, lat = frame.projection.to_lonlat(X, Y)
+    line = np.array(AFRICA_LINE)
+    return np.asarray(lat) < np.interp(lon, line[:, 0], line[:, 1])
+
+
 def exaggeration_k(frame: Frame) -> float:
     return EXAGGERATION / frame.projection.ground_m_per_game_m()
 
@@ -127,7 +184,8 @@ def sample_dem(dem: np.ndarray, frame: Frame, X: np.ndarray, Y: np.ndarray) -> n
 
 def value_noise(rng: np.random.Generator, wavelength: float, extent_m: float, octaves: int = 4):
     """Ruido de valor fBm en [-1, 1] sobre un cuadrado de extent_m desde MAP_MIN_M (el de terrain_vol se limita
-    al volumen de 600 m)."""
+    al volumen de 600 m). Fuera del cuadrado la red se repite (índices módulo su tamaño): dentro da lo mismo que
+    antes de #532 y fuera sigue siendo continuo, sin las franjas de una red recortada."""
     layers = []
     for o in range(octaves):
         w = wavelength / 2 ** o
@@ -139,11 +197,13 @@ def value_noise(rng: np.random.Generator, wavelength: float, extent_m: float, oc
         out = 0.0
         for amp, w, lattice in layers:
             u, v = (np.asarray(X) - MAP_MIN_M + 200.0) / w, (np.asarray(Y) - MAP_MIN_M + 200.0) / w
-            i0 = np.clip(np.floor(u).astype(np.int64), 0, lattice.shape[0] - 2)
-            j0 = np.clip(np.floor(v).astype(np.int64), 0, lattice.shape[1] - 2)
+            i0, j0 = np.floor(u).astype(np.int64), np.floor(v).astype(np.int64)
             fu, fv = smooth(0.0, 1.0, u - i0), smooth(0.0, 1.0, v - j0)
-            a, b = lattice[i0, j0], lattice[i0 + 1, j0]
-            c, d = lattice[i0, j0 + 1], lattice[i0 + 1, j0 + 1]
+            n0, n1 = lattice.shape
+            i1, j1 = (i0 + 1) % n0, (j0 + 1) % n1
+            i0, j0 = i0 % n0, j0 % n1
+            a, b = lattice[i0, j0], lattice[i1, j0]
+            c, d = lattice[i0, j1], lattice[i1, j1]
             out = out + amp * ((a * (1 - fu) + b * fu) * (1 - fv) + (c * (1 - fu) + d * fu) * fv)
         return out / norm
     return noise
@@ -229,14 +289,14 @@ class RallySpainModel(HeightfieldModel):
         height, self.trail = self._carve(natural, Xg, Yg)
         super().__init__(height)
 
-    def _natural(self, dem: np.ndarray, X, Y, rng) -> np.ndarray:
+    def _natural(self, dem: np.ndarray, X, Y, rng, px_m: float = RASTER_PX_M) -> np.ndarray:
         land = np.maximum(dem, 0.0)
         relief = land * self.k
         extent = max(self.frame.rows, self.frame.cols) * CELL_M
         detail = value_noise(rng, 48.0, extent, octaves=3)(X, Y)
         amp = 0.08 + 0.7 * smooth(400.0 * self.k, 2200.0 * self.k, relief)
         land_h = WATER_M + LAND_BASE_M + relief + amp * detail
-        land_w = ndimage.gaussian_filter(smooth(-20.0, 20.0, dem), 2.0, mode="nearest")
+        land_w = ndimage.gaussian_filter(smooth(-20.0, 20.0, dem), 2.0 * RASTER_PX_M / px_m, mode="nearest")
         sea_h = WATER_M - 1.5 - 4.0 * (1.0 - np.exp(-np.maximum(-dem, 0.0) / 250.0))
         return sea_h + (land_h - sea_h) * land_w
 
@@ -281,39 +341,56 @@ class RallySpainModel(HeightfieldModel):
 
 # ── Fondo ────────────────────────────────────────────────────────────────────────
 class BackgroundModel(HeightfieldModel):
-    """Relieve de los trozos de fondo: el del corredor (RallySpainModel) dentro del rectángulo del marco y, al este,
-    una franja hasta completar la rejilla cuadrada con el mismo MDE, ruido, exageración y talla. Hasta el borde este
-    del marco (incluido) la cota es exactamente la del modelo del corredor: las costuras con sus trozos casan."""
+    """Relieve de los trozos de fondo (coordenadas locales del marco): dentro del rectángulo del marco, bordes
+    incluidos, el del corredor (RallySpainModel), para que las costuras con sus trozos casen; fuera, un raster de
+    BACKGROUND_PX_M que cubre la rejilla ampliada (Layout) con el mismo MDE, ruido, exageración y talla, y con
+    África (africa_mask) hundida bajo el agua."""
 
-    def __init__(self, model: RallySpainModel):
-        self.model, self.k, self.z_range = model, model.k, model.z_range
+    def __init__(self, model: RallySpainModel, layout: Layout):
+        self.model, self.layout, self.k, self.z_range = model, layout, model.k, model.z_range
         self.trail_color, self.trail_strength = model.trail_color, model.trail_strength
         frame = model.frame
+        self.x_edge = MAP_MIN_M + frame.rows * CELL_M
         self.y_edge = MAP_MIN_M + frame.cols * CELL_M
-        extra = frame.grid - frame.cols
-        self.strip = self._strip(frame, extra) if extra > 0 else None
+        self.x0 = MAP_MIN_M - layout.row0 * CELL_M
+        self.y0 = MAP_MIN_M - layout.col0 * CELL_M
+        self.outer = self._outer()
         super().__init__(model.height)
 
-    def _strip(self, frame: Frame, extra: int) -> np.ndarray:
-        X = frame.axis(frame.rows)[:, None]
-        Y = (self.y_edge + (np.arange(int(round(extra * CELL_M / RASTER_PX_M))) + 0.5) * RASTER_PX_M)[None, :]
+    def _outer(self) -> np.ndarray:
+        layout, frame = self.layout, self.model.frame
+        px = BACKGROUND_PX_M
+        X = (self.x0 + (np.arange(int(round(layout.rows * CELL_M / px))) + 0.5) * px)[:, None]
+        Y = (self.y0 + (np.arange(int(round(layout.cols * CELL_M / px))) + 0.5) * px)[None, :]
         Xg, Yg = np.broadcast_arrays(X, Y)
         dem = sample_dem(load_dem(), frame, Xg, Yg)
+        dem = np.where(africa_mask(frame, Xg, Yg), np.minimum(dem, AFRICA_SEA_M), dem)
+        dem = self._fade_edges(dem, Xg, Yg)
         # Mismo generador aleatorio que RallySpainModel: el ruido de detalle es una función del punto (X, Y).
-        natural = self.model._natural(dem, Xg, Yg, np.random.default_rng(self.model.seed))
+        natural = self.model._natural(dem, Xg, Yg, np.random.default_rng(self.model.seed), px_m=px)
         height, _ = self.model._carve(natural, Xg, Yg)
         return height
 
+    def _fade_edges(self, dem: np.ndarray, X: np.ndarray, Y: np.ndarray) -> np.ndarray:
+        """Hunde la tierra en los últimos EDGE_FADE_M antes de los bordes norte y este de la rejilla."""
+        layout = self.layout
+        edge = np.minimum(self.x0 + layout.rows * CELL_M - X, self.y0 + layout.cols * CELL_M - Y)
+        extent = layout.grid * CELL_M
+        wobble = value_noise(np.random.default_rng(self.model.seed + 1), 120.0, extent, octaves=3)(X, Y)
+        keep = smooth(0.0, EDGE_FADE_M, edge - EDGE_WOBBLE_M + EDGE_WOBBLE_M * wobble)
+        return dem * keep + AFRICA_SEA_M * (1.0 - keep)
+
+    def _inner(self, X, Y) -> np.ndarray:
+        X, Y = np.asarray(X), np.asarray(Y)
+        return (X >= MAP_MIN_M) & (X <= self.x_edge) & (Y >= MAP_MIN_M) & (Y <= self.y_edge)
+
     def ground_height(self, X: np.ndarray, Y: np.ndarray) -> np.ndarray:
-        inner = self.model.ground_height(X, Y)
-        if self.strip is None:
-            return inner
-        coords = [(np.asarray(X) - MAP_MIN_M) / RASTER_PX_M - 0.5, (np.asarray(Y) - self.y_edge) / RASTER_PX_M - 0.5]
-        outer = ndimage.map_coordinates(self.strip, coords, order=1, mode="nearest")
-        return np.where(np.asarray(Y) <= self.y_edge, inner, outer)
+        coords = [(np.asarray(X) - self.x0) / BACKGROUND_PX_M - 0.5, (np.asarray(Y) - self.y0) / BACKGROUND_PX_M - 0.5]
+        outer = ndimage.map_coordinates(self.outer, coords, order=1, mode="nearest")
+        return np.where(self._inner(X, Y), self.model.ground_height(X, Y), outer)
 
     def trail_mask(self, x: np.ndarray, y: np.ndarray) -> np.ndarray:
-        return np.where(np.asarray(y) <= self.y_edge, self.model.trail_mask(x, y), 0.0)
+        return np.where(self._inner(x, y), self.model.trail_mask(x, y), 0.0)
 
     def has_land(self, col: int, row: int) -> bool:
         """Alguna muestra del trozo (cada LAND_PROBE_M) queda sobre el agua."""
@@ -324,7 +401,5 @@ class BackgroundModel(HeightfieldModel):
         return bool((self.ground_height(X, Y) > LAND_CELL_M).any())
 
     def cells(self, corridor) -> list[tuple[int, int]]:
-        """Trozos (col, fila) de la rejilla cuadrada con tierra que no son del corredor."""
-        grid = self.model.frame.grid
-        return [(col, row) for row in range(grid) for col in range(grid)
-                if (col, row) not in corridor and self.has_land(col, row)]
+        """Trozos (col, fila) locales de la rejilla ampliada con tierra que no son del corredor."""
+        return [cell for cell in self.layout.local_cells() if cell not in corridor and self.has_land(*cell)]

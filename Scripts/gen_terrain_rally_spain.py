@@ -9,9 +9,15 @@ escrita, en terrain_geo/rally_corridor.py (la repite Scripts/tests/test_terrain_
 Manifest (además de lo común de write_map): mode "rally", closed false, road_uu (eje cada 1 m, [x, y, z] en uu),
 road_width_m, checkpoints_uu ([x, y, z, yaw], yaw = rumbo de la marcha en grados de Unreal) entre start_uu (línea
 de salida, tras la recta de parrilla) y end_uu (meta, antes de la escapatoria), markers_uu (parrilla e hitos),
-kill_boxes_uu (el agua de todo el volumen), geo (proyección, escala y exageración) y checks (el validador).
-Cada trozo de fondo (fuera del corredor, terrain_geo/rally_spain.py:BackgroundModel) lleva "collision": false y
-"background": true: el cargador lo crea sin colisión y quien se sale del corredor cae a la caja de muerte.
+kill_boxes_uu (el agua de toda la rejilla), geo (proyección, escala, exageración y rejilla), offset_uu y checks
+(el validador). Cada trozo de fondo (fuera del corredor, terrain_geo/rally_spain.py:BackgroundModel) lleva
+"collision": false y "background": true: el cargador lo crea sin colisión y quien se sale del corredor cae a la caja
+de muerte.
+
+La rejilla abarca la península entera (rally_spain.Layout, #532): el corredor se genera en las coordenadas locales
+de su marco y, al escribir, trozos y coordenadas se desplazan offset_uu (filas y columnas enteras), así que sus
+trozos son los mismos ficheros con otro nombre. Scripts/tests/data/e01b_corredor.json guarda su huella
+(rally_corridor.corridor_fingerprint): si el corredor cambia a propósito, se vuelve a escribir.
 """
 
 from __future__ import annotations
@@ -42,7 +48,8 @@ DECIMATE_FAR_M = 0.25              # trozos de fondo (a mas de NEAR_M del eje)
 NEAR_M = 20.0
 DECIMATE_BACKGROUND_M = 0.6        # trozos de fondo (sin colisión): solo se ven, de lejos
 SEABED_CLIP_M = WATER_M - 0.5      # el fondo no lleva lecho marino: bajo el agua translúcida se veían sus cuadros
-TRIANGLE_BUDGET = 1_200_000        # Docs/Rally_E01B_y_Biplaza.md §2.2: corredor + fondo
+PREVIEW_MAX_PX = 2000
+TRIANGLE_BUDGET = 1_500_000        # corredor + fondo (#532: península entera)
 
 # Criterios de aceptación (los mismos que comprueba el test).
 LIMITS = {"road_m": (1800.0, 2600.0), "sustained_grade_deg": 12.0, "short_grade_deg": 20.0, "max_step_m": 0.4,
@@ -72,10 +79,16 @@ def uu(p, z: float, yaw: float | None = None) -> list[float]:
     return out + [round(yaw, 1)] if yaw is not None else out
 
 
-def render_preview(out, top: np.ndarray, frame: rs.Frame, built: set, road: np.ndarray, cps: list[int]) -> None:
-    """Vista cenital (Norte arriba) de la rejilla cuadrada: relieve sombreado, agua, trozos no generados en gris
+def save_preview(path, rgb: np.ndarray) -> None:
+    """Norte arriba y, como mucho, PREVIEW_MAX_PX de lado (la rejilla de la península pasa de 3 000 muestras)."""
+    step = max(1, int(math.ceil(max(rgb.shape[:2]) / PREVIEW_MAX_PX)))
+    Image.fromarray((np.clip(rgb, 0, 1) * 255).astype(np.uint8)[::-1][::step, ::step]).save(path)
+
+
+def render_preview(out, top: np.ndarray, layout: rs.Layout, built: set, road: np.ndarray, cps: list[int]) -> None:
+    """Vista cenital (Norte arriba) de la rejilla de la variante: relieve sombreado, agua, trozos no generados en gris
     oscuro; preview_debug.png añade la calzada (rojo) y los checkpoints (amarillo)."""
-    h = w = frame.grid * 100 + 1
+    h, w = layout.rows * 100 + 1, layout.cols * 100 + 1
     t = top[:h, :w]
     gx, gy = np.gradient(t)
     light = np.clip((gx * 0.5 - gy * 0.35 + 1.0) / np.sqrt(gx * gx + gy * gy + 1.0) * 0.8, 0.0, 1.0)
@@ -87,7 +100,7 @@ def render_preview(out, top: np.ndarray, frame: rs.Frame, built: set, road: np.n
     for col, row in built:
         mask[row * 100:row * 100 + 101, col * 100:col * 100 + 101] = True
     rgb = np.where(mask[..., None], rgb, np.array([0.18, 0.18, 0.2]))
-    Image.fromarray((np.clip(rgb, 0, 1) * 255).astype(np.uint8)[::-1]).save(out / "preview.png")
+    save_preview(out / "preview.png", rgb)
     debug = rgb.copy()
     for k, (x, y) in enumerate(road):
         i, j = int(round(x - MAP_MIN_M)), int(round(y - MAP_MIN_M))
@@ -96,7 +109,7 @@ def render_preview(out, top: np.ndarray, frame: rs.Frame, built: set, road: np.n
     for k in cps:
         i, j = int(round(road[k, 0] - MAP_MIN_M)), int(round(road[k, 1] - MAP_MIN_M))
         debug[max(0, i - 6):i + 7, max(0, j - 6):j + 7] = (1.0, 0.9, 0.1)
-    Image.fromarray((np.clip(debug, 0, 1) * 255).astype(np.uint8)[::-1]).save(out / "preview_debug.png")
+    save_preview(out / "preview_debug.png", debug)
 
 
 def verdict(report: dict, exaggeration: float) -> dict[str, bool]:
@@ -133,10 +146,11 @@ def drop_seabed(chunk):
                    triangles=remap[tris].astype(np.uint32))
 
 
-def build_background(model: rs.RallySpainModel, corridor, decimate: bool) -> dict:
-    """Trozos de fondo: los de tierra de la rejilla cuadrada fuera del corredor, decimados a DECIMATE_BACKGROUND_M
-    (en paralelo) y sin lecho marino. Se sueltan las celdas pisables y los campos: el fondo no se valida ni se pisa."""
-    background = rs.BackgroundModel(model)
+def build_background(model: rs.RallySpainModel, layout: rs.Layout, corridor, decimate: bool) -> dict:
+    """Trozos de fondo (claves locales del marco): los de tierra de la rejilla ampliada fuera del corredor, decimados a
+    DECIMATE_BACKGROUND_M (en paralelo) y sin lecho marino. Se sueltan las celdas pisables y los campos: el fondo no
+    se valida ni se pisa."""
+    background = rs.BackgroundModel(model, layout)
     chunks = {}
     for cell in background.cells(corridor):
         chunk = build_chunk(background, *cell)
@@ -160,9 +174,15 @@ def mark_background(manifest: dict, background: set) -> None:
             cell["background"] = True
 
 
+def shift_cells(chunks: dict, layout: rs.Layout) -> dict:
+    """De (col, fila) locales del marco a los de la rejilla ampliada."""
+    return {(col + layout.col0, row + layout.row0): chunk for (col, row), chunk in chunks.items()}
+
+
 def build(decimate: bool = True) -> dict:
     t0 = time.time()
     frame = rs.make_frame()
+    layout = rs.make_layout(frame)
     model = rs.RallySpainModel(frame)
     gaps = model.cell_gaps()
     chunks = {cell: build_chunk(model, *cell) for cell in gaps}
@@ -171,23 +191,34 @@ def build(decimate: bool = True) -> dict:
         near = {c: m for c, m in chunks.items() if gaps[c] <= NEAR_M}
         far = {c: m for c, m in chunks.items() if gaps[c] > NEAR_M}
         chunks = {**decimate_chunks(near, DECIMATE_ERROR_M), **decimate_chunks(far, DECIMATE_FAR_M)}
-    background = build_background(model, gaps, decimate)
+    background = shift_cells(build_background(model, layout, gaps, decimate), layout)
+    chunks = shift_cells(chunks, layout)
     corridor_tris = sum(len(m.triangles) for m in chunks.values())
     background_tris = sum(len(m.triangles) for m in background.values())
     chunks = {**chunks, **background}
-    grid = frame.grid
+    grid = layout.grid
     top = global_top(chunks, grid=grid)
-    road = model.road
-    arc = rs.arc_length(road)
+    offset = layout.offset_m
+    offset_uu = [float(v) * UU_PER_M for v in offset]
+    local_road = model.road
+    road = local_road + offset                     # en el mundo de la variante
+
+    def wuu(p_local, zz: float, yaw: float | None = None) -> list[float]:
+        """uu() en coordenadas locales y luego el desplazamiento: los mismos valores de antes de #532 más offset_uu."""
+        v = uu(p_local, zz, yaw)
+        return [round(v[0] + offset_uu[0], 1), round(v[1] + offset_uu[1], 1)] + v[2:]
+
+    arc = rs.arc_length(local_road)                # el mismo arco que antes de #532, sin el desplazamiento
     z = sample_top(top, road)
     start = int(np.searchsorted(arc, rs.GRID_M))
     end = int(np.searchsorted(arc, arc[-1] - rs.RUNOFF_M))
     cps = checkpoint_indices(arc, start, end)
     hitos = {name: frame.projection.to_game(lon, lat) for name, lat, lon in rs.HITOS}
-    hito_pts = {name: np.array([float(v) for v in xy]) for name, xy in hitos.items()}
+    hito_pts = {name: np.array([float(v) for v in xy]) for name, xy in hitos.items()}       # locales
     exaggeration = model.k * frame.projection.ground_m_per_game_m()
     extra = {
         "description": rs.DESCRIPTION, "mode": "rally", "closed": False, "laps": 1, "kill_boxes_uu": kill_boxes_uu(grid),
+        "offset_uu": offset_uu,
         "z_range": [model.z_range.z_min_m, model.z_range.levels, model.z_range.step_m],
         "generator": {"generator": "rally_spain", "seed": rs.SEED, "hitos": [list(h) for h in rs.HITOS],
                       "bends": [list(map(list, b)) for b in rs.BENDS], "road_w_m": rs.ROAD_W_M,
@@ -198,13 +229,15 @@ def build(decimate: bool = True) -> dict:
                       "total": corridor_tris + background_tris, "budget": TRIANGLE_BUDGET},
         "geo": {"source": "ES_dem.png (E01)", "projection": "merc", "center_lonlat": list(frame.projection.center),
                 "ground_m_per_game_m": round(frame.projection.ground_m_per_game_m(), 1),
-                "exaggeration": round(exaggeration, 3), "k": model.k, "rows": frame.rows, "cols": frame.cols},
-        "road_width_m": rs.ROAD_W_M, "road_uu": [uu(p, zz) for p, zz in zip(road, z)],
-        "checkpoints_uu": [uu(road[k], z[k], yaw_deg(road, k)) for k in cps],
-        "start_yaw": round(yaw_deg(road, start), 1),
+                "exaggeration": round(exaggeration, 3), "k": model.k, "rows": layout.rows, "cols": layout.cols,
+                "corridor_rows": frame.rows, "corridor_cols": frame.cols, "peninsula_lonlat": list(rs.PENINSULA_LONLAT)},
+        "road_width_m": rs.ROAD_W_M, "road_uu": [wuu(p, zz) for p, zz in zip(local_road, z)],
+        "checkpoints_uu": [wuu(local_road[k], z[k], yaw_deg(local_road, k)) for k in cps],
+        "start_yaw": round(yaw_deg(local_road, start), 1),
         "tunnels": [], "decks": [], "bridges": [],
-        "markers_uu": {"parrilla": [uu(road[0], z[0]), uu(road[start], z[start])],
-                       **{f"hito_{name}": [uu(p, float(sample_top(top, p[None, :])[0]))] for name, p in hito_pts.items()}},
+        "markers_uu": {"parrilla": [wuu(local_road[0], z[0]), wuu(local_road[start], z[start])],
+                       **{f"hito_{name}": [wuu(p, float(sample_top(top, (p + offset)[None, :])[0]))]
+                          for name, p in hito_pts.items()}},
     }
     out = VARIANTS / rs.NAME
     size = grid * (CELL_SAMPLES - 1) + 1
@@ -212,7 +245,7 @@ def build(decimate: bool = True) -> dict:
     write_map(out, rs.NAME, rs.SEED, chunks, (*road[start], z[start]), (*road[end], z[end]), zones, road,
               extra_manifest=extra, grid=grid)
     write_credits(out, SPAIN_REGION.credits(("Trazado de Rally E01B: Scripts/gen_terrain_rally_spain.py.",)))
-    render_preview(out, top, frame, set(chunks), road, cps)
+    render_preview(out, top, layout, set(chunks), road, cps)
     data = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
     mark_background(data, set(background))
     (out / "manifest.json").write_text(json.dumps(data, indent=1), encoding="utf-8")
@@ -225,7 +258,8 @@ def build(decimate: bool = True) -> dict:
     size_mb = dir_size_mb(out)
     update_index(rs.NAME, rs.SEED, ok, size_mb, rs.DESCRIPTION, {"mode": "rally"})
     chunk_bytes = sum(f.stat().st_size for f in (out / "Chunks").iterdir())
-    return {"ok": ok, "time_s": round(time.time() - t0, 1), "cells": len(chunks), "background_cells": len(background),
+    return {"ok": ok, "time_s": round(time.time() - t0, 1), "grid": [layout.rows, layout.cols],
+            "offset_uu": offset_uu, "cells": len(chunks), "background_cells": len(background),
             "triangles": extra["triangles"], "size_mb": size_mb,
             "chunk_bytes": chunk_bytes, "exaggeration": round(exaggeration, 2), "report": report, "checks": checks}
 
