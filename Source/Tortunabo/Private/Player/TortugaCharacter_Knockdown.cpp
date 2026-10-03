@@ -119,6 +119,16 @@ void ATortugaCharacter::ApplyKnockdown(float Duration, FVector ImpulseOverride)
 
 void ATortugaCharacter::RecoverFromKnockdown()
 {
+	RecoverFromKnockdownImpl(/*bPlayReviveSound=*/true);
+}
+
+void ATortugaCharacter::RecoverFromKnockdownSilently()
+{
+	RecoverFromKnockdownImpl(/*bPlayReviveSound=*/false);
+}
+
+void ATortugaCharacter::RecoverFromKnockdownImpl(bool bPlayReviveSound)
+{
 	if (!HasAuthority())
 	{
 		return;
@@ -153,7 +163,10 @@ void ATortugaCharacter::RecoverFromKnockdown()
 
 	// ── Audio feedback de revive ─────────────────────────────────────────
 	StopDBNOHeartbeatSound();
-	MulticastPlayReviveSuccessSound();
+	if (bPlayReviveSound)
+	{
+		MulticastPlayReviveSuccessSound();
+	}
 
 	UE_LOG(LogTortunabo, Log, TEXT("[Knockdown] %s recovered"), *GetNameSafe(this));
 }

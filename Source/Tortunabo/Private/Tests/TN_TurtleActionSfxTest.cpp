@@ -78,4 +78,18 @@ bool FTNTurtleActionAssetsTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNTurtleHeartbeatStopsTest,
+	"Tortunabo.Audio.HeartbeatStopsWithoutKnockdown",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNTurtleHeartbeatStopsTest::RunTest(const FString& Parameters)
+{
+	// El latido sintetizado se para solo cuando la tortuga deja de estar derribada (revisión de #348).
+	TestFalse(TEXT("Sin dueño no late"), TNTurtleActionSfx::ShouldKeepHeartbeat(nullptr));
+	const ATortugaCharacter* Turtle = GetDefault<ATortugaCharacter>();
+	TestFalse(TEXT("La tortuga de pie no late"), Turtle->IsKnockedDown());
+	TestFalse(TEXT("Sin derribo el latido se para"), TNTurtleActionSfx::ShouldKeepHeartbeat(Turtle));
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

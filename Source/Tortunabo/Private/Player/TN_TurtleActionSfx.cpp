@@ -9,6 +9,7 @@
 #include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/App.h"
+#include "Player/TortugaCharacter.h"
 #include "Sound/SoundBase.h"
 #include "TimerManager.h"
 #include "UObject/ConstructorHelpers.h"
@@ -130,6 +131,12 @@ void TNTurtleActionSfx::PlayAt(UWorld* World, USoundBase* Sound, const FVector& 
 	UE_LOG(LogTortunabo, Verbose, TEXT("[ActionSfx] %s con atenuación natural (%.0f-%.0f cm)"), *GetNameSafe(Sound), InnerRadius, OuterRadius);
 }
 
+bool TNTurtleActionSfx::ShouldKeepHeartbeat(const AActor* Owner)
+{
+	const ATortugaCharacter* Turtle = Cast<ATortugaCharacter>(Owner);
+	return Turtle && Turtle->IsKnockedDown() && Turtle->IsLocallyControlled();
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // UTN_TurtleActionSynthComponent
 // ─────────────────────────────────────────────────────────────────────────────
@@ -211,6 +218,14 @@ bool UTN_TurtleActionSynthComponent::IsHeartbeatActive() const
 void UTN_TurtleActionSynthComponent::Beat()
 {
 	using namespace TNTurtleActionSfxDetail;
+	// Se para solo si la tortuga ya no está derribada o ha cambiado de dueño, aunque nadie llame a StopHeartbeat
+	// (como OnDBNOAudioFinished con el latido de recurso).
+	if (!TNTurtleActionSfx::ShouldKeepHeartbeat(GetOwner()))
+	{
+		UE_LOG(LogTortunabo, Verbose, TEXT("[ActionSfx] %s latido sintetizado: se para solo"), *GetNameSafe(GetOwner()));
+		StopHeartbeat();
+		return;
+	}
 	if (UTN_ScoreShellSynthComponent* Synth = GetHeartSynth())
 	{
 		Synth->TriggerSound(ETNScoreShellSound::Pom, 0, HeartLubSemitones, HeartbeatVolume);

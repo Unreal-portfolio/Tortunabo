@@ -1018,6 +1018,9 @@ private:
 	UFUNCTION()
 	void OnDBNOAudioFinished();
 
+	/** Cuerpo de RecoverFromKnockdown y RecoverFromKnockdownSilently. */
+	void RecoverFromKnockdownImpl(bool bPlayReviveSound);
+
 protected:
 	// ── Emote replication ────────────────────────────────────────────────────
 	/** Emote index replicado a todos los clientes. -1 = sin emote. */
@@ -1384,6 +1387,12 @@ public:
 	/** Recover from knockdown immediately (server-only). Used by RunGameMode::RevivePlayer. */
 	UFUNCTION(BlueprintCallable, Category = "Knockdown")
 	void RecoverFromKnockdown();
+
+	/**
+	 * Como RecoverFromKnockdown, pero sin el sonido de reanimar (server-only). Para la muerte
+	 * (ATN_RunGameMode::ApplyDeathVisuals), que también levanta el derribo y no debe sonar a «¡arriba!» (#348).
+	 */
+	void RecoverFromKnockdownSilently();
 
 	/** Returns true if this character is currently in a knockdown/DBNO state. */
 	UFUNCTION(BlueprintPure, Category = "Knockdown")

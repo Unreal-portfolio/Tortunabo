@@ -45,6 +45,12 @@ namespace TNTurtleActionSfx
 	 * InnerRadius cm, silencio en OuterRadius): sin ella el motor lo tocaba en 2D y lo oía todo el mapa igual de fuerte.
 	 */
 	TORTUNABO_API void PlayAt(UWorld* World, USoundBase* Sound, const FVector& Location, float InnerRadius, float OuterRadius);
+
+	/**
+	 * true mientras el latido sintetizado de Owner debe seguir: es una tortuga derribada y controlada en esta máquina.
+	 * La misma condición con la que ATortugaCharacter::OnDBNOAudioFinished repite el latido con recurso.
+	 */
+	TORTUNABO_API bool ShouldKeepHeartbeat(const AActor* Owner);
 }
 
 /**
