@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Player/TN_ServerLaunch.h"
 #include "Player/TN_TurtleSurface.h"
 #include "TN_TurtleMovementComponent.generated.h"
 
@@ -30,8 +31,17 @@ enum class ETNBellyPhase : uint8
  */
 struct FTNTurtleNetworkMoveDataContainer : public FCharacterNetworkMoveDataContainer
 {
+	/** Con los datos de la tortuga (FTNTurtleNetworkMoveData: también el número del lanzamiento concedido que estrenan). */
+	FTNTurtleNetworkMoveDataContainer();
+
+	/** Número del lanzamiento concedido que lleva Data, si es uno de estos datos (0 si no). */
+	uint8 GetLaunchId(const FCharacterNetworkMoveData* Data) const;
+
 	virtual void ClientFillNetworkMoveData(const FSavedMove_Character* ClientNewMove, const FSavedMove_Character* ClientPendingMove,
 		const FSavedMove_Character* ClientOldMove) override;
+
+private:
+	FTNTurtleNetworkMoveData TurtleMoveData[3];
 };
 
 /**
@@ -131,6 +141,17 @@ public:
 	 * Con estas bases todo va en coordenadas del mundo (Docs/Modo_Carrera.md, «Seguridad: nunca bajo el mapa»).
 	 */
 	static bool IsNetResolvableBase(const UPrimitiveComponent* Base);
+
+	// ── Red: lanzamientos que decide el servidor ────────────────────────────
+
+	/**
+	 * Servidor: lanza a Character con LaunchVelocity (como LaunchCharacter con las dos componentes sustituidas). Si es la
+	 * tortuga de un cliente remoto, el lanzamiento lo estrena su dueño en su siguiente movimiento y el servidor lo aplica en
+	 * ese mismo movimiento (FTNServerLaunch): sin corrección. Si no (el anfitrión, otro personaje), LaunchCharacter.
+	 */
+	static void LaunchFromServer(ACharacter* Character, const FVector& LaunchVelocity);
+
+	const FTNServerLaunch& GetServerLaunch() const { return ServerLaunch; }
 
 	// ── Cápsula ─────────────────────────────────────────────────────────────
 
@@ -288,8 +309,36 @@ protected:
 	virtual void ServerMoveHandleClientError(float ClientTimeStamp, float DeltaTime, const FVector& Accel, const FVector& RelativeClientLocation,
 		UPrimitiveComponent* ClientMovementBase, FName ClientBaseBoneName, uint8 ClientMovementMode) override;
 
+	/** Servidor: el movimiento del cliente que estrena un lanzamiento concedido lo aplica; el cliente, al repetirlo, también. */
+	virtual void MoveAutonomous(float ClientTimeStamp, float DeltaTime, uint8 CompressedFlags, const FVector& NewAccel) override;
+
+	/** Cliente dueño: el lanzamiento concedido que ha llegado entra en este movimiento. */
+	virtual void ReplicateMoveToServer(float DeltaTime, const FVector& NewAcceleration) override;
+
+	/** Cliente dueño: apunta en qué movimiento ha entrado el lanzamiento concedido. */
+	virtual bool HandlePendingLaunch() override;
+
+	/**
+	 * Servidor: mientras la mueve su caja del caparazón (UTN_ShellComponent::HasLocalBody), los pasos que el dueño aún manda
+	 * andando hasta que le llega la bola no se corrigen: la bola replicada ya lo coloca.
+	 */
+	virtual bool ServerCheckClientError(float ClientTimeStamp, float DeltaTime, const FVector& Accel, const FVector& ClientWorldLocation,
+		const FVector& RelativeClientLocation, UPrimitiveComponent* ClientMovementBase, FName ClientBaseBoneName, uint8 ClientMovementMode) override;
+
 private:
 	ATortugaCharacter* GetTurtle() const;
+
+	/** Lanzamiento concedido por el servidor para el dueño (LaunchFromServer). */
+	UFUNCTION(Client, Reliable)
+	void ClientReceiveServerLaunch(uint8 Id, FVector_NetQuantize LaunchVelocity);
+
+	/**
+	 * El lanzamiento concedido que entra en el movimiento ClientTimeStamp: en el servidor, el que estrena ese movimiento del
+	 * cliente (o, pasado el plazo, el que no llegó); en el dueño que repite sus movimientos, el que estrenó ese.
+	 */
+	bool FindServerLaunchForMove(float ClientTimeStamp, FVector& OutVelocity);
+
+	FTNServerLaunch ServerLaunch;
 
 	/** Esta máquina simula el movimiento de la tortuga (el dueño, el servidor o el propio anfitrión; no los demás). */
 	bool SimulatesBelly() const;

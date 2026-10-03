@@ -29,8 +29,9 @@ class UTN_BeachMineSynthComponent;
  *
  * Red: lo decide el servidor (sensor en su Tick) y replica dos horas del servidor, TriggeredAt (pisada) y ExplodedAt
  * (explosión); cada máquina anima el parpadeo, la explosión, el cráter y el rearme con su reloj del servidor suavizado, y
- * quien llega tarde ve ya el cráter. El lanzamiento y el empujón a las de alrededor los aplica solo el servidor: el dueño
- * los recibe con el movimiento replicado, sin repetirlos en local (antes el empujón se aplicaba dos veces).
+ * quien llega tarde ve ya el cráter. El lanzamiento en bola y el empujón a las de alrededor los decide solo el servidor.
+ * El empujón de la tortuga de un cliente lo estrena su dueño en su siguiente movimiento y el servidor en ese mismo
+ * (UTN_TurtleMovementComponent::LaunchFromServer): sin corrección ni doble empujón (#18).
  */
 UCLASS()
 class TORTUNABO_API ATN_BeachMine : public ATN_BeachElement
@@ -45,6 +46,9 @@ public:
 
 	/** Armada (se puede pisar) con el estado replicado a la hora del servidor Now. */
 	bool IsArmedAt(double Now) const;
+
+	/** Servidor (pruebas, TN.Beach.Mine.Blast): salta como si la pisaran ahora, sin nadie encima. false si no está armada. */
+	bool TriggerForTest();
 
 	/** Segundos entre el clic y la explosión (parpadeo y pitidos). */
 	UPROPERTY(EditAnywhere, Category = "Mina", meta = (ClampMin = "0.1", ClampMax = "3.0"))
