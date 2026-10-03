@@ -102,10 +102,12 @@ void ATN_ProcMapGameMode::ResolveModeAndDifficulty()
 	}
 
 	// Opciones de URL para probar sin lobby: open LVL_ProcMap?ProcMode=Race?ProcDifficulty=Hard?ProcSeed=42
+	// (?ProcMode=Survival: el mapa de Supervivencia, #273; Fácil/Normal/Difícil = dificultad 1/3/5).
 	const FString ModeOption = UGameplayStatics::ParseOption(OptionsString, TEXT("ProcMode"));
 	if (ModeOption.Equals(TEXT("Coop"), ESearchCase::IgnoreCase)) { Mode = ETNProcGameMode::Coop; }
 	else if (ModeOption.Equals(TEXT("Race"), ESearchCase::IgnoreCase)) { Mode = ETNProcGameMode::Race; }
 	else if (ModeOption.Equals(TEXT("2v2"), ESearchCase::IgnoreCase) || ModeOption.Equals(TEXT("TwoVsTwo"), ESearchCase::IgnoreCase)) { Mode = ETNProcGameMode::TwoVsTwo; }
+	else if (ModeOption.Equals(TEXT("Survival"), ESearchCase::IgnoreCase)) { Mode = ETNProcGameMode::Survival; }
 
 	const FString DifficultyOption = UGameplayStatics::ParseOption(OptionsString, TEXT("ProcDifficulty"));
 	if (DifficultyOption.Equals(TEXT("Easy"), ESearchCase::IgnoreCase)) { Difficulty = ETNProcDifficulty::Easy; }
@@ -115,7 +117,7 @@ void ATN_ProcMapGameMode::ResolveModeAndDifficulty()
 	const FString SeedOption = UGameplayStatics::ParseOption(OptionsString, TEXT("ProcSeed"));
 	UrlSeed = SeedOption.IsEmpty() ? 0 : FCString::Atoi(*SeedOption);
 
-	if (Mode == ETNProcGameMode::Classic || Mode == ETNProcGameMode::Survival || Mode == ETNProcGameMode::Count)
+	if (Mode == ETNProcGameMode::Classic || Mode == ETNProcGameMode::Count)
 	{
 		Mode = ETNProcGameMode::Coop;
 	}

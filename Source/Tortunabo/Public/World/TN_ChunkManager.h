@@ -6,6 +6,8 @@
 
 class UBoxComponent;
 class USceneComponent;
+class ATN_ProcMapGenerator;
+class UTN_ProcMapSettings;
 
 /**
  * Niveles de dificultad de los chunks.
@@ -156,40 +158,57 @@ public:
 
 	// ── Modo por niveles (Supervivencia) ─────────────────────────────────────
 
-	/** Chunks al azar de cada nivel, antes del chunk final con la meta. */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Chunks|Niveles", meta = (ClampMin = "1"))
-	int32 ChunksPerLevel = 3;
+	/** Clase del generador del mapa de cada nivel (vacía = ATN_ProcMapGenerator). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Chunks|Niveles")
+	TSubclassOf<ATN_ProcMapGenerator> LevelGeneratorClass;
+
+	/** Ajustes del mapa de cada nivel (biomas y materiales); por defecto los del mapa procedural. */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Chunks|Niveles")
+	TSoftObjectPtr<UTN_ProcMapSettings> LevelMapSettings;
+
+	/** Desplazamiento del mapa de cada nivel respecto al manager, en sus ejes (X adelante, Z arriba). */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Chunks|Niveles")
+	FVector LevelMapOffset = FVector(0.f, 0.f, -300.f);
 
 	/**
-	 * Pasa al modo por niveles: sin streaming, cada nivel se genera entero con BuildLevel.
+	 * Pasa al modo por niveles: en vez de chunks, cada nivel es un mapa de Supervivencia generado entero (#274).
 	 * Lo llama ATN_SurvivalGameMode en StartPlay, antes del BeginPlay del manager; en BeginPlay se genera el nivel 1.
+	 * @param InSeed  Semilla del nivel 1; el nivel N usa InSeed + N - 1.
 	 */
-	void SetLevelMode(bool bEnable) { bLevelMode = bEnable; }
+	void SetLevelMode(bool bEnable, int32 InSeed) { bLevelMode = bEnable; LevelSeed = InSeed; }
 
 	bool IsLevelMode() const { return bLevelMode; }
 
 	/**
-	 * Borra los chunks que haya y genera un nivel nuevo desde la posición del manager: ChunksPerLevel chunks al azar
-	 * (dificultad según el nivel, TNSurvivalLogic::LevelDifficulties) y el chunk final. Server-only.
+	 * Genera el mapa del nivel con ATN_ProcMapGenerator (se crea la primera vez, delante del manager): semilla
+	 * LevelSeed + Level - 1 y dificultad TNSurvivalLogic::LevelMapDifficulty(Level). Se replica la semilla y cada
+	 * máquina construye el mismo mapa. Server-only.
+	 * @return true si hay mapa.
 	 */
-	void BuildLevel(int32 Level);
+	bool BuildLevel(int32 Level);
 
-	/** Distancia (uu) que falta hasta la meta del nivel actual desde Location, a lo largo del camino de sockets. */
+	/** Generador de los niveles (nullptr fuera del modo por niveles). */
+	ATN_ProcMapGenerator* GetLevelGenerator() const { return LevelGenerator; }
+
+	/** Distancia (uu) que falta hasta la meta del nivel actual desde Location, a lo largo del camino del mapa. */
 	float GetRemainingDistance(const FVector& Location) const;
 
 private:
 
-	/** true en Supervivencia: niveles enteros en vez de streaming. */
+	/** true en Supervivencia: un mapa generado por nivel en vez de chunks. */
 	bool bLevelMode = false;
 
-	/** Camino del nivel actual: salida, OutSocket de cada chunk y meta. */
-	TArray<FVector> LevelPath;
+	/** Semilla del nivel 1. */
+	int32 LevelSeed = 1;
+
+	UPROPERTY(Transient)
+	TObjectPtr<ATN_ProcMapGenerator> LevelGenerator;
+
+	/** Crea el generador de los niveles: la salida del mapa (su borde sur) donde empezarían los chunks. */
+	ATN_ProcMapGenerator* EnsureLevelGenerator();
 
 	/** Elige un chunk del pool de esa dificultad (con fallbacks), lo spawnea en NextSpawnTransform y avanza al OutSocket. */
 	AActor* SpawnChunkOfDifficulty(ETNChunkDifficulty Difficulty);
-
-	/** Destruye todos los chunks activos y desconecta el EndTrigger. */
-	void DestroyAllChunks();
 
 	// Lista de chunks actualmente activos (FIFO: [0] = más viejo).
 	TArray<TWeakObjectPtr<AActor>> ActiveChunks;

@@ -146,37 +146,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNSurvivalDifficultyTest,
 bool FTNSurvivalDifficultyTest::RunTest(const FString& Parameters)
 {
 	using namespace TNSurvivalLogic;
-	using E = ETNChunkDifficulty;
 
-	TestTrue(TEXT("Nivel 1 = E E M"), LevelDifficulties(1, 3) == TArray<E>({ E::Easy, E::Easy, E::Medium }));
-	TestTrue(TEXT("Nivel 2 = E M M"), LevelDifficulties(2, 3) == TArray<E>({ E::Easy, E::Medium, E::Medium }));
-	TestTrue(TEXT("Nivel 3 = M M H"), LevelDifficulties(3, 3) == TArray<E>({ E::Medium, E::Medium, E::Hard }));
-	TestTrue(TEXT("Nivel 4 = M H H"), LevelDifficulties(4, 3) == TArray<E>({ E::Medium, E::Hard, E::Hard }));
-	TestTrue(TEXT("Nivel 9 = H H H"), LevelDifficulties(9, 3) == TArray<E>({ E::Hard, E::Hard, E::Hard }));
-	TestEqual(TEXT("Respeta el número de chunks"), LevelDifficulties(1, 5).Num(), 5);
-	return true;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Distancia hasta la meta
-// ─────────────────────────────────────────────────────────────────────────────
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNSurvivalRemainingTest,
-	"Tortunabo.Survival.RemainingAlongPath",
-	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
-
-bool FTNSurvivalRemainingTest::RunTest(const FString& Parameters)
-{
-	using namespace TNSurvivalLogic;
-
-	// Camino en L: 1000 hacia +X y luego 500 hacia +Y (total 1500).
-	const TArray<FVector> Path = { FVector(0, 0, 0), FVector(1000, 0, 0), FVector(1000, 500, 0) };
-
-	TestEqual(TEXT("En la salida falta todo"), RemainingAlongPath(Path, FVector(0, 0, 0)), 1500.f, 1.f);
-	TestEqual(TEXT("A mitad del primer tramo (y desviada del eje)"), RemainingAlongPath(Path, FVector(500, 120, 50)), 1000.f, 1.f);
-	TestEqual(TEXT("A mitad del segundo tramo"), RemainingAlongPath(Path, FVector(1000, 250, 0)), 250.f, 1.f);
-	TestEqual(TEXT("Pasada la meta → 0"), RemainingAlongPath(Path, FVector(1000, 900, 0)), 0.f, 1.f);
-	TestEqual(TEXT("Sin camino → 0"), RemainingAlongPath({}, FVector(5, 5, 5)), 0.f);
+	TestEqual(TEXT("Nivel 1 = dificultad 1"), LevelMapDifficulty(1), 1);
+	TestEqual(TEXT("Nivel 3 = dificultad 3"), LevelMapDifficulty(3), 3);
+	TestEqual(TEXT("Nivel 5 = dificultad 5"), LevelMapDifficulty(5), 5);
+	TestEqual(TEXT("Del 5 en adelante, 5"), LevelMapDifficulty(9), 5);
+	TestEqual(TEXT("Un nivel no válido cuenta como el 1"), LevelMapDifficulty(0), 1);
 	return true;
 }
 

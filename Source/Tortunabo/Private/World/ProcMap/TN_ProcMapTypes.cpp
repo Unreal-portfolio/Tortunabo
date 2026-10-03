@@ -88,6 +88,11 @@ FTNProcMapProfile TN_MakeDefaultProcProfile(ETNProcGameMode Mode, ETNProcDifficu
 			P.StormSpeed = 0.f;
 			break;
 
+		case ETNProcGameMode::Survival:
+			// Supervivencia: el trazado sale de TNProcMap::MakeSurvivalParams; aquí solo lo que usa el actor (sin tormenta).
+			P.StormSpeed = 0.f;
+			break;
+
 		case ETNProcGameMode::Coop:
 		default:
 			// Coop: mapa largo; más cruces y ramas con la dificultad.

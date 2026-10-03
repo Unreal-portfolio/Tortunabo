@@ -269,7 +269,7 @@ bool FTNProcMapTerrainTest::RunTest(const FString& Parameters)
 
 	const double Spacing = 400.0;
 	const double Margin = 8000.0;
-	const int32 NX = FMath::CeilToInt((L.WorldSize + 2.0 * Margin) / Spacing) + 1;
+	const int32 NX = FMath::CeilToInt((L.WorldSizeX + 2.0 * Margin) / Spacing) + 1;
 	const int32 NY = FMath::CeilToInt((L.WorldSize + 2.0 * Margin + 10000.0) / Spacing) + 1;
 	FTerrainBuilder TB;
 	TB.Build(L, FVector2D(-Margin, -Margin), Spacing, NX, NY);
