@@ -757,6 +757,8 @@ bool ATN_ProcMapGameMode::FindRespawnTransform(APlayerController* PlayerControll
 	{
 		ReachedOrder = *PlayerBest;
 	}
+	// La pila 0 está siempre en la salida: cuenta como alcanzada aunque nadie haya pasado junto a ella (#524).
+	ReachedOrder = FMath::Max(ReachedOrder, 0);
 
 	const bool bStorm = Storm && Storm->IsStormActive();
 	const float MinProgress = bStorm ? Storm->GetFrontProgress() + StormRespawnMargin : -TNumericLimits<float>::Max();
