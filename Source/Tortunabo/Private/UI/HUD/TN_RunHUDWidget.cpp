@@ -1141,11 +1141,12 @@ int32 UTN_RunHUDWidget::NativePaint(const FPaintArgs& Args, const FGeometry& All
 	if (bAimDotShown)
 	{
 		// Punto blanco en el centro de la pantalla (con un borde negro para que se vea sobre cualquier fondo).
-		static const FSlateRoundedBoxBrush DotRim(FLinearColor::Black, 8.25f);
+		// El color va en MakeBox: el tinte del brush no llega al relleno del RoundedBox y el aro salía blanco (#264).
+		static const FSlateRoundedBoxBrush DotRim(FLinearColor::White, 8.25f);
 		static const FSlateRoundedBoxBrush Dot(FLinearColor::White, 5.25f);
 		const FVector2f Center = AllottedGeometry.GetLocalSize() * 0.5f;
 		FSlateDrawElement::MakeBox(OutDrawElements, Layer + 1, AllottedGeometry.ToPaintGeometry(FVector2f(16.5f, 16.5f),
-			FSlateLayoutTransform(Center - FVector2f(8.25f, 8.25f))), &DotRim, ESlateDrawEffect::None, FLinearColor::White * Tint);
+			FSlateLayoutTransform(Center - FVector2f(8.25f, 8.25f))), &DotRim, ESlateDrawEffect::None, FLinearColor(0.f, 0.f, 0.f, Tint.A));
 		FSlateDrawElement::MakeBox(OutDrawElements, Layer + 2, AllottedGeometry.ToPaintGeometry(FVector2f(10.5f, 10.5f),
 			FSlateLayoutTransform(Center - FVector2f(5.25f, 5.25f))), &Dot, ESlateDrawEffect::None, FLinearColor::White * Tint);
 		DotLayer = Layer + 2;
