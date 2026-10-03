@@ -19,12 +19,14 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from terrain_geo.build import VARIANTS  # noqa: E402
-from terrain_geo.rally_corridor import MeshSampler, corridor_report, flat_widths  # noqa: E402
+from terrain_geo.rally_corridor import MeshSampler, corridor_fingerprint, corridor_report, flat_widths  # noqa: E402
 from terrain_vol.layout import UU_PER_M, WATER_M  # noqa: E402
 
 NAME = "E01B_espana_rally"
 OUT = VARIANTS / NAME
 E01 = VARIANTS / "E01_espana"
+# Huella del corredor antes de ampliar la rejilla a la península (#532, commit 1e8b43605), en coordenadas locales.
+CORRIDOR_REF = Path(__file__).resolve().parent / "data" / "e01b_corredor.json"
 
 pytestmark = pytest.mark.skipif(not (OUT / "manifest.json").exists(), reason=f"{NAME} sin generar")
 
@@ -74,9 +76,9 @@ def test_agua_y_cajas_de_muerte_como_e01(manifest):
 
 def test_trozos_no_pesan_mas_que_e01():
     """El corredor (lo que se pisa y se cocina como colisión) no pesa más que E01; con el fondo sin colisión de
-    #532 (el resto de España a la vista), no más del doble."""
+    #532 (la península entera a la vista), no más del triple."""
     assert chunk_bytes(OUT, collision_only=True) <= chunk_bytes(E01)
-    assert chunk_bytes(OUT) <= 2 * chunk_bytes(E01)
+    assert chunk_bytes(OUT) <= 3 * chunk_bytes(E01)
 
 
 def test_exageracion_reducida_y_relieve_de_pirineo_a_playa(manifest, sampler):
@@ -149,22 +151,31 @@ CLEAR_LAND_M = 50.0          # cota real (m) que seguro da tierra sobre el agua 
 PROBE_M = 4.0
 
 
-def land_cells(grid: int) -> set[tuple[int, int]]:
-    """Trozos (col, fila) de la rejilla cuadrada con alguna muestra (cada PROBE_M) de cota real > CLEAR_LAND_M,
-    leída directamente del MDE con la proyección de la variante (sin pasar por el generador)."""
+def land_cells(manifest: dict) -> set[tuple[int, int]]:
+    """Trozos (col, fila) de la rejilla de la variante con alguna muestra (cada PROBE_M) de cota real > CLEAR_LAND_M
+    fuera de África, leída directamente del MDE con la proyección del marco (sin pasar por el generador)."""
     from terrain_geo import rally_spain as rs
     from terrain_geo.fetch_spain import load_dem
     frame, dem = rs.make_frame(), load_dem()
+    ox, oy = np.asarray(manifest["offset_uu"]) / UU_PER_M
     n = int(round(100.0 / PROBE_M)) + 1
     out = set()
-    for row in range(grid):
-        for col in range(grid):
-            x = row * 100.0 - 50.0 + PROBE_M * np.arange(n)
-            y = col * 100.0 - 50.0 + PROBE_M * np.arange(n)
+    for row in range(manifest["geo"]["rows"]):
+        for col in range(manifest["geo"]["cols"]):
+            x = row * 100.0 - 50.0 + PROBE_M * np.arange(n) - ox
+            y = col * 100.0 - 50.0 + PROBE_M * np.arange(n) - oy
             X, Y = np.meshgrid(x, y, indexing="ij")
-            if (rs.sample_dem(dem, frame, X, Y) > CLEAR_LAND_M).any():
+            if ((rs.sample_dem(dem, frame, X, Y) > CLEAR_LAND_M) & ~rs.africa_mask(frame, X, Y)).any():
                 out.add((col, row))
     return out
+
+
+def cell_of(manifest: dict, lon: float, lat: float) -> tuple[int, int]:
+    """(col, fila) de la variante que contiene el punto (lon, lat)."""
+    from terrain_geo import rally_spain as rs
+    X, Y = rs.make_frame().projection.to_game(lon, lat)
+    ox, oy = np.asarray(manifest["offset_uu"]) / UU_PER_M
+    return int(math.floor((float(Y) + oy + 50.0) / 100.0)), int(math.floor((float(X) + ox + 50.0) / 100.0))
 
 
 def missing_land(manifest: dict, land: set[tuple[int, int]]) -> set[tuple[int, int]]:
@@ -173,12 +184,51 @@ def missing_land(manifest: dict, land: set[tuple[int, int]]) -> set[tuple[int, i
 
 @pytest.fixture(scope="module")
 def land(manifest) -> set[tuple[int, int]]:
-    return land_cells(manifest["grid"])
+    return land_cells(manifest)
 
 
 def test_todas_las_celdas_de_tierra_tienen_trozo(manifest, land):
-    assert len(land) > 200, "la rejilla cuadrada es casi toda tierra (Pirineo a Málaga, Meseta a Valencia)"
+    assert len(land) > 380, "la península entera (unos 580 000 km², trozos de 40 x 40 km) con Baleares"
     assert missing_land(manifest, land) == set()
+
+
+PENINSULA_EXTREMOS = (("Finisterre", -9.27, 42.89), ("Cabo da Roca", -9.49, 38.78), ("Cabo de São Vicente", -8.98, 37.02),
+                      ("Tarifa", -5.60, 36.02), ("Estaca de Bares", -7.68, 43.78), ("Cabo de Creus", 3.31, 42.32),
+                      ("Menorca (Favàritx)", 4.26, 39.99), ("Ibiza", 1.43, 38.98), ("Cabo de Gata", -2.19, 36.73))
+
+
+def test_peninsula_entera_con_portugal_y_baleares(manifest):
+    cells = {(c["col"], c["row"]) for c in manifest["cells"]}
+    geo = manifest["geo"]
+    for name, lon, lat in PENINSULA_EXTREMOS:
+        col, row = cell_of(manifest, lon, lat)
+        assert 0 <= col < geo["cols"] and 0 <= row < geo["rows"], f"{name} fuera de la rejilla"
+        assert (col, row) in cells, f"{name} sin trozo"
+
+
+def test_africa_es_mar(manifest):
+    cells = {(c["col"], c["row"]) for c in manifest["cells"]}
+    for name, lon, lat in (("Argel", 3.06, 36.75), ("Orán", -0.64, 35.70), ("Tánger", -5.81, 35.77)):
+        assert cell_of(manifest, lon, lat) not in cells, f"{name} tiene trozo"
+
+
+def test_corredor_igual_que_antes_de_ampliar(manifest):
+    """Mismos trozos con colisión (byte a byte) y mismas coordenadas de calzada, checkpoints, salida, meta y
+    marcadores que antes de #532, quitado offset_uu (filas y columnas enteras)."""
+    ox, oy = manifest["offset_uu"]
+    assert ox % manifest["cell_uu"] == 0 and oy % manifest["cell_uu"] == 0 and oy > 0, "la rejilla crece al oeste"
+    reference = json.loads(CORRIDOR_REF.read_text(encoding="utf-8"))
+    assert corridor_fingerprint(OUT, manifest) == reference
+
+
+def test_huella_detecta_un_corredor_movido(manifest):
+    """Caso negativo: 0,1 uu en un punto de la calzada o un desplazamiento mal declarado cambian la huella."""
+    reference = json.loads(CORRIDOR_REF.read_text(encoding="utf-8"))
+    road = [list(p) for p in manifest["road_uu"]]
+    road[100][0] += 0.1
+    assert corridor_fingerprint(OUT, {**manifest, "road_uu": road}) != reference
+    ox, oy = manifest["offset_uu"]
+    assert corridor_fingerprint(OUT, {**manifest, "offset_uu": [ox, oy - manifest["cell_uu"]]}) != reference
 
 
 def test_detecta_una_celda_de_tierra_sin_trozo(manifest, land):
@@ -203,7 +253,7 @@ def test_presupuesto_de_triangulos(manifest):
     total = sum(c["triangles"] for c in manifest["cells"])
     tris = manifest["triangles"]
     assert total == tris["total"] == tris["corridor"] + tris["background"]
-    assert total <= 1_200_000
+    assert total <= 1_500_000
 
 
 def test_fondo_sin_lecho_marino(manifest):
