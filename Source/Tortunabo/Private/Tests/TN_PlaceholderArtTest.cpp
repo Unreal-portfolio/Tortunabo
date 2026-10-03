@@ -1,4 +1,4 @@
-// Arte de código en lugar de los marcadores del motor (#49): la detección, el ajuste de tamaño y, en un mundo de
+// Arte de código en lugar de los marcadores del motor (#49, #50): la detección, el ajuste de tamaño y, en un mundo de
 // juego de prueba, que cada Blueprint afectado nazca sin ninguna malla del motor a la vista y con arte propio.
 //   UnrealEditor-Cmd <uproject> -ExecCmds="Automation RunTests Tortunabo.Assets.PlaceholderArt; Quit" -nullrhi -unattended
 
@@ -17,10 +17,14 @@
 
 namespace TNPlaceholderArtTest
 {
-	/** Blueprints que el inventario marca con marcadores del motor (§2.4). */
+	/** Blueprints que el inventario marca con marcadores del motor (§2.1, §2.3 y §2.4). */
 	const TCHAR* const Blueprints[] = {
 		TEXT("/Game/Blueprints/Gameplay/Items/BP_JellyfishActor.BP_JellyfishActor_C"),
 		TEXT("/Game/Blueprints/Gameplay/Items/BP_RescuePickUp.BP_RescuePickUp_C"),
+		TEXT("/Game/Blueprints/Gameplay/Cosmetics/BP_HatStatue.BP_HatStatue_C"),
+		TEXT("/Game/Blueprints/Gameplay/Cosmetics/BP_SkinStatue.BP_SkinStatue_C"),
+		TEXT("/Game/Blueprints/Gameplay/Enemies/Seagull/BP_EnemySeagull.BP_EnemySeagull_C"),
+		TEXT("/Game/Blueprints/Gameplay/Enemies/Quad/BP_QuadActor.BP_QuadActor_C"),
 	};
 
 	/** Piezas visibles con malla del proyecto o de código (lo que sustituye al marcador). */
