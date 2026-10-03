@@ -1,6 +1,6 @@
-// Límites y decorado del trazado del Rally (#303): vallas a los dos lados en las curvas y en los tramos con caída (palos y
-// cuerda, sacos terreros, troncos, neumáticos apilados o castillos de arena) con un carril de colisión continuo y poco
-// rozamiento, decorado de playa de la Carrera fuera del corredor (TNBeachDecorKit), decorado lejano de piezas grandes
+// Límites y decorado del trazado del Rally (#303): barrera continua a los dos lados de todo el trazado (vallas de palos y
+// cuerda, sacos terreros, troncos y neumáticos apilados, por trozos) con un carril de colisión continuo y poco rozamiento,
+// decorado de playa de la Carrera fuera de la valla (TNBeachDecorKit), decorado lejano de piezas grandes
 // (castillos, grupos de rocas, palmeras, pedruscos y conchas gigantes) a 15-60 m del borde, público en las curvas y en la meta y
 // los pórticos de /Game/Art/IA/rally en las puertas. Cada máquina lo construye igual a partir del eje de ATN_RallyTrack y
 // de una semilla (como la pista y el decorado de la ronda de la playa): no se replica nada.
@@ -19,7 +19,10 @@ class UPhysicalMaterial;
 class UStaticMesh;
 struct FTNRallyDressingBatches;
 
-/** Cómo se ve un tramo de límite (el carril de colisión es el mismo en todos). */
+/**
+ * Cómo se ve un tramo de límite (el carril de colisión es el mismo en todos). Castles queda para los Blueprints que lo usen: el
+ * borde por defecto es de vallas y neumáticos y los castillos van como decorado fuera de la valla (#303).
+ */
 UENUM(BlueprintType)
 enum class ETNRallyBarrierStyle : uint8
 {
@@ -144,8 +147,16 @@ namespace TNRallyDressing
 		TArray<FTNRallyDressingGap> Gaps;
 	};
 
+	/** Ancho de una tortuga (cm, el diámetro de su cápsula): ningún hueco de la barrera puede pasar de esto (#303). */
+	inline constexpr double TurtleWidthCm = 110.0;
+
 	struct FBarrierParams
 	{
+		/**
+		 * Barrera continua a los dos lados de todo el trazado (#303, director, 03-10), salvo los atajos (Gaps) y donde otro tramo
+		 * se monta encima. Con false, solo en las curvas y en las caídas (como antes).
+		 */
+		bool bContinuous = true;
 		double DefaultRoadWidthCm = 1400.0;
 		/** Arcén entre el borde de la calzada y el límite en recta, y mínimo para no pisar los postes de las puertas. */
 		double ShoulderCm = 400.0;
@@ -229,6 +240,19 @@ namespace TNRallyDressing
 
 	/** Puntos repartidos a lo largo de la polilínea, centrados en tramos iguales de como mucho SpacingCm. */
 	TORTUNABO_API TArray<FPolySpot> ResamplePolyline(const TArray<FVector>& Points, double SpacingCm);
+
+	/**
+	 * Huecos de la barrera de un lado (cm, en planta), en el orden de la carrera: entre el final de un tramo de límite y el
+	 * principio del siguiente y, en punto a punto, desde la salida hasta el primero y desde el último hasta la meta. Un tramo de
+	 * una sola muestra no tiene carril y no cuenta. Vacío si el lado está cerrado de punta a punta. La comprobación de #303.
+	 */
+	TORTUNABO_API TArray<double> BarrierGapsCm(const FTrackData& Track, const FBarrierPlan& Plan, int32 Side);
+
+	/**
+	 * Parte la polilínea en trozos de como mucho MaxLengthCm (en planta) que comparten el punto de corte: el estilo del límite
+	 * cambia de un trozo a otro sin dejar hueco.
+	 */
+	TORTUNABO_API TArray<TArray<FVector>> ChunkPolyline(const TArray<FVector>& Points, double MaxLengthCm);
 
 	/** True si Point (en planta) está a ClearCm o más de todas las muestras del eje. */
 	TORTUNABO_API bool IsClearOfTrack(const FTrackData& Track, const FVector& Point, double ClearCm);
@@ -384,16 +408,21 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Rally|Límites")
 	TArray<FTNRallyDressingGap> ShortcutGaps;
 
-	/** Estilos que se reparten por tramo de límite (con la semilla). */
+	/** Estilos que se reparten por trozo de límite (con la semilla): vallas y neumáticos apilados (#303). */
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Límites")
 	TArray<ETNRallyBarrierStyle> BarrierStyles;
+
+	/** Largo (cm) de cada trozo de límite con un mismo estilo: el borde continuo los alterna sin dejar hueco entre ellos. */
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Límites", meta = (ClampMin = "1000"))
+	float StyleSectionCm = 12000.f;
 
 	/** Carril de colisión: alto, grueso y cuánto se hunde en el suelo (cm). */
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Límites", meta = (ClampMin = "50"))
 	float RailHeightCm = 300.f;
 
+	/** Grueso: más que lo que avanza el buggy en un paso de física a toda velocidad, para que no lo atraviese (#303). */
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Límites", meta = (ClampMin = "10"))
-	float RailThicknessCm = 80.f;
+	float RailThicknessCm = 120.f;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Límites", meta = (ClampMin = "0"))
 	float RailSinkCm = 40.f;

@@ -132,12 +132,70 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNRallyDressingStraightTest, "Tortunabo.Rally.
 bool FTNRallyDressingStraightTest::RunTest(const FString& Parameters)
 {
 	using namespace TNRallyDressingTestHelpers;
+	// Reglas de antes de #303 (límite solo en curvas y caídas), que siguen valiendo con bContinuous = false.
+	FBarrierParams Sparse;
+	Sparse.bContinuous = false;
 	const FTrackData Track = Straight(50000.0);
-	const FBarrierPlan Plan = PlanBarriers(Track, TArray<uint8>(), FBarrierParams());
+	const FBarrierPlan Plan = PlanBarriers(Track, TArray<uint8>(), Sparse);
 	TestEqual(TEXT("Recta llana: sin límite a la izquierda"), Plan.Sides[LeftSide].Runs.Num(), 0);
 	TestEqual(TEXT("Recta llana: sin límite a la derecha"), Plan.Sides[RightSide].Runs.Num(), 0);
 	TestEqual(TEXT("Base: 14 m de calzada + arcén, al menos fuera de los postes (15 m)"), Plan.BaseOffsetCm, 1500.0);
 	TestEqual(TEXT("Sin límite, el corredor llega a la base"), Plan.EdgeCm(RightSide, 10), 1500.0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNRallyDressingContinuousTest, "Tortunabo.Rally.Dressing.ContinuousBarrierNoGaps",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNRallyDressingContinuousTest::RunTest(const FString& Parameters)
+{
+	using namespace TNRallyDressingTestHelpers;
+	// #303 (director, 03-10): barrera continua a los dos lados, sin huecos más anchos que una tortuga.
+	const FBarrierParams Params;
+	TestTrue(TEXT("La barrera continua es la de por defecto"), Params.bContinuous);
+	const FTrackData Track = Straight(50000.0);
+	const FBarrierPlan Plan = PlanBarriers(Track, TArray<uint8>(), Params);
+	for (int32 Side = LeftSide; Side <= RightSide; ++Side)
+	{
+		TestEqual(TEXT("Recta: un solo tramo de punta a punta"), Plan.Sides[Side].Runs.Num(), 1);
+		TestEqual(TEXT("...que cubre todas las muestras"), Plan.Sides[Side].Runs[0].Num(), Track.Samples.Num());
+		TestEqual(TEXT("...a la distancia base"), Plan.Sides[Side].OffsetCm[60], 1500.0);
+		TestEqual(TEXT("Sin huecos"), BarrierGapsCm(Track, Plan, Side).Num(), 0);
+	}
+	TestEqual(TEXT("Circuito cerrado entero: sin huecos"), BarrierGapsCm(Circle(8000.0, true), PlanBarriers(Circle(8000.0, true), TArray<uint8>(), Params), LeftSide).Num(), 0);
+
+	// La comprobación sí ve los huecos: con las reglas de antes, la recta llana queda abierta entera.
+	FBarrierParams Sparse = Params;
+	Sparse.bContinuous = false;
+	const TArray<double> Open = BarrierGapsCm(Track, PlanBarriers(Track, TArray<uint8>(), Sparse), RightSide);
+	TestTrue(TEXT("Sin barrera continua, el hueco es la recta entera"), Open.Num() == 1 && Open[0] > TurtleWidthCm);
+
+	// Un atajo abre un hueco del largo del atajo (no cuenta como fallo de la barrera: se pide a propósito).
+	FTrackData WithShortcut = Track;
+	FTNRallyDressingGap Shortcut;
+	Shortcut.StartArcCm = 14000.f;
+	Shortcut.EndArcCm = 18000.f;
+	Shortcut.Side = 1;
+	WithShortcut.Gaps.Add(Shortcut);
+	const TArray<double> ShortcutGaps = BarrierGapsCm(WithShortcut, PlanBarriers(WithShortcut, TArray<uint8>(), Params), RightSide);
+	// Muestras cada 4 m: la última con límite antes del atajo está en 136 m y la primera después, en 184 m.
+	TestTrue(TEXT("El atajo deja un hueco de 48 m"), ShortcutGaps.Num() == 1 && FMath::IsNearlyEqual(ShortcutGaps[0], 4800.0, 1.0));
+	TestEqual(TEXT("...y solo en su lado"), BarrierGapsCm(WithShortcut, PlanBarriers(WithShortcut, TArray<uint8>(), Params), LeftSide).Num(), 0);
+
+	// Los trozos de estilo comparten el punto de corte: la barrera no se abre al cambiar de vallas a neumáticos.
+	TArray<FVector> Line;
+	for (int32 Index = 0; Index <= 10; ++Index)
+	{
+		Line.Add(FVector(1000.0 * Index, 0.0, 0.0));
+	}
+	const TArray<TArray<FVector>> Chunks = ChunkPolyline(Line, 3000.0);
+	TestEqual(TEXT("100 m en trozos de 30 m: 4"), Chunks.Num(), 4);
+	bool bTouching = Chunks.Num() > 0 && Chunks[0][0].Equals(Line[0]) && Chunks.Last().Last().Equals(Line.Last());
+	for (int32 Index = 1; Index < Chunks.Num(); ++Index)
+	{
+		bTouching &= Chunks[Index][0].Equals(Chunks[Index - 1].Last());
+	}
+	TestTrue(TEXT("Cada trozo empieza donde acaba el anterior y cubren toda la línea"), bTouching);
 	return true;
 }
 
@@ -173,12 +231,20 @@ bool FTNRallyDressingDropTest::RunTest(const FString& Parameters)
 {
 	using namespace TNRallyDressingTestHelpers;
 	const FTrackData Track = Straight(50000.0);
-	const FBarrierPlan Plan = PlanBarriers(Track, DropsOn(Track.Samples.Num(), RightSide, 40, 60), FBarrierParams());
+	FBarrierParams Sparse;
+	Sparse.bContinuous = false;
+	const FBarrierPlan Plan = PlanBarriers(Track, DropsOn(Track.Samples.Num(), RightSide, 40, 60), Sparse);
 	TestEqual(TEXT("Caída a la derecha: sin límite a la izquierda"), Plan.Sides[LeftSide].Runs.Num(), 0);
 	TestEqual(TEXT("Caída a la derecha: un tramo a la derecha"), Plan.Sides[RightSide].Runs.Num(), 1);
 	TestEqual(TEXT("El tramo se alarga 15 m antes de la caída"), Plan.Sides[RightSide].Runs[0][0], 36);
 	TestEqual(TEXT("...y 15 m después"), Plan.Sides[RightSide].Runs[0].Last(), 64);
 	TestTrue(TEXT("En la caída, el límite va al borde de la calzada (7 m + 2,5 m)"), FMath::IsNearlyEqual(Plan.Sides[RightSide].OffsetCm[50], 950.0, 1.0));
+
+	// Con la barrera continua (#303) la caída solo acerca el límite al borde: el resto de la recta también va cerrado.
+	const FBarrierPlan Continuous = PlanBarriers(Track, DropsOn(Track.Samples.Num(), RightSide, 40, 60), FBarrierParams());
+	TestEqual(TEXT("Continua: la izquierda también tiene límite"), Continuous.Sides[LeftSide].Runs.Num(), 1);
+	TestTrue(TEXT("Continua: en la caída, al borde de la calzada"), FMath::IsNearlyEqual(Continuous.Sides[RightSide].OffsetCm[50], 950.0, 1.0));
+	TestTrue(TEXT("Continua: lejos de la caída, a la base"), FMath::IsNearlyEqual(Continuous.Sides[RightSide].OffsetCm[100], 1500.0, 1.0));
 	return true;
 }
 
@@ -222,6 +288,7 @@ bool FTNRallyDressingHairpinTest::RunTest(const FString& Parameters)
 	using namespace TNRallyDressingTestHelpers;
 	FBarrierParams Params;
 	Params.DropEdgeMarginCm = 1.0e6;
+	Params.bContinuous = false;
 	auto MiddleOffset = [&Params](double Separation)
 	{
 		const FTrackData Track = Hairpin(Separation, 30000.0);
@@ -231,6 +298,10 @@ bool FTNRallyDressingHairpinTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Tramos a 30 m: el límite se queda a 15 m"), FMath::IsNearlyEqual(MiddleOffset(3000.0), 1500.0, 1.0));
 	TestTrue(TEXT("Tramos a 20 m: el límite va a la mitad"), FMath::IsNearlyEqual(MiddleOffset(2000.0), 1000.0, 1.0));
 	TestEqual(TEXT("Tramos a 15 m: no cabe límite entre los dos"), MiddleOffset(1500.0), 0.0);
+	// Continua (#303): mientras no pise la calzada, el límite separa los dos tramos (un hueco los uniría).
+	Params.bContinuous = true;
+	TestTrue(TEXT("Continua, tramos a 15 m: el límite va a la mitad (7,5 m)"), FMath::IsNearlyEqual(MiddleOffset(1500.0), 750.0, 1.0));
+	TestEqual(TEXT("Continua, tramos a 12 m (las calzadas se pisan): sin límite"), MiddleOffset(1200.0), 0.0);
 	return true;
 }
 

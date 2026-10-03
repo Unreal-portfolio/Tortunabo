@@ -106,8 +106,9 @@ ATN_RallyTrackDressing::ATN_RallyTrackDressing()
 	bReplicates = false;
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
 
-	BarrierStyles = { ETNRallyBarrierStyle::PostRope, ETNRallyBarrierStyle::Sandbags, ETNRallyBarrierStyle::Logs,
-		ETNRallyBarrierStyle::Tires, ETNRallyBarrierStyle::Castles };
+	// Vallas y neumáticos apilados (#303, director): los castillos ya no hacen de borde, solo de decorado fuera de la valla.
+	BarrierStyles = { ETNRallyBarrierStyle::PostRope, ETNRallyBarrierStyle::Tires, ETNRallyBarrierStyle::Sandbags,
+		ETNRallyBarrierStyle::Tires, ETNRallyBarrierStyle::Logs };
 	DecorEntries = TNRallyDressingActor::DefaultDecorEntries();
 	FarDecorEntries = TNRallyDressingFar::DefaultEntries();
 	TireMesh = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(TEXT("/Game/Generated/Meshes/Buggy/SM_BuggyTire.SM_BuggyTire")));
@@ -198,6 +199,17 @@ bool ATN_RallyTrackDressing::Build(const TNRallyDressing::FTrackData& InTrack, i
 	CreateComponents(Batches);
 	UE_LOG(LogTNRally, Log, TEXT("[RallyDressing] Semilla %d: %d tramos de carril, %d piezas de límite, %d de decorado, %d lejanas, %d de público y %d pórticos."),
 		Seed, RailSegmentCount, BarrierPieceCount, DecorCount, FarDecorCount, SpectatorCount, GateMeshCount);
+	// Comprobación de #303 con el trazado de verdad: ningún hueco de la barrera más ancho que una tortuga.
+	for (int32 Side = LeftSide; Side <= RightSide; ++Side)
+	{
+		double Widest = 0.0;
+		for (const double Gap : BarrierGapsCm(Track, Plan, Side))
+		{
+			Widest = FMath::Max(Widest, Gap);
+		}
+		UE_LOG(LogTNRally, Log, TEXT("[RallyDressing] Barrera %s: hueco mayor %.0f cm (%s)."), Side == LeftSide ? TEXT("izquierda") : TEXT("derecha"),
+			Widest, Widest <= TurtleWidthCm ? TEXT("cerrada") : TEXT("HAY HUECOS"));
+	}
 	return true;
 }
 
@@ -362,11 +374,16 @@ void ATN_RallyTrackDressing::AddRails(const TNRallyDressing::FTrackData& Track, 
 				continue;
 			}
 			const int32 RunSeed = TNRallyDressing::SubSeed(Seed, Side, RunIndex);
-			const ETNRallyBarrierStyle Style = BarrierStyles[RunSeed % BarrierStyles.Num()];
 			const TArray<TArray<FVector>> Pieces = TNRallyDressingActor::SplitGrounded(Points, Grounded);
 			for (int32 Piece = 0; Piece < Pieces.Num(); ++Piece)
 			{
-				AddBarrierRun(Pieces[Piece], Style, TNRallyDressing::SubSeed(RunSeed, Piece, 3), Batches);
+				// Con la barrera continua cada lado es un tramo entero: el estilo cambia por trozos que comparten el punto de corte.
+				const TArray<TArray<FVector>> Chunks = TNRallyDressing::ChunkPolyline(Pieces[Piece], StyleSectionCm);
+				for (int32 Chunk = 0; Chunk < Chunks.Num(); ++Chunk)
+				{
+					const int32 ChunkSeed = TNRallyDressing::SubSeed(RunSeed, Piece, 3 + 8 * Chunk);
+					AddBarrierRun(Chunks[Chunk], BarrierStyles[ChunkSeed % BarrierStyles.Num()], ChunkSeed, Batches);
+				}
 			}
 		}
 	}

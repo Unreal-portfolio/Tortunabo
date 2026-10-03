@@ -182,7 +182,9 @@ namespace TNRallyDressing
 				return OffsetCm;
 			}
 			const double Middle = 0.5 * Nearest;
-			return Middle >= RoadHalfCm + Params.InsideMinMarginCm ? FMath::Min(OffsetCm, Middle) : 0.0;
+			// Con la barrera continua (#303) basta con que no pise la calzada: un hueco ahí uniría los dos tramos.
+			const double MinMiddle = RoadHalfCm + (Params.bContinuous ? 0.0 : Params.InsideMinMarginCm);
+			return Middle >= MinMiddle ? FMath::Min(OffsetCm, Middle) : 0.0;
 		}
 
 		/** Tramos seguidos con límite, en el orden de la carrera; en circuito, un tramo que cruza la salida es uno solo. */
@@ -251,7 +253,8 @@ namespace TNRallyDressing
 			Limited.Init(false, Num);
 			for (int32 Index = 0; Index < Num; ++Index)
 			{
-				Limited[Index] = LongCurves[Index] || Flags.Drop[Index];
+				// Continua (#303): todo el trazado; las curvas y las caídas solo deciden a qué distancia va.
+				Limited[Index] = Params.bContinuous || LongCurves[Index] || Flags.Drop[Index];
 			}
 			Flags.Limited = FilledHoles(Limited, FMath::FloorToInt32(Params.MinGapCm / Step), Track.bClosed);
 			for (int32 Index = 0; Index < Num; ++Index)
@@ -557,6 +560,87 @@ namespace TNRallyDressing
 			Spot.SeparationCm = Separation;
 		}
 		return Spots;
+	}
+
+	TArray<double> BarrierGapsCm(const FTrackData& Track, const FBarrierPlan& Plan, int32 Side)
+	{
+		TArray<double> Gaps;
+		const int32 Num = Track.Samples.Num();
+		if (Num < 2 || (Side != LeftSide && Side != RightSide))
+		{
+			return Gaps;
+		}
+		const FBarrierSide& Barrier = Plan.Sides[Side];
+		// Solo los tramos con carril (dos muestras o más): uno de una muestra no pone ninguna caja.
+		TArray<const TArray<int32>*> Runs;
+		for (const TArray<int32>& Run : Barrier.Runs)
+		{
+			if (Run.Num() >= 2)
+			{
+				Runs.Add(&Run);
+			}
+		}
+		auto PointAt = [&](int32 Index)
+		{
+			return LateralPoint(Track.Samples[Index], Side, Barrier.OffsetCm.IsValidIndex(Index) ? Barrier.OffsetCm[Index] : Plan.BaseOffsetCm);
+		};
+		if (Runs.Num() == 0)
+		{
+			Gaps.Add(Track.LengthCm);
+			return Gaps;
+		}
+		const bool bWholeLoop = Track.bClosed && Runs.Num() == 1 && Runs[0]->Num() == Num;
+		if (bWholeLoop)
+		{
+			return Gaps;
+		}
+		if (!Track.bClosed && (*Runs[0])[0] > 0)
+		{
+			Gaps.Add(FVector::Dist2D(PointAt(0), PointAt((*Runs[0])[0])));
+		}
+		for (int32 RunIndex = 0; RunIndex < Runs.Num(); ++RunIndex)
+		{
+			const bool bLast = RunIndex + 1 == Runs.Num();
+			if (bLast && !Track.bClosed)
+			{
+				break;
+			}
+			const TArray<int32>& Next = *Runs[bLast ? 0 : RunIndex + 1];
+			Gaps.Add(FVector::Dist2D(PointAt(Runs[RunIndex]->Last()), PointAt(Next[0])));
+		}
+		if (!Track.bClosed && Runs.Last()->Last() < Num - 1)
+		{
+			Gaps.Add(FVector::Dist2D(PointAt(Runs.Last()->Last()), PointAt(Num - 1)));
+		}
+		return Gaps;
+	}
+
+	TArray<TArray<FVector>> ChunkPolyline(const TArray<FVector>& Points, double MaxLengthCm)
+	{
+		TArray<TArray<FVector>> Chunks;
+		if (Points.Num() < 2)
+		{
+			return Chunks;
+		}
+		TArray<FVector> Current = { Points[0] };
+		double Length = 0.0;
+		for (int32 Index = 1; Index < Points.Num(); ++Index)
+		{
+			Current.Add(Points[Index]);
+			Length += FVector::Dist2D(Points[Index - 1], Points[Index]);
+			if (MaxLengthCm > 0.0 && Length >= MaxLengthCm && Index + 1 < Points.Num())
+			{
+				// El punto de corte abre el trozo siguiente: los dos estilos se tocan.
+				Chunks.Add(Current);
+				Current = { Points[Index] };
+				Length = 0.0;
+			}
+		}
+		if (Current.Num() >= 2)
+		{
+			Chunks.Add(Current);
+		}
+		return Chunks;
 	}
 
 	bool IsClearOfTrack(const FTrackData& Track, const FVector& Point, double ClearCm)
