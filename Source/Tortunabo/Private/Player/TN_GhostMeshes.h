@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Core/TN_ProjectMaterials.h"
 #include "Materials/MaterialInterface.h"
 #include "ProceduralMeshComponent.h"
 #include "../World/ProcMap/TN_ProcMapRuntimeMesh.h"
@@ -281,7 +282,7 @@ namespace TNGhostMesh
 		}
 		if (!Material)
 		{
-			Material = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"), nullptr, LOAD_NoWarn);
+			Material = TNMaterials::VertexColor();
 		}
 		return Material;
 	}

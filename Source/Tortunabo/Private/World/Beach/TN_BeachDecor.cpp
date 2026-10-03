@@ -1,4 +1,5 @@
 #include "World/Beach/TN_BeachDecor.h"
+#include "Core/TN_ProjectMaterials.h"
 #include "TN_BeachDecorKit.h"
 #include "World/Beach/TN_BeachLayout.h"
 #include "../ProcMap/TN_ProcMapRuntimeMesh.h"
@@ -40,15 +41,13 @@ namespace TNBeachDecorDetail
 		bool bBuilt = false;
 	};
 
-	/** M_CosmeticVertexColor (color de vértice; el alfa es el brillo) o, si falta, el material de color de vértice del motor. */
+	/** M_CosmeticVertexColor (color de vértice; el alfa es el brillo); TNMaterials::VertexColor. */
 	UMaterialInterface* DecorMaterial()
 	{
 		static TWeakObjectPtr<UMaterialInterface> Cached;
 		if (!Cached.IsValid())
 		{
-			UMaterialInterface* Mat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Cosmetics/Materials/M_CosmeticVertexColor.M_CosmeticVertexColor"));
-			if (!Mat) { Mat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial")); }
-			Cached = Mat;
+			Cached = TNMaterials::VertexColor();
 		}
 		return Cached.Get();
 	}
