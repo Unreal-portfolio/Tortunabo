@@ -18,6 +18,7 @@
 #include "Lobby/TN_CastleKit.h"
 #include "World/TN_PlaceholderArt.h"
 #include "World/TN_PlaceholderArtMeshes.h"
+#include "Art/TN_TurtleArt.h"
 
 namespace TNStatueArt
 {
@@ -44,8 +45,7 @@ namespace TNStatueArt
 
 ATN_SkinStatueActor::ATN_SkinStatueActor()
 {
-	StatueTurtleMesh = TSoftObjectPtr<USkeletalMesh>(FSoftObjectPath(TEXT("/Game/Meshses/Characters/Player/TotugaDemo_Rig.TotugaDemo_Rig")));
-	StatuePose = TSoftObjectPtr<UAnimationAsset>(FSoftObjectPath(TEXT("/Game/Animations/Character/TortugaDemo/Anim/Salute.Salute")));
+	// Sin malla ni pose propias, la estatua es la tortuga del personaje y su saludo (TNTurtleArt, #581).
 
 	PreviewMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("PreviewMesh"));
 	PreviewMesh->SetupAttachment(SceneRoot);
@@ -95,8 +95,8 @@ bool ATN_SkinStatueActor::BuildCodeStatue()
 		return false;
 	}
 	const FBox Old = TNPlaceholderArt::VisiblePlaceholderBounds(this);
-	USkeletalMesh* Turtle = StatueTurtleMesh.LoadSynchronous();
-	if (!Old.IsValid || !Turtle)
+	USkeletalMesh* Override = StatueTurtleMesh.LoadSynchronous();
+	if (!Old.IsValid || (!Override && !TNTurtleArt::GetMesh()))
 	{
 		return false;
 	}
@@ -104,10 +104,21 @@ bool ATN_SkinStatueActor::BuildCodeStatue()
 	const FVector Ground(Old.GetCenter().X, Old.GetCenter().Y, Old.Min.Z);
 	TNPlaceholderArt::HidePlaceholders(this, true);
 	BuildPedestal(Ground);
-	PreviewMesh->SetSkeletalMeshAsset(Turtle);
-	PreviewMesh->SetWorldLocationAndRotation(Ground + FVector(0.0, 0.0, PedestalHeight),
-		GetActorRotation() + FRotator(0.f, TNStatueArt::TurtleYaw, 0.f));
-	PreviewMesh->SetWorldScale3D(FVector(StatueTurtleScale));
+	// La colocación es la de la malla de demo; con otra malla en el personaje, ApplyBody le suma la misma diferencia que a
+	// él (pivote, giro y escala) y le pone sus materiales: cambiar la tortuga del Blueprint cambia también la estatua.
+	const FTransform DemoWorld(GetActorRotation() + FRotator(0.f, TNStatueArt::TurtleYaw, 0.f),
+		Ground + FVector(0.0, 0.0, PedestalHeight), FVector(StatueTurtleScale));
+	const USceneComponent* Parent = PreviewMesh->GetAttachParent();
+	const FTransform DemoRelative = Parent ? DemoWorld.GetRelativeTransform(Parent->GetComponentTransform()) : DemoWorld;
+	if (Override)
+	{
+		PreviewMesh->SetSkeletalMeshAsset(Override);
+		PreviewMesh->SetRelativeTransform(DemoRelative);
+	}
+	else
+	{
+		TNTurtleArt::ApplyBody(PreviewMesh, DemoRelative);
+	}
 	PreviewMesh->SetVisibility(true);
 	PreviewMesh->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::OnlyTickPoseWhenRendered;
 	FreezePose();
@@ -146,7 +157,7 @@ void ATN_SkinStatueActor::BuildPedestal(const FVector& GroundCenter)
 
 void ATN_SkinStatueActor::FreezePose()
 {
-	UAnimationAsset* Pose = StatuePose.LoadSynchronous();
+	UAnimationAsset* Pose = StatuePose.IsNull() ? TNTurtleArt::GetClip(ETNTurtleClip::Salute) : StatuePose.LoadSynchronous();
 	if (!Pose)
 	{
 		UE_LOG(LogTortunabo, Warning, TEXT("[CosmeticStatue] %s: sin animación de pose; la tortuga queda en la postura de referencia."), *GetName());
