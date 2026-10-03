@@ -39,15 +39,20 @@ UClass* UTN_GameplayAssetSettings::GetScorePickupClass()
 	{
 		return ATN_ScorePickup::StaticClass();
 	}
-	if (Settings->ResolvedScorePickupClass)
+	if (UClass* Resolved = Settings->ResolvedScorePickupClass.Get())
 	{
-		return Settings->ResolvedScorePickupClass;
+		return Resolved;
 	}
 	if (Settings->bReportedMissingScorePickup)
 	{
 		return ATN_ScorePickup::StaticClass();
 	}
-	// Sin precarga (tests, editor) o aún en vuelo: se carga ahora, una sola vez.
+	// Sin precarga (tests, editor) o aún en vuelo: se carga ahora y el handle la retiene.
+	if (!Settings->ScorePickupClass.IsNull() && UAssetManager::IsInitialized())
+	{
+		Settings->PreloadHandle = UAssetManager::GetStreamableManager().RequestSyncLoad(
+			Settings->ScorePickupClass.ToSoftObjectPath());
+	}
 	if (UClass* Class = Settings->ScorePickupClass.LoadSynchronous())
 	{
 		Settings->ResolvedScorePickupClass = Class;
@@ -62,4 +67,15 @@ UClass* UTN_GameplayAssetSettings::GetScorePickupClass()
 			*Settings->ScorePickupClass.ToString());
 	}
 	return ATN_ScorePickup::StaticClass();
+}
+
+bool UTN_GameplayAssetSettings::IsScorePickupClassRetained()
+{
+	const UTN_GameplayAssetSettings* Settings = GetDefault<UTN_GameplayAssetSettings>();
+	if (!Settings || !Settings->PreloadHandle.IsValid())
+	{
+		return false;
+	}
+	const UClass* Resolved = Settings->ResolvedScorePickupClass.Get();
+	return Resolved && Settings->PreloadHandle->GetLoadedAsset() == Resolved;
 }

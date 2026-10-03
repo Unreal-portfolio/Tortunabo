@@ -292,6 +292,7 @@ void ATN_RaceGullStrike::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(ATN_RaceGullStrike, Target);
 	DOREPLIFETIME(ATN_RaceGullStrike, AimPoint);
+	DOREPLIFETIME(ATN_RaceGullStrike, Stained);
 }
 
 void ATN_RaceGullStrike::Tick(float DeltaSeconds)
@@ -488,6 +489,13 @@ void ATN_RaceGullStrike::ServerImpact()
 		MainVictim = Victims[0];
 	}
 	UE_LOG(LogTortunabo, Log, TEXT("[Carrera] La gaviota justiciera de %s suelta su cagada: %d tortugas derribadas."), *GetNameSafe(GetOwnerTurtle()), Victims.Num());
+	// Los pegotes como estado replicado (OnRep_Stained): los ve también quien entra ahora o pierde la multicast.
+	Stained.Reset();
+	for (ATortugaCharacter* Victim : Victims)
+	{
+		Stained.Add(Victim);
+	}
+	ForceNetUpdate();
 	MulticastSplat(FVector_NetQuantize10(Impact), MainVictim);
 	for (ATortugaCharacter* Extra : Victims)
 	{
@@ -584,6 +592,19 @@ void ATN_RaceGullStrike::MulticastStain_Implementation(ATortugaCharacter* Victim
 	TNBeachKit::BurstAt(Droplets, Victim->GetActorLocation() + FVector(0.0, 0.0, 120.0), FVector::UpVector, 14);
 }
 
+void ATN_RaceGullStrike::OnRep_Stained()
+{
+	if (!bHasScreen)
+	{
+		return;
+	}
+	// Los que ya tienen el pegote (por la multicast) no repiten: SpawnShellSplat lo comprueba.
+	for (ATortugaCharacter* Victim : Stained)
+	{
+		SpawnShellSplat(Victim);
+	}
+}
+
 void ATN_RaceGullStrike::ShowSplat(const FVector& Where, ATortugaCharacter* Hit)
 {
 	using namespace TNRaceGullStrikeDetail;
@@ -664,10 +685,12 @@ void ATN_RaceGullStrike::SpawnShellSplat(ATortugaCharacter* Victim)
 {
 	using namespace TNRaceGullStrikeDetail;
 	using TNProcMesh::FTNProcMeshBuffers;
-	if (!IsValid(Victim))
+	// Uno por tortuga: puede llegar por la multicast y por OnRep_Stained.
+	if (!IsValid(Victim) || ShellSplatShown.Contains(TWeakObjectPtr<ATortugaCharacter>(Victim)))
 	{
 		return;
 	}
+	ShellSplatShown.Add(TWeakObjectPtr<ATortugaCharacter>(Victim));
 	UStaticMesh* StainMesh = TNBeachKit::CachedMesh(TEXT("Beach.ShellSplat"), [](FTNProcMeshBuffers& M) { TNBeachMeshes::BuildShellSplat(M); });
 	UStaticMeshComponent* Comp = TNBeachKit::AddPart(this, GetRootComponent(), StainMesh, FVector::ZeroVector, false);
 	if (!Comp)

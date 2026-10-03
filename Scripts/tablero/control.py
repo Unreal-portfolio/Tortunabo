@@ -171,18 +171,25 @@ def cmd_colisiones(args: argparse.Namespace) -> None:
         print("Aviso: no se pudieron descargar las cabezas de las PR; cuento los ficheros en común.\n")
     pares = colisiones.pares({n: colisiones.ficheros_de_pr(gh, REPO, n) for n in prs},
                              colisiones.conflicto_git if con_git else None)
+    pares, localizacion = colisiones.separar(pares)  # solo localización: se regenera, sin issue
     abiertas = colisiones.colisiones_abiertas(gh, REPO)
     existentes = {i["title"].strip() for i in abiertas}
     nuevos = [par for par in pares if colisiones.titulo(par[0], par[1]) not in existentes]
-    resueltas = colisiones.resueltas(abiertas, set(prs), {(a, b) for a, b, _ in pares}) if con_git else []
+    resueltas = colisiones.resueltas(abiertas, set(prs), {(a, b) for a, b, _ in pares},
+                                     {(a, b) for a, b, _ in localizacion}) if con_git else []
     print(f"## Colisiones entre PR abiertas contra {INTEGRACION} · {len(prs)} PR, {len(pares)} pares en conflicto, "
           f"{len(nuevos)} sin issue, {len(resueltas)} issues resueltas"
           + ("" if args.aplicar else " (simulación: usa --aplicar)") + "\n")
     for a, b, ficheros in pares:
         estado = "nueva" if (a, b, ficheros) in nuevos else "ya tiene issue"
         binarios = "; con binarios: decision" if colisiones.hay_binarios(ficheros) else ""
-        localizacion = "; solo localización" if colisiones.solo_localizacion(ficheros) else ""
-        print(f"- PR #{a} y #{b}: {len(ficheros)} ficheros en conflicto ({estado}{binarios}{localizacion})")
+        regenerar = sum(colisiones.es_localizacion(f) for f in ficheros)
+        extra = f"; además {regenerar} de localización" if regenerar else ""
+        print(f"- PR #{a} y #{b}: {len(ficheros) - regenerar} ficheros en conflicto ({estado}{binarios}{extra})")
+    if localizacion:
+        lista = ", ".join(f"#{a}/#{b}" for a, b, _ in localizacion)
+        print(f"- {len(localizacion)} pares solo de localización, sin issue (la regenera la PR que se fusione "
+              f"en segundo lugar): {lista}")
     for numero, motivo in resueltas:
         print(f"- #{numero} resuelta: {motivo}")
     if not args.aplicar:
@@ -193,8 +200,7 @@ def cmd_colisiones(args: argparse.Namespace) -> None:
         for a, b, ficheros in nuevos:
             crear_issue_colision(proyecto, prs[a], prs[b], ficheros)
     for numero, motivo in resueltas:
-        comentar(numero, memoria.texto_resumen("dos PR abiertas chocaban al mezclarse",
-                                               f"ya no hace falta mezclarlas: {motivo} (`tablero.py colisiones`)"))
+        comentar(numero, colisiones.texto_cierre(motivo))
         gh("issue", "close", str(numero), "--repo", REPO, "--reason", "completed")
         if numero in proyecto["items"]:  # sin esperar al sync: que no siga en Revisiones
             poner_campo(proyecto, numero, "Status", "Done")

@@ -4,8 +4,14 @@
 #include "Core/TN_CoopPlayerState.h"
 #include "Core/TN_GameModeSpawnUtils.h"
 #include "World/TN_ChunkManager.h"
+#include "World/TN_StormVolume.h"
+#include "World/ProcMap/TN_ProcMapGenerator.h"
+#include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/PlayerStart.h"
 #include "GameFramework/Pawn.h"
+#include "Kismet/GameplayStatics.h"
 #include "UObject/ConstructorHelpers.h"
 #include "EngineUtils.h"
 #include "TimerManager.h"
@@ -36,10 +42,14 @@ ATN_SurvivalGameMode::ATN_SurvivalGameMode()
 
 void ATN_SurvivalGameMode::StartPlay()
 {
-	// StartPlay va antes del BeginPlay de los actores del nivel: así el manager genera el nivel 1 y no el buffer del Clásico.
+	// StartPlay va antes del BeginPlay de los actores del nivel: así el manager genera el mapa del nivel 1 y no los
+	// chunks del Clásico. ?SurvivalSeed=N repite una partida.
 	if (ATN_ChunkManager* Manager = FindChunkManager())
 	{
-		Manager->SetLevelMode(true);
+		const FString SeedOption = UGameplayStatics::ParseOption(OptionsString, TEXT("SurvivalSeed"));
+		const int32 Seed = SeedOption.IsEmpty() ? FMath::RandRange(1, 1 << 30) : FCString::Atoi(*SeedOption);
+		UE_LOG(LogTortunabo, Log, TEXT("[Survival] Semilla del nivel 1: %d (?SurvivalSeed=%d para repetirla)."), Seed, Seed);
+		Manager->SetLevelMode(true, Seed);
 	}
 	else
 	{
@@ -68,7 +78,32 @@ void ATN_SurvivalGameMode::OnWaitingTimeout()
 		StartingPlayers = FMath::Max(1, TN_CountConnectedCoopPlayers(GameState));
 		UE_LOG(LogTortunabo, Log, TEXT("[Survival] Empieza con %d jugador(es)%s."),
 			StartingPlayers, StartingPlayers == 1 ? TEXT(" (solitario: hasta que muera)") : TEXT(""));
+
+		// Del corral de LVL_Run a la salida del mapa del nivel 1.
+		BeginLevelWhenReady();
 	}
+}
+
+AActor* ATN_SurvivalGameMode::ChoosePlayerStart_Implementation(AController* Player)
+{
+	const ATN_ChunkManager* Manager = FindChunkManager();
+	const ATN_ProcMapGenerator* Generator = Manager ? Manager->GetLevelGenerator() : nullptr;
+	if (!Generator || !Generator->IsMapReady())
+	{
+		return Super::ChoosePlayerStart_Implementation(Player);
+	}
+
+	TArray<AActor*> Starts;
+	for (int32 Index = 0; APlayerStart* Start = Generator->GetStartPlayerStart(Index); ++Index)
+	{
+		Starts.Add(Start);
+	}
+	if (Starts.Num() == 0)
+	{
+		return Super::ChoosePlayerStart_Implementation(Player);
+	}
+	AActor* Start = TN_PickSpreadPlayerStart(GetWorld(), Starts, Player, DefaultPawnClass, TEXT("Survival"));
+	return Start ? Start : Starts[0];
 }
 
 void ATN_SurvivalGameMode::Logout(AController* Exiting)
@@ -166,7 +201,7 @@ TArray<FTNSurvivalPlayer> ATN_SurvivalGameMode::GatherPlayers() const
 
 void ATN_SurvivalGameMode::UpdateRoundProgressAndMaybeFinish()
 {
-	if (bMatchOver || !bMatchStarted || GetWorldTimerManager().IsTimerActive(LevelTransitionTimerHandle))
+	if (bMatchOver || !bMatchStarted || bLevelLoading || GetWorldTimerManager().IsTimerActive(LevelTransitionTimerHandle))
 	{
 		return;
 	}
@@ -219,7 +254,7 @@ void ATN_SurvivalGameMode::AdvanceLevel()
 	++CurrentLevel;
 	NextFinishRank = 1;
 
-	// Los cuerpos del nivel anterior se quedarían cayendo al desaparecer sus chunks.
+	// Los cuerpos del nivel anterior se quedarían cayendo al desaparecer su mapa.
 	for (const TPair<int32, TWeakObjectPtr<APawn>>& Pair : DeadPlayerPawns)
 	{
 		if (Pair.Value.IsValid())
@@ -229,8 +264,67 @@ void ATN_SurvivalGameMode::AdvanceLevel()
 	}
 	DeadPlayerPawns.Reset();
 
-	Manager->BuildLevel(CurrentLevel);
+	if (!Manager->BuildLevel(CurrentLevel))
+	{
+		FinishSurvival(INDEX_NONE);
+		return;
+	}
+	BeginLevelWhenReady();
+}
 
+void ATN_SurvivalGameMode::BeginLevelWhenReady()
+{
+	bLevelLoading = true;
+	LevelLoadStartTime = GetWorld()->GetTimeSeconds();
+	GetWorldTimerManager().SetTimer(LevelReadyPollHandle, this, &ATN_SurvivalGameMode::PollLevelReady, 0.25f, true);
+	PollLevelReady();
+}
+
+void ATN_SurvivalGameMode::PollLevelReady()
+{
+	if (bMatchOver)
+	{
+		GetWorldTimerManager().ClearTimer(LevelReadyPollHandle);
+		return;
+	}
+
+	// La colisión del terreno se cocina en segundo plano: sin ella, quien aparece en la salida cae al vacío.
+	const ATN_ChunkManager* Manager = FindChunkManager();
+	const ATN_ProcMapGenerator* Generator = Manager ? Manager->GetLevelGenerator() : nullptr;
+	bool bGroundReady = Generator && Generator->IsMapReady();
+	for (int32 Index = 0; bGroundReady; ++Index)
+	{
+		const APlayerStart* Start = Generator->GetStartPlayerStart(Index);
+		if (!Start)
+		{
+			break;
+		}
+		bGroundReady = Generator->MapCollisionUnder(Start->GetActorLocation());
+	}
+
+	const float Waited = GetWorld()->GetTimeSeconds() - LevelLoadStartTime;
+	if (!bGroundReady && Waited < LevelReadyTimeoutSeconds)
+	{
+		return;
+	}
+	if (!bGroundReady)
+	{
+		UE_LOG(LogTortunabo, Warning, TEXT("[Survival] El suelo del nivel %d no tiene colisión tras %.1f s: salen igualmente."), CurrentLevel, Waited);
+	}
+
+	GetWorldTimerManager().ClearTimer(LevelReadyPollHandle);
+	SendSurvivorsToLevelStart();
+}
+
+void ATN_SurvivalGameMode::SendSurvivorsToLevelStart()
+{
+	// Cada nivel sale del mismo sitio: la tormenta de LVL_Run vuelve a empezar con él (#448).
+	for (TActorIterator<ATN_StormVolume> It(GetWorld()); It; ++It)
+	{
+		It->ResetToInitialState();
+	}
+
+	const ATN_ChunkManager* Manager = FindChunkManager();
 	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
 		APlayerController* PC = It->Get();
@@ -245,17 +339,37 @@ void ATN_SurvivalGameMode::AdvanceLevel()
 		TNPS->DeathZoneTimeRemaining = -1.f;
 		TNPS->ForceNetUpdate();
 
-		const AActor* Start = FindPlayerStart(PC);
-		const FVector StartLocation = Start ? Start->GetActorLocation() : Manager->GetActorLocation() + FVector(0.f, 0.f, 100.f);
-		const FRotator StartRotation(0.f, Start ? Start->GetActorRotation().Yaw : Manager->GetActorRotation().Yaw, 0.f);
+		// ChoosePlayerStart y no FindPlayerStart: este devuelve el sitio de la vez anterior (el corral en el nivel 1).
+		AActor* Start = ChoosePlayerStart(PC);
+		PC->StartSpot = Start;
+		const FVector FallbackLocation = Manager ? Manager->GetActorLocation() : FVector::ZeroVector;
+		const FVector StartLocation = Start ? Start->GetActorLocation() : FallbackLocation + FVector(0.f, 0.f, 100.f);
+		const FRotator StartRotation(0.f, Start ? Start->GetActorRotation().Yaw : (Manager ? Manager->GetActorRotation().Yaw : 0.f), 0.f);
 
 		APawn* Pawn = FinishedPawns.FindRef(TNPS->GetPlayerId()).Get();
+		APawn* CurrentPawn = PC->GetPawn();
 		if (Pawn)
 		{
 			// Mismo camino que una reanimación: visible, con colisión, poseído y con el input restaurado.
 			RestorePossessionAfterRevive(PC, Pawn, StartLocation, true);
 			Pawn->SetActorRotation(StartRotation);
 			PC->ClientSetRotation(StartRotation);
+		}
+		else if (CurrentPawn && !TNPS->IsOnlyASpectator())
+		{
+			// Sigue en juego (en el nivel 1, desde el corral): se le lleva a la salida tal cual.
+			ACharacter* Character = Cast<ACharacter>(CurrentPawn);
+			UCharacterMovementComponent* Move = Character ? Character->GetCharacterMovement() : nullptr;
+			if (Move)
+			{
+				Move->StopMovementImmediately();
+			}
+			CurrentPawn->SetActorLocationAndRotation(StartLocation, StartRotation, false, nullptr, ETeleportType::TeleportPhysics);
+			PC->ClientSetRotation(StartRotation, true);
+			if (Move)
+			{
+				Move->SetMovementMode(MOVE_Falling);
+			}
 		}
 		else
 		{
@@ -267,6 +381,7 @@ void ATN_SurvivalGameMode::AdvanceLevel()
 		}
 	}
 	FinishedPawns.Reset();
+	bLevelLoading = false;
 
 	UE_LOG(LogTortunabo, Log, TEXT("[Survival] ═══ Nivel %d ═══"), CurrentLevel);
 	UpdateRoundProgressAndMaybeFinish();
@@ -279,7 +394,9 @@ void ATN_SurvivalGameMode::FinishSurvival(int32 WinnerId)
 		return;
 	}
 	bMatchOver = true;
+	bLevelLoading = false;
 	GetWorldTimerManager().ClearTimer(LevelTransitionTimerHandle);
+	GetWorldTimerManager().ClearTimer(LevelReadyPollHandle);
 
 	const TArray<FTNSurvivalPlayer> Players = GatherPlayers();
 	const TArray<int32> Ranked = TNSurvivalLogic::RankPlayers(Players, WinnerId);

@@ -50,6 +50,7 @@ necesita espera a que esté lista.
     - Con dos tortugas (o dos ventanas / un cliente): una metida en su caparazón dentro del cazo y la otra que entra andando y arma la catapulta. La bola no debe moverse aunque la otra la roce, y las dos salen lanzadas. En el cliente la bola debe volar igual que en el anfitrión, sin tirones ni saltos al salir. Una bola aturdida (la que deja un golpe de mina o de enemigo) no cuenta. En el log del anfitrión: `[Playa] Catapulta … dispara: N lanzadas (M ya en su bola)`.
   - `Mine`: mina.
   - `Trampoline`: trampolín (4 variantes por semilla).
+    - Caídas en red (#21): `TN.Beach.Drop <metros>[/<metros>...] [veces=1] [cada=3 s] [jugador=anfitrión]` en el anfitrión deja caer esa tortuga sobre lo más alto del trampolín de `TN.Beach.Place` más cercano (si no hay, crea uno de gelatina). Con `p.NetShowCorrections 1` y `NetEmulation.PktLag 120` en el cliente, `TN.Beach.Drop 5/7 10 4 1` hace diez caídas alternas de 5 y 7 m del jugador 1: tiene que rebotar igual en los dos y sin correcciones (solo las del propio teletransporte). La primera espera una vuelta para que el jugador acabe de entrar.
   - `FortressMedium`, `FortressLarge`, `FortressColossal`: fortaleza de arena con premio en la cima (lanzador potenciado, cofre y conchas de 50 y 100). Mira hacia donde miras (lanza hacia allí) y sale lejos: la colosal, a ~54 m. Por ejemplo `TN.Beach.Place FortressColossal 1 0 7`; semillas seguidas cambian catapulta o trampolín y el lado de la espiral.
 - **Lanzadores potenciados** (los de la cima de las fortalezas): `TN.Beach.PlaceBoosted <Catapult|Trampoline> [Tamaño=1] [Semilla]`, delante de ti y mirando hacia donde miras. `TN.Beach.Place clear` también los borra.
 - **Subir a la cima:** `TN.Beach.Fortress.Top [jugador=0]` lleva a esa tortuga a la cima de la fortaleza más cercana, detrás del lanzador y mirando hacia él.
@@ -88,6 +89,7 @@ necesita espera a que esté lista.
 | `TN.Beach.Lizard <huidizo\|generoso\|mordedor>` | Un lagarto de ese carácter 22 m delante de ti, mirándote. El generoso (motas doradas) deja premio al huir; el mordedor (cresta roja) se lanza a morderte. `TN.Beach.Place clear` lo quita. |
 | `TN.Beach.StunNearest [segundos=3]` | Marea al enemigo más cercano a tu tortuga (pajaritos, sin atacar). Los quads, no. Con el ermitaño rodando lo para en seco; con el pulpo agarrando, suelta; las pulgas se dispersan; el tanque echa humo y la antena da vueltas. |
 | `TN.Beach.Worm [jugador=0]` | Un gusano de arena se come ya a esa tortuga. |
+| `TN.Beach.Mine.Blast <jugador> [metros=0] [veces=1] [cada=6] [espera=cada]` | Solo en el servidor. Pone una mina a esos metros detrás de la tortuga del jugador (índice en `PlayerArray` del anfitrión: 1 = el primer cliente) y la hace saltar; lo repite «veces» veces cada «cada» segundos (la primera, a los «espera»), esperando a que la tortuga esté libre. Con 0 m sale en bola; con 2-6 m, empujón. Para la red (#18): con `p.NetShowCorrections 1` en las dos máquinas y `NetEmulation.PktLag 120` en el cliente, el empujón no debe dar ninguna línea `*** Client: Error` ni `*** Server: Error` tras `explota`. Con `-game` (donde `-ExecCmds` no corre), `-TNMineBlast=1_3_6_6_30` en la línea de órdenes del servidor. |
 | `TN.Beach.Enemy.Stats` | Cuántos enemigos hay y cuántos van a ritmo lento por estar lejos. |
 | `TN.Beach.Enemy.Debug 1` | Dibuja radios de visión, oído y patrulla, y estados. |
 
@@ -138,6 +140,7 @@ necesita espera a que esté lista.
 | `TN.Beach.Perf` | Tiempos de la última ronda (reparto, asientos, decorado, actores, botín y fotogramas), decorado local (piezas, instancias, con colisión y con sombra, partes que se mueven, componentes), actores de la playa (con dormancy, siempre relevantes, relevancia media), rebuscables (puntos, usados, actores ahora), objetos, conchas y la lista de red. En la ventana donde se escribe y, en PIE, también el servidor. |
 | `TN.Beach.BuildBudgetMs 6` | Milisegundos por fotograma para montar la ronda (asientos, decorado local y actores). |
 | `TN.Beach.AsyncBuild 0` | Monta la ronda entera en un fotograma, como antes (para comparar); `1` vuelve a por partes. |
+| `TN.Perf.BeachTickWake 0` | Minas, algas y puertas de conchas con el Tick siempre encendido, como antes de #59 (para comparar); con `1` (lo normal) lo apagan sin tortuga, caparazón ni cámara cerca (40 m las minas, ~100 m las algas, ~35 m las puertas) y lo mantienen mientras tienen algo en marcha (mecha, explosión, tortuga enganchada, puerta abierta). En `-game`: `-dpcvars=TN.Perf.BeachTickWake=0`. Actores con Tick en reposo en `TN.Stress control` (Saved/Stress, `ticking_actors`). |
 
 ## Objetos de carrera (tipo Mario Kart)
 
@@ -251,6 +254,8 @@ No existen en la build Shipping.
 | `TN.Rooms.FakeError <locked\|full\|kicked\|other>` | Simula que el servidor no te deja entrar (sala cerrada, llena, expulsado u otro motivo): pantalla de vuelta al menú y el aviso en «Unirse». Sin segunda instancia. |
 | `TN.Rooms.FakeError build` | Simula que tu versión del juego no es la del anfitrión (NetChecksumMismatch): vuelta al menú y el aviso de dos líneas en «Unirse», encima de la ayuda. |
 | `TN.Rooms.FakeError <joinfull\|gone\|noaddress>` | Simula que falla la entrada en la sesión (llena, ya no existe, sin dirección del anfitrión): el aviso sale en el menú de salas sin recargarlo. |
+| `TN.Travel.Fail [/Game/Ruta/Mapa \| motor] [segundos]` | Solo en el anfitrión: pide un `ServerTravel` a un mapa que no existe (por defecto `/Game/Maps/TN_MapaQueNoExiste`), que `CanServerTravel` para sin mandar a los invitados; con `motor`, simula un fallo de `UEngine::OnTravelFailure` (un mapa que existe pero no carga), con la desconexión que pide el motor. Con segundos, lo hace pasado ese tiempo (para que entren invitados en una prueba sin ventana con `-ExecCmds`). En los dos casos, el registro debe dar un solo `Fallo de viaje ... (fallo 1 seguido)` y el anfitrión debe seguir en el lobby (o recargarlo) con su sesión. Antes `net.AllowPIESeamlessTravel 1` si se prueba en PIE el viaje sin cortes. Ver [Salas](Salas.md#viaje-de-mapa-fallido). |
+| `Automation RunTests Tortunabo.Net.TravelFailure` | Prueba automática de lo que se hace ante un viaje fallido (anfitrión, invitado, menú, lobby en pie, segundo fallo) y de si el `ServerTravel` ha arrancado de verdad. |
 
 ## Cooperativo (mapa procedural y lobby)
 

@@ -13,6 +13,7 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "Net/UnrealNetwork.h"
+#include "Player/TN_TurtleMovementComponent.h"
 #include "Player/TortugaCharacter.h"
 #include "Templates/Function.h"
 #include "UObject/Package.h"
@@ -338,6 +339,30 @@ bool ATN_BeachMine::IsArmedAt(double Now) const
 	return RearmSeconds > 0.f && Now >= static_cast<double>(ExplodedAt) + RearmSeconds;
 }
 
+bool ATN_BeachMine::IsTickBusy() const
+{
+	return TNBeachMineTick::IsBusy(TriggeredAt, ExplodedAt, RearmSeconds, TNBeachTrapKit::ServerNow(GetWorld()));
+}
+
+void ATN_BeachMine::OnTickWakeChanged(bool bAwake)
+{
+	// Dormida, el piloto se queda apagado (no encendido a medio destello).
+	if (!bAwake && LedMesh && LedMesh->IsVisible())
+	{
+		LedMesh->SetVisibility(false);
+	}
+}
+
+void ATN_BeachMine::WakeForNews()
+{
+	// Dormida lejos y con noticias del servidor (pisada, explosión o el estado al llegar): un fotograma al menos para
+	// dibujarlo; si no hay nadie cerca ni nada en marcha, el subsistema la vuelve a dormir.
+	if (bHasScreen && !IsActorTickEnabled())
+	{
+		SetActorTickEnabled(true);
+	}
+}
+
 void ATN_BeachMine::ApplySpec()
 {
 	using namespace TNBeachMineDetail;
@@ -478,6 +503,24 @@ void ATN_BeachMine::CheckStep(double Now)
 	}
 }
 
+bool ATN_BeachMine::TriggerForTest()
+{
+	UWorld* World = GetWorld();
+	if (!World || !HasAuthority())
+	{
+		return false;
+	}
+	const double Now = TNBeachTrapKit::ServerNow(World);
+	if (!IsArmedAt(Now))
+	{
+		return false;
+	}
+	TriggeredAt = static_cast<float>(Now);
+	ForceNetUpdate();
+	OnRep_TriggeredAt();
+	return true;
+}
+
 void ATN_BeachMine::Explode(double Now)
 {
 	UWorld* World = GetWorld();
@@ -519,10 +562,11 @@ void ATN_BeachMine::Explode(double Now)
 			const double Near = 1.0 - FMath::Clamp((Dist - Blast) / FMath::Max(1.0, Reach - Blast), 0.0, 1.0);
 			FVector Away = FVector(Rel.X, Rel.Y, 0.0).GetSafeNormal();
 			Away = (Away.IsNearlyZero() ? Back : (Away + Back * 0.6)).GetSafeNormal2D();
-			// Solo el servidor: su dueño lo recibe con el movimiento replicado. Repetirlo en el dueño al llegar un multicast
-			// lo empujaba dos veces, con un salto de retraso y otra corrección (Docs/Analisis/2026-09-29/B_buggy_sync.md).
+			// Lo decide el servidor y, si la mueve un cliente, lo estrena su dueño en su siguiente movimiento y el servidor en ese
+			// mismo (LaunchFromServer): sin corrección (#18). Un LaunchCharacter del servidor le llegaba al dueño como
+			// corrección de 12 a 85 cm; repetirlo en el dueño al llegar un multicast lo empujaba dos veces.
 			const FVector Push = Away * (PushSpeed * (0.35 + 0.65 * Near)) + FVector::UpVector * (PushUp * (0.4 + 0.6 * Near));
-			Turtle->LaunchCharacter(Push, true, true);
+			UTN_TurtleMovementComponent::LaunchFromServer(Turtle, Push);
 			++Shoved;
 		}
 	}
@@ -551,6 +595,7 @@ FVector ATN_BeachMine::GetBackDirection() const
 
 void ATN_BeachMine::OnRep_TriggeredAt()
 {
+	WakeForNews();
 	if (!bHasScreen || TriggeredAt < 0.f)
 	{
 		return;
@@ -568,6 +613,7 @@ void ATN_BeachMine::OnRep_TriggeredAt()
 
 void ATN_BeachMine::OnRep_ExplodedAt()
 {
+	WakeForNews();
 	if (!bHasScreen || ExplodedAt < 0.f)
 	{
 		return;

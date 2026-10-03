@@ -4,6 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "World/ProcMap/TN_ProcMapGenerator.h"
+#include "Core/TN_ProjectMaterials.h"
 #include "World/ProcMap/TN_ProcMapTerrain.h"
 #include "World/ProcMap/TN_ProcWaterActors.h"
 #include "World/ProcMap/TN_ProcMapActorUtils.h"
@@ -1748,13 +1749,9 @@ void ATN_ProcMapGenerator::SlidePool(const TNProcMap::FFeature& F, FVector2D& Ou
 // Materiales y colores
 // ─────────────────────────────────────────────────────────────────────────────
 
-UMaterialInterface* ATN_ProcMapGenerator::ResolveMaterial(UMaterialInterface* Preferred, const TCHAR* FallbackPath) const
+UMaterialInterface* ATN_ProcMapGenerator::ResolveMaterial(UMaterialInterface* Preferred) const
 {
-	if (Preferred)
-	{
-		return Preferred;
-	}
-	return FallbackPath ? LoadObject<UMaterialInterface>(nullptr, FallbackPath) : nullptr;
+	return Preferred ? Preferred : TNMaterials::VertexColor();
 }
 
 void ATN_ProcMapGenerator::ResolveBiomeColors(ETNProcBiome Biome, FLinearColor& Ground, FLinearColor& Path, FLinearColor& Rock, FLinearColor& Bed) const
@@ -1784,7 +1781,7 @@ void ATN_ProcMapGenerator::BuildTerrain()
 
 	LatticeSpacing = Spacing;
 	LatticeOrigin = FVector2D(-Margin, -Margin);
-	const int32 QuadsX = FMath::CeilToInt((Layout.WorldSize + 2.0 * Margin) / Spacing / TileQuads) * TileQuads;
+	const int32 QuadsX = FMath::CeilToInt((Layout.WorldSizeX + 2.0 * Margin) / Spacing / TileQuads) * TileQuads;
 	const int32 QuadsY = FMath::CeilToInt((Layout.WorldSize + Margin + Sea) / Spacing / TileQuads) * TileQuads;
 	LatticeNX = QuadsX + 1;
 	LatticeNY = QuadsY + 1;
@@ -1828,8 +1825,7 @@ void ATN_ProcMapGenerator::BuildTerrain()
 	}
 	const double FinishX = Layout.EndPoint.X;
 
-	UMaterialInterface* TerrainMat = ResolveMaterial(Settings ? Settings->TerrainMaterial.Get() : nullptr,
-		TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
+	UMaterialInterface* TerrainMat = ResolveMaterial(Settings ? Settings->TerrainMaterial.Get() : nullptr);
 	const uint32 ColorSeed = Layout.Params.Seed ^ 0xC0105u;
 
 	const int32 TilesX = QuadsX / TileQuads;
@@ -3472,8 +3468,7 @@ void ATN_ProcMapGenerator::BuildStructures()
 
 	// ── Componentes ─────────────────────────────────────────────────────────
 	// Cada sección se sube sin las piezas que tienen sustituto de arte (TNArt::UploadSection; sin sustitutos, como siempre).
-	UMaterialInterface* BasicMat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
-	UMaterialInterface* VertexMat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
+	UMaterialInterface* VertexMat = TNMaterials::VertexColor();
 
 	StructureMesh = NewObject<UProceduralMeshComponent>(this, NAME_None, RF_Transient);
 	StructureMesh->SetupAttachment(RootComponent);
@@ -3482,15 +3477,14 @@ void ATN_ProcMapGenerator::BuildStructures()
 	StructureMesh->RegisterComponent();
 	if (!Rock.IsEmpty())
 	{
-		TNArt::UploadSection(StructureMesh, 0, Rock, true, (Settings && Settings->RockMaterial) ? Settings->RockMaterial.Get() : (VertexMat ? VertexMat : BasicMat), &ArtLog);
+		TNArt::UploadSection(StructureMesh, 0, Rock, true, (Settings && Settings->RockMaterial) ? Settings->RockMaterial.Get() : VertexMat, &ArtLog);
 	}
 	if (!Wood.IsEmpty())
 	{
-		TNArt::UploadSection(StructureMesh, 1, Wood, true, (Settings && Settings->WoodMaterial) ? Settings->WoodMaterial.Get() : (VertexMat ? VertexMat : BasicMat), &ArtLog);
+		TNArt::UploadSection(StructureMesh, 1, Wood, true, (Settings && Settings->WoodMaterial) ? Settings->WoodMaterial.Get() : VertexMat, &ArtLog);
 	}
 	// Formaciones temáticas con su color de vértice: las del camino con colisión, los hitos lejanos sin ella.
-	UMaterialInterface* PaintMat = ResolveMaterial(Settings ? Settings->TerrainMaterial.Get() : nullptr,
-		TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
+	UMaterialInterface* PaintMat = ResolveMaterial(Settings ? Settings->TerrainMaterial.Get() : nullptr);
 	if (!Painted.IsEmpty())
 	{
 		TNArt::UploadSection(StructureMesh, 2, Painted, true, PaintMat, &ArtLog);
@@ -3507,7 +3501,7 @@ void ATN_ProcMapGenerator::BuildStructures()
 	DecorMesh->RegisterComponent();
 	if (!Lava.IsEmpty())
 	{
-		TNArt::UploadSection(DecorMesh, 0, Lava, false, (Settings && Settings->LavaMaterial) ? Settings->LavaMaterial.Get() : (VertexMat ? VertexMat : BasicMat), &ArtLog);
+		TNArt::UploadSection(DecorMesh, 0, Lava, false, (Settings && Settings->LavaMaterial) ? Settings->LavaMaterial.Get() : VertexMat, &ArtLog);
 	}
 	if (!SlideWater.IsEmpty())
 	{
@@ -3517,20 +3511,20 @@ void ATN_ProcMapGenerator::BuildStructures()
 		if (!SlideMat)
 		{
 			SlideMat = Settings && Settings->SlideWaterMaterial ? Settings->SlideWaterMaterial.Get()
-				: (Settings && Settings->WaterMaterial ? Settings->WaterMaterial.Get() : (VertexMat ? VertexMat : BasicMat));
+				: (Settings && Settings->WaterMaterial ? Settings->WaterMaterial.Get() : VertexMat);
 		}
 		TNArt::UploadSection(DecorMesh, 1, SlideWater, false, SlideMat, &ArtLog);
 	}
 	if (!Foliage.IsEmpty())
 	{
-		TNArt::UploadSection(DecorMesh, 2, Foliage, false, VertexMat ? VertexMat : BasicMat, &ArtLog);
+		TNArt::UploadSection(DecorMesh, 2, Foliage, false, VertexMat, &ArtLog);
 	}
 	// Lo que brilla en las cuevas (setas, cristales, llamas, ojos de la estatua, cielo del lucernario):
 	// emisivo del color del vértice; sin el material, el de depuración (también sin iluminar).
 	if (!Glow.IsEmpty())
 	{
 		UMaterialInterface* GlowMat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/ProcMap/Materials/M_ProcGlow.M_ProcGlow"));
-		TNArt::UploadSection(DecorMesh, 3, Glow, false, GlowMat ? GlowMat : (VertexMat ? VertexMat : BasicMat), &ArtLog);
+		TNArt::UploadSection(DecorMesh, 3, Glow, false, GlowMat ? GlowMat : VertexMat, &ArtLog);
 	}
 	// Haces de luz de los lucernarios: translúcido con la opacidad en el alfa del vértice.
 	if (!Beam.IsEmpty())
@@ -3546,15 +3540,16 @@ void ATN_ProcMapGenerator::BuildStructures()
 
 	// ── Límites invisibles del mapa (la costa norte queda abierta hasta el mar) ─
 	const double World = Layout.WorldSize;
+	const double WorldX = Layout.WorldSizeX;
 	const double Tall = 40000.0;
 	double CoastMax = 0.0;
-	for (int32 k = 0; k <= 40; ++k) { CoastMax = FMath::Max(CoastMax, Layout.CoastY(World * k / 40.0)); }
+	for (int32 k = 0; k <= 40; ++k) { CoastMax = FMath::Max(CoastMax, Layout.CoastY(WorldX * k / 40.0)); }
 	struct FWallDef { FVector Center; FVector Extent; };
 	const FWallDef Walls[4] = {
 		{ FVector(-300.0, World * 0.5, 0.0), FVector(300.0, World, Tall) },
-		{ FVector(World + 300.0, World * 0.5, 0.0), FVector(300.0, World, Tall) },
-		{ FVector(World * 0.5, -300.0, 0.0), FVector(World, 300.0, Tall) },
-		{ FVector(World * 0.5, CoastMax + 16000.0, 0.0), FVector(World, 300.0, Tall) } };
+		{ FVector(WorldX + 300.0, World * 0.5, 0.0), FVector(300.0, World, Tall) },
+		{ FVector(WorldX * 0.5, -300.0, 0.0), FVector(WorldX, 300.0, Tall) },
+		{ FVector(WorldX * 0.5, CoastMax + 16000.0, 0.0), FVector(WorldX, 300.0, Tall) } };
 	for (const FWallDef& Def : Walls)
 	{
 		UBoxComponent* Wall = NewObject<UBoxComponent>(this, NAME_None, RF_Transient);

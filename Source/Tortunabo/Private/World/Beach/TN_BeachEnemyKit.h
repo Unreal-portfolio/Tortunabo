@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Core/TN_ProjectMaterials.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -28,7 +29,7 @@ namespace TNBeachKit
 {
 	using TNProcMesh::FTNProcMeshBuffers;
 
-	/** Material opaco de color de vértice (el de la vegetación y la fauna; si no está, el de los cosméticos o el del motor). */
+	/** Material opaco de color de vértice (el de la vegetación y la fauna; si no está, el de los cosméticos). */
 	inline UMaterialInterface* SolidMaterial()
 	{
 		static TWeakObjectPtr<UMaterialInterface> Cached;
@@ -37,11 +38,7 @@ namespace TNBeachKit
 			UMaterialInterface* Mat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/ProcMap/Materials/M_ProcFoliage.M_ProcFoliage"), nullptr, LOAD_NoWarn);
 			if (!Mat)
 			{
-				Mat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Cosmetics/Materials/M_CosmeticVertexColor.M_CosmeticVertexColor"), nullptr, LOAD_NoWarn);
-			}
-			if (!Mat)
-			{
-				Mat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
+				Mat = TNMaterials::VertexColor();
 			}
 			Cached = Mat;
 		}
