@@ -32,12 +32,15 @@ RADIUS_SPAN_M = 8.0
 
 
 class MeshSampler:
-    """Cota de la cara superior de la malla de una variante en puntos (X, Y) en metros (NaN fuera de la malla)."""
+    """Cota de la cara superior de la malla de una variante en puntos (X, Y) en metros (NaN fuera de la malla).
+    Solo los trozos con colisión: los de fondo ("collision": false) se ven pero no se pisan."""
 
     def __init__(self, variant_dir: Path, manifest: dict | None = None):
         self.manifest = manifest or json.loads((variant_dir / "manifest.json").read_text(encoding="utf-8"))
         self.cells = []
         for cell in self.manifest["cells"]:
+            if not cell.get("collision", True):
+                continue
             chunk = read_chunk(variant_dir / cell["file"])
             cx, cy = (v / UU_PER_M for v in cell["center_uu"])
             v = chunk["vertices"].astype(np.float64) / UU_PER_M + np.array([cx, cy, 0.0])

@@ -10,6 +10,8 @@ Manifest (además de lo común de write_map): mode "rally", closed false, road_u
 road_width_m, checkpoints_uu ([x, y, z, yaw], yaw = rumbo de la marcha en grados de Unreal) entre start_uu (línea
 de salida, tras la recta de parrilla) y end_uu (meta, antes de la escapatoria), markers_uu (parrilla e hitos),
 kill_boxes_uu (el agua de todo el volumen), geo (proyección, escala y exageración) y checks (el validador).
+Cada trozo de fondo (fuera del corredor, terrain_geo/rally_spain.py:BackgroundModel) lleva "collision": false y
+"background": true: el cargador lo crea sin colisión y quien se sale del corredor cae a la caja de muerte.
 """
 
 from __future__ import annotations
@@ -17,7 +19,10 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import time
+from concurrent.futures import ProcessPoolExecutor
+from dataclasses import replace
 
 import numpy as np
 from PIL import Image
@@ -35,6 +40,9 @@ CHECKPOINT_EVERY_M = 200.0
 DECIMATE_ERROR_M = 0.08            # trozos con la calzada o su talud
 DECIMATE_FAR_M = 0.25              # trozos de fondo (a mas de NEAR_M del eje)
 NEAR_M = 20.0
+DECIMATE_BACKGROUND_M = 0.6        # trozos de fondo (sin colisión): solo se ven, de lejos
+SEABED_CLIP_M = WATER_M - 0.5      # el fondo no lleva lecho marino: bajo el agua translúcida se veían sus cuadros
+TRIANGLE_BUDGET = 1_200_000        # Docs/Rally_E01B_y_Biplaza.md §2.2: corredor + fondo
 
 # Criterios de aceptación (los mismos que comprueba el test).
 LIMITS = {"road_m": (1800.0, 2600.0), "sustained_grade_deg": 12.0, "short_grade_deg": 20.0, "max_step_m": 0.4,
@@ -65,9 +73,9 @@ def uu(p, z: float, yaw: float | None = None) -> list[float]:
 
 
 def render_preview(out, top: np.ndarray, frame: rs.Frame, built: set, road: np.ndarray, cps: list[int]) -> None:
-    """Vista cenital (Norte arriba) del rectángulo del mapa: relieve sombreado, agua, trozos no generados en gris
+    """Vista cenital (Norte arriba) de la rejilla cuadrada: relieve sombreado, agua, trozos no generados en gris
     oscuro; preview_debug.png añade la calzada (rojo) y los checkpoints (amarillo)."""
-    h, w = frame.rows * 100 + 1, frame.cols * 100 + 1
+    h = w = frame.grid * 100 + 1
     t = top[:h, :w]
     gx, gy = np.gradient(t)
     light = np.clip((gx * 0.5 - gy * 0.35 + 1.0) / np.sqrt(gx * gx + gy * gy + 1.0) * 0.8, 0.0, 1.0)
@@ -105,6 +113,53 @@ def verdict(report: dict, exaggeration: float) -> dict[str, bool]:
             "exaggeration": LIMITS["exaggeration"][0] <= exaggeration <= LIMITS["exaggeration"][1]}
 
 
+def _decimate_one(args):
+    vertices, normals, colors, triangles, error_m = args
+    from terrain_vol.decimate import decimate_mesh
+    return decimate_mesh(vertices, normals, colors, triangles, error_m)
+
+
+def drop_seabed(chunk):
+    """Quita los triángulos con los tres vértices por debajo de SEABED_CLIP_M y los vértices que quedan sueltos."""
+    tris = chunk.triangles.astype(np.int64)
+    keep = (chunk.vertices[tris][:, :, 2] >= SEABED_CLIP_M * UU_PER_M).any(axis=1)
+    if keep.all():
+        return chunk
+    tris = tris[keep]
+    used = np.unique(tris)
+    remap = np.full(len(chunk.vertices), -1, dtype=np.int64)
+    remap[used] = np.arange(len(used))
+    return replace(chunk, vertices=chunk.vertices[used], normals=chunk.normals[used], colors=chunk.colors[used],
+                   triangles=remap[tris].astype(np.uint32))
+
+
+def build_background(model: rs.RallySpainModel, corridor, decimate: bool) -> dict:
+    """Trozos de fondo: los de tierra de la rejilla cuadrada fuera del corredor, decimados a DECIMATE_BACKGROUND_M
+    (en paralelo) y sin lecho marino. Se sueltan las celdas pisables y los campos: el fondo no se valida ni se pisa."""
+    background = rs.BackgroundModel(model)
+    chunks = {}
+    for cell in background.cells(corridor):
+        chunk = build_chunk(background, *cell)
+        chunks[cell] = replace(chunk, standable=np.zeros((0, 0, 0), dtype=bool), fields=None)
+    if not decimate:
+        return {k: drop_seabed(c) for k, c in chunks.items()}
+    keys = sorted(chunks)
+    jobs = [(chunks[k].vertices, chunks[k].normals, chunks[k].colors, chunks[k].triangles, DECIMATE_BACKGROUND_M)
+            for k in keys]
+    with ProcessPoolExecutor(max_workers=max(1, min(8, (os.cpu_count() or 2) // 2))) as pool:
+        results = list(pool.map(_decimate_one, jobs))
+    return {k: drop_seabed(replace(chunks[k], vertices=v, normals=n, colors=c, triangles=t))
+            for k, (v, n, c, t) in zip(keys, results)}
+
+
+def mark_background(manifest: dict, background: set) -> None:
+    """Los trozos de fondo, sin colisión (el cargador lee "collision")."""
+    for cell in manifest["cells"]:
+        if (cell["col"], cell["row"]) in background:
+            cell["collision"] = False
+            cell["background"] = True
+
+
 def build(decimate: bool = True) -> dict:
     t0 = time.time()
     frame = rs.make_frame()
@@ -116,6 +171,10 @@ def build(decimate: bool = True) -> dict:
         near = {c: m for c, m in chunks.items() if gaps[c] <= NEAR_M}
         far = {c: m for c, m in chunks.items() if gaps[c] > NEAR_M}
         chunks = {**decimate_chunks(near, DECIMATE_ERROR_M), **decimate_chunks(far, DECIMATE_FAR_M)}
+    background = build_background(model, gaps, decimate)
+    corridor_tris = sum(len(m.triangles) for m in chunks.values())
+    background_tris = sum(len(m.triangles) for m in background.values())
+    chunks = {**chunks, **background}
     grid = frame.grid
     top = global_top(chunks, grid=grid)
     road = model.road
@@ -134,7 +193,9 @@ def build(decimate: bool = True) -> dict:
                       "bends": [list(map(list, b)) for b in rs.BENDS], "road_w_m": rs.ROAD_W_M,
                       "shoulder_m": rs.SHOULDER_M, "max_grade_deg": rs.MAX_GRADE_DEG, "band_m": rs.BAND_M,
                       "decimate_m": [DECIMATE_ERROR_M, DECIMATE_FAR_M] if decimate else 0.0,
-                      "near_m": NEAR_M},
+                      "near_m": NEAR_M, "background_decimate_m": DECIMATE_BACKGROUND_M if decimate else 0.0},
+        "triangles": {"corridor": corridor_tris, "background": background_tris,
+                      "total": corridor_tris + background_tris, "budget": TRIANGLE_BUDGET},
         "geo": {"source": "ES_dem.png (E01)", "projection": "merc", "center_lonlat": list(frame.projection.center),
                 "ground_m_per_game_m": round(frame.projection.ground_m_per_game_m(), 1),
                 "exaggeration": round(exaggeration, 3), "k": model.k, "rows": frame.rows, "cols": frame.cols},
@@ -152,17 +213,20 @@ def build(decimate: bool = True) -> dict:
               extra_manifest=extra, grid=grid)
     write_credits(out, SPAIN_REGION.credits(("Trazado de Rally E01B: Scripts/gen_terrain_rally_spain.py.",)))
     render_preview(out, top, frame, set(chunks), road, cps)
+    data = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+    mark_background(data, set(background))
+    (out / "manifest.json").write_text(json.dumps(data, indent=1), encoding="utf-8")
     report = corridor_report(out)
     checks = verdict(report, exaggeration)
     ok = all(checks.values())
-    data = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
     data["checks"] = {"corridor": report, "verdict": checks}
     data["recorrible"] = ok
     (out / "manifest.json").write_text(json.dumps(data, indent=1), encoding="utf-8")
     size_mb = dir_size_mb(out)
     update_index(rs.NAME, rs.SEED, ok, size_mb, rs.DESCRIPTION, {"mode": "rally"})
     chunk_bytes = sum(f.stat().st_size for f in (out / "Chunks").iterdir())
-    return {"ok": ok, "time_s": round(time.time() - t0, 1), "cells": len(chunks), "size_mb": size_mb,
+    return {"ok": ok, "time_s": round(time.time() - t0, 1), "cells": len(chunks), "background_cells": len(background),
+            "triangles": extra["triangles"], "size_mb": size_mb,
             "chunk_bytes": chunk_bytes, "exaggeration": round(exaggeration, 2), "report": report, "checks": checks}
 
 

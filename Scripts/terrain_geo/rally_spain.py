@@ -8,8 +8,10 @@ de Scripts/terrain_geo/data/ES_dem.png (el mismo MDE que E01) con otra escala y 
   - Tierra = cota real > 0 (Francia es tierra: el Pirineo sigue al norte); el mar solo aparece en Málaga.
   - Calzada tallada: ROAD_W_M de firme más arcenes, perfil suavizado con pendiente <= MAX_GRADE_DEG, desmonte y
     terraplén a TALUD_DEG desde el borde del arcén. Sin túneles ni puentes en esta versión.
-  - Solo se generan los trozos de 100 m a menos de BAND_M del eje: el resto del volumen queda vacío (caer fuera
-    del corredor es caer al agua de la caja de muerte).
+  - Corredor: los trozos de 100 m a menos de BAND_M del eje, con colisión. Fondo (BackgroundModel): el resto de
+    trozos de tierra de la rejilla cuadrada (también al este del rectángulo, hasta el Mediterráneo), mismo relieve
+    y misma exageración, decimados más y sin colisión: solo se ven; salirse del corredor es caer al agua de la
+    caja de muerte.
 
 Coordenadas del mundo como terrain_vol/layout.py: X = Norte, Y = Este, trozo (col, fila) centrado en
 (fila * 100, col * 100). El volumen es un rectángulo de ROWS x COLS trozos dentro de una rejilla cuadrada de
@@ -50,9 +52,11 @@ GRID_M = 60.0                    # recta de parrilla (2 x 4 buggies) antes de la
 RUNOFF_M = 30.0                  # escapatoria tras la meta
 MARGIN_M = 110.0
 LAND_BASE_M = 0.45
+LAND_CELL_M = WATER_M + 0.2      # un trozo de fondo se genera si alguna muestra queda por encima de esta cota
+LAND_PROBE_M = 2.0               # paso de las muestras con las que se decide si un trozo de fondo tiene tierra
 DESCRIPTION = ("España para el Rally (punto a punto): del Pirineo aragonés a la playa de Málaga por el Ebro, la "
                "Meseta, el Tajo y Despeñaperros, con el relieve real (1 m de juego = 0,4 km, exageración 4,5x); "
-               "calzada tallada de 14 m y fuera del corredor, el vacío.")
+               "calzada tallada de 14 m y, fuera del corredor, el resto de España de fondo (sin colisión).")
 
 # (nombre, lat, lon) de los hitos, en el orden de la marcha.
 HITOS = (
@@ -273,3 +277,54 @@ class RallySpainModel(HeightfieldModel):
                 if gap <= BAND_M:
                     out[(col, row)] = gap
         return out
+
+
+# ── Fondo ────────────────────────────────────────────────────────────────────────
+class BackgroundModel(HeightfieldModel):
+    """Relieve de los trozos de fondo: el del corredor (RallySpainModel) dentro del rectángulo del marco y, al este,
+    una franja hasta completar la rejilla cuadrada con el mismo MDE, ruido, exageración y talla. Hasta el borde este
+    del marco (incluido) la cota es exactamente la del modelo del corredor: las costuras con sus trozos casan."""
+
+    def __init__(self, model: RallySpainModel):
+        self.model, self.k, self.z_range = model, model.k, model.z_range
+        self.trail_color, self.trail_strength = model.trail_color, model.trail_strength
+        frame = model.frame
+        self.y_edge = MAP_MIN_M + frame.cols * CELL_M
+        extra = frame.grid - frame.cols
+        self.strip = self._strip(frame, extra) if extra > 0 else None
+        super().__init__(model.height)
+
+    def _strip(self, frame: Frame, extra: int) -> np.ndarray:
+        X = frame.axis(frame.rows)[:, None]
+        Y = (self.y_edge + (np.arange(int(round(extra * CELL_M / RASTER_PX_M))) + 0.5) * RASTER_PX_M)[None, :]
+        Xg, Yg = np.broadcast_arrays(X, Y)
+        dem = sample_dem(load_dem(), frame, Xg, Yg)
+        # Mismo generador aleatorio que RallySpainModel: el ruido de detalle es una función del punto (X, Y).
+        natural = self.model._natural(dem, Xg, Yg, np.random.default_rng(self.model.seed))
+        height, _ = self.model._carve(natural, Xg, Yg)
+        return height
+
+    def ground_height(self, X: np.ndarray, Y: np.ndarray) -> np.ndarray:
+        inner = self.model.ground_height(X, Y)
+        if self.strip is None:
+            return inner
+        coords = [(np.asarray(X) - MAP_MIN_M) / RASTER_PX_M - 0.5, (np.asarray(Y) - self.y_edge) / RASTER_PX_M - 0.5]
+        outer = ndimage.map_coordinates(self.strip, coords, order=1, mode="nearest")
+        return np.where(np.asarray(Y) <= self.y_edge, inner, outer)
+
+    def trail_mask(self, x: np.ndarray, y: np.ndarray) -> np.ndarray:
+        return np.where(np.asarray(y) <= self.y_edge, self.model.trail_mask(x, y), 0.0)
+
+    def has_land(self, col: int, row: int) -> bool:
+        """Alguna muestra del trozo (cada LAND_PROBE_M) queda sobre el agua."""
+        n = int(round(CELL_M / LAND_PROBE_M)) + 1
+        x = row * CELL_M - CELL_M / 2.0 + LAND_PROBE_M * np.arange(n)
+        y = col * CELL_M - CELL_M / 2.0 + LAND_PROBE_M * np.arange(n)
+        X, Y = np.meshgrid(x, y, indexing="ij")
+        return bool((self.ground_height(X, Y) > LAND_CELL_M).any())
+
+    def cells(self, corridor) -> list[tuple[int, int]]:
+        """Trozos (col, fila) de la rejilla cuadrada con tierra que no son del corredor."""
+        grid = self.model.frame.grid
+        return [(col, row) for row in range(grid) for col in range(grid)
+                if (col, row) not in corridor and self.has_land(col, row)]

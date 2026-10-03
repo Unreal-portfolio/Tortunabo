@@ -29,9 +29,10 @@ E01 = VARIANTS / "E01_espana"
 pytestmark = pytest.mark.skipif(not (OUT / "manifest.json").exists(), reason=f"{NAME} sin generar")
 
 
-def chunk_bytes(variant: Path) -> int:
+def chunk_bytes(variant: Path, collision_only: bool = False) -> int:
     manifest = json.loads((variant / "manifest.json").read_text(encoding="utf-8"))
-    return sum((variant / c["file"]).stat().st_size for c in manifest["cells"])
+    return sum((variant / c["file"]).stat().st_size for c in manifest["cells"]
+               if not collision_only or c.get("collision", True))
 
 
 @pytest.fixture(scope="module")
@@ -72,7 +73,10 @@ def test_agua_y_cajas_de_muerte_como_e01(manifest):
 
 
 def test_trozos_no_pesan_mas_que_e01():
-    assert chunk_bytes(OUT) <= chunk_bytes(E01)
+    """El corredor (lo que se pisa y se cocina como colisión) no pesa más que E01; con el fondo sin colisión de
+    #532 (el resto de España a la vista), no más del doble."""
+    assert chunk_bytes(OUT, collision_only=True) <= chunk_bytes(E01)
+    assert chunk_bytes(OUT) <= 2 * chunk_bytes(E01)
 
 
 def test_exageracion_reducida_y_relieve_de_pirineo_a_playa(manifest, sampler):
@@ -138,3 +142,75 @@ def test_salida_y_meta_en_los_extremos(manifest, report):
     start, end = np.array(manifest["start_uu"][:2]) / UU_PER_M, np.array(manifest["end_uu"][:2]) / UU_PER_M
     assert np.hypot(*(start - road[0, :2])) < np.hypot(*(start - road[-1, :2]))
     assert math.hypot(*(end - road[-1, :2])) < math.hypot(*(end - road[0, :2]))
+
+
+# ── Fondo (#532) ─────────────────────────────────────────────────────────────────
+CLEAR_LAND_M = 50.0          # cota real (m) que seguro da tierra sobre el agua (el borde de la costa se difumina)
+PROBE_M = 4.0
+
+
+def land_cells(grid: int) -> set[tuple[int, int]]:
+    """Trozos (col, fila) de la rejilla cuadrada con alguna muestra (cada PROBE_M) de cota real > CLEAR_LAND_M,
+    leída directamente del MDE con la proyección de la variante (sin pasar por el generador)."""
+    from terrain_geo import rally_spain as rs
+    from terrain_geo.fetch_spain import load_dem
+    frame, dem = rs.make_frame(), load_dem()
+    n = int(round(100.0 / PROBE_M)) + 1
+    out = set()
+    for row in range(grid):
+        for col in range(grid):
+            x = row * 100.0 - 50.0 + PROBE_M * np.arange(n)
+            y = col * 100.0 - 50.0 + PROBE_M * np.arange(n)
+            X, Y = np.meshgrid(x, y, indexing="ij")
+            if (rs.sample_dem(dem, frame, X, Y) > CLEAR_LAND_M).any():
+                out.add((col, row))
+    return out
+
+
+def missing_land(manifest: dict, land: set[tuple[int, int]]) -> set[tuple[int, int]]:
+    return land - {(c["col"], c["row"]) for c in manifest["cells"]}
+
+
+@pytest.fixture(scope="module")
+def land(manifest) -> set[tuple[int, int]]:
+    return land_cells(manifest["grid"])
+
+
+def test_todas_las_celdas_de_tierra_tienen_trozo(manifest, land):
+    assert len(land) > 200, "la rejilla cuadrada es casi toda tierra (Pirineo a Málaga, Meseta a Valencia)"
+    assert missing_land(manifest, land) == set()
+
+
+def test_detecta_una_celda_de_tierra_sin_trozo(manifest, land):
+    """Caso negativo: sin uno de los trozos de tierra, el control lo encuentra."""
+    cell = next(iter(sorted(land)))
+    cut = {**manifest, "cells": [c for c in manifest["cells"] if (c["col"], c["row"]) != cell]}
+    assert missing_land(cut, land) == {cell}
+
+
+def test_fondo_sin_colision_y_corredor_con_ella(manifest):
+    road = np.asarray(manifest["road_uu"])[:, :2] / UU_PER_M
+    on_road = {(int(round(y / 100.0)), int(round(x / 100.0))) for x, y in road}
+    cells = {(c["col"], c["row"]): c for c in manifest["cells"]}
+    assert on_road <= set(cells)
+    assert all(cells[k].get("collision", True) for k in on_road), "la calzada pisa trozos con colisión"
+    background = [c for c in manifest["cells"] if c.get("background")]
+    assert background and all(c["collision"] is False for c in background)
+    assert all(c.get("collision", True) for c in manifest["cells"] if not c.get("background"))
+
+
+def test_presupuesto_de_triangulos(manifest):
+    total = sum(c["triangles"] for c in manifest["cells"])
+    tris = manifest["triangles"]
+    assert total == tris["total"] == tris["corridor"] + tris["background"]
+    assert total <= 1_200_000
+
+
+def test_fondo_sin_lecho_marino(manifest):
+    """Ningún triángulo de fondo queda entero bajo el agua (sus cuadros se veían a través del agua translúcida)."""
+    from terrain_vol.export import read_chunk
+    clip_uu = (WATER_M - 0.5) * UU_PER_M
+    for cell in (c for c in manifest["cells"] if c.get("background")):
+        chunk = read_chunk(OUT / cell["file"])
+        z = chunk["vertices"][chunk["triangles"].astype(np.int64)][:, :, 2]
+        assert len(z) > 0 and (z.max(axis=1) >= clip_uu - 1.0).all(), cell["name"]

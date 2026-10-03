@@ -56,6 +56,246 @@
    "instances": 0
   },
   {
+   "name": "M_E01B_espana_rally_r3c0",
+   "col": 0,
+   "row": 3,
+   "file": "Chunks/r3c0.bin",
+   "center_uu": [
+    30000.0,
+    0.0
+   ],
+   "vertices": 712,
+   "triangles": 966,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r4c0",
+   "col": 0,
+   "row": 4,
+   "file": "Chunks/r4c0.bin",
+   "center_uu": [
+    40000.0,
+    0.0
+   ],
+   "vertices": 993,
+   "triangles": 1484,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r5c0",
+   "col": 0,
+   "row": 5,
+   "file": "Chunks/r5c0.bin",
+   "center_uu": [
+    50000.0,
+    0.0
+   ],
+   "vertices": 805,
+   "triangles": 1118,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r6c0",
+   "col": 0,
+   "row": 6,
+   "file": "Chunks/r6c0.bin",
+   "center_uu": [
+    60000.0,
+    0.0
+   ],
+   "vertices": 945,
+   "triangles": 1374,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r7c0",
+   "col": 0,
+   "row": 7,
+   "file": "Chunks/r7c0.bin",
+   "center_uu": [
+    70000.0,
+    0.0
+   ],
+   "vertices": 1050,
+   "triangles": 1552,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r8c0",
+   "col": 0,
+   "row": 8,
+   "file": "Chunks/r8c0.bin",
+   "center_uu": [
+    80000.0,
+    0.0
+   ],
+   "vertices": 1161,
+   "triangles": 1740,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r9c0",
+   "col": 0,
+   "row": 9,
+   "file": "Chunks/r9c0.bin",
+   "center_uu": [
+    90000.0,
+    0.0
+   ],
+   "vertices": 880,
+   "triangles": 1248,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r10c0",
+   "col": 0,
+   "row": 10,
+   "file": "Chunks/r10c0.bin",
+   "center_uu": [
+    100000.0,
+    0.0
+   ],
+   "vertices": 1029,
+   "triangles": 1472,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r11c0",
+   "col": 0,
+   "row": 11,
+   "file": "Chunks/r11c0.bin",
+   "center_uu": [
+    110000.0,
+    0.0
+   ],
+   "vertices": 1277,
+   "triangles": 1904,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r12c0",
+   "col": 0,
+   "row": 12,
+   "file": "Chunks/r12c0.bin",
+   "center_uu": [
+    120000.0,
+    0.0
+   ],
+   "vertices": 621,
+   "triangles": 798,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r13c0",
+   "col": 0,
+   "row": 13,
+   "file": "Chunks/r13c0.bin",
+   "center_uu": [
+    130000.0,
+    0.0
+   ],
+   "vertices": 532,
+   "triangles": 636,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r14c0",
+   "col": 0,
+   "row": 14,
+   "file": "Chunks/r14c0.bin",
+   "center_uu": [
+    140000.0,
+    0.0
+   ],
+   "vertices": 653,
+   "triangles": 844,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r15c0",
+   "col": 0,
+   "row": 15,
+   "file": "Chunks/r15c0.bin",
+   "center_uu": [
+    150000.0,
+    0.0
+   ],
+   "vertices": 561,
+   "triangles": 686,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r16c0",
+   "col": 0,
+   "row": 16,
+   "file": "Chunks/r16c0.bin",
+   "center_uu": [
+    160000.0,
+    0.0
+   ],
+   "vertices": 519,
+   "triangles": 622,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r17c0",
+   "col": 0,
+   "row": 17,
+   "file": "Chunks/r17c0.bin",
+   "center_uu": [
+    170000.0,
+    0.0
+   ],
+   "vertices": 642,
+   "triangles": 842,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r18c0",
+   "col": 0,
+   "row": 18,
+   "file": "Chunks/r18c0.bin",
+   "center_uu": [
+    180000.0,
+    0.0
+   ],
+   "vertices": 1797,
+   "triangles": 2924,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
    "name": "M_E01B_espana_rally_r0c1",
    "col": 1,
    "row": 0,
@@ -121,6 +361,21 @@
    "instances": 0
   },
   {
+   "name": "M_E01B_espana_rally_r5c1",
+   "col": 1,
+   "row": 5,
+   "file": "Chunks/r5c1.bin",
+   "center_uu": [
+    50000.0,
+    10000.0
+   ],
+   "vertices": 1161,
+   "triangles": 1780,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
    "name": "M_E01B_espana_rally_r6c1",
    "col": 1,
    "row": 6,
@@ -184,6 +439,126 @@
    "vertices": 895,
    "triangles": 1318,
    "instances": 0
+  },
+  {
+   "name": "M_E01B_espana_rally_r11c1",
+   "col": 1,
+   "row": 11,
+   "file": "Chunks/r11c1.bin",
+   "center_uu": [
+    110000.0,
+    10000.0
+   ],
+   "vertices": 1097,
+   "triangles": 1668,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r12c1",
+   "col": 1,
+   "row": 12,
+   "file": "Chunks/r12c1.bin",
+   "center_uu": [
+    120000.0,
+    10000.0
+   ],
+   "vertices": 827,
+   "triangles": 1154,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r13c1",
+   "col": 1,
+   "row": 13,
+   "file": "Chunks/r13c1.bin",
+   "center_uu": [
+    130000.0,
+    10000.0
+   ],
+   "vertices": 558,
+   "triangles": 680,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r14c1",
+   "col": 1,
+   "row": 14,
+   "file": "Chunks/r14c1.bin",
+   "center_uu": [
+    140000.0,
+    10000.0
+   ],
+   "vertices": 711,
+   "triangles": 960,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r15c1",
+   "col": 1,
+   "row": 15,
+   "file": "Chunks/r15c1.bin",
+   "center_uu": [
+    150000.0,
+    10000.0
+   ],
+   "vertices": 764,
+   "triangles": 1064,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r16c1",
+   "col": 1,
+   "row": 16,
+   "file": "Chunks/r16c1.bin",
+   "center_uu": [
+    160000.0,
+    10000.0
+   ],
+   "vertices": 635,
+   "triangles": 824,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r17c1",
+   "col": 1,
+   "row": 17,
+   "file": "Chunks/r17c1.bin",
+   "center_uu": [
+    170000.0,
+    10000.0
+   ],
+   "vertices": 719,
+   "triangles": 974,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r18c1",
+   "col": 1,
+   "row": 18,
+   "file": "Chunks/r18c1.bin",
+   "center_uu": [
+    180000.0,
+    10000.0
+   ],
+   "vertices": 1444,
+   "triangles": 2226,
+   "instances": 0,
+   "collision": false,
+   "background": true
   },
   {
    "name": "M_E01B_espana_rally_r0c2",
@@ -342,6 +717,126 @@
    "instances": 0
   },
   {
+   "name": "M_E01B_espana_rally_r12c2",
+   "col": 2,
+   "row": 12,
+   "file": "Chunks/r12c2.bin",
+   "center_uu": [
+    120000.0,
+    20000.0
+   ],
+   "vertices": 1260,
+   "triangles": 1938,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r13c2",
+   "col": 2,
+   "row": 13,
+   "file": "Chunks/r13c2.bin",
+   "center_uu": [
+    130000.0,
+    20000.0
+   ],
+   "vertices": 839,
+   "triangles": 1144,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r14c2",
+   "col": 2,
+   "row": 14,
+   "file": "Chunks/r14c2.bin",
+   "center_uu": [
+    140000.0,
+    20000.0
+   ],
+   "vertices": 734,
+   "triangles": 1008,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r15c2",
+   "col": 2,
+   "row": 15,
+   "file": "Chunks/r15c2.bin",
+   "center_uu": [
+    150000.0,
+    20000.0
+   ],
+   "vertices": 664,
+   "triangles": 874,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r16c2",
+   "col": 2,
+   "row": 16,
+   "file": "Chunks/r16c2.bin",
+   "center_uu": [
+    160000.0,
+    20000.0
+   ],
+   "vertices": 712,
+   "triangles": 970,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r17c2",
+   "col": 2,
+   "row": 17,
+   "file": "Chunks/r17c2.bin",
+   "center_uu": [
+    170000.0,
+    20000.0
+   ],
+   "vertices": 837,
+   "triangles": 1188,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r18c2",
+   "col": 2,
+   "row": 18,
+   "file": "Chunks/r18c2.bin",
+   "center_uu": [
+    180000.0,
+    20000.0
+   ],
+   "vertices": 1304,
+   "triangles": 1984,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r1c3",
+   "col": 3,
+   "row": 1,
+   "file": "Chunks/r1c3.bin",
+   "center_uu": [
+    10000.0,
+    30000.0
+   ],
+   "vertices": 1941,
+   "triangles": 3325,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
    "name": "M_E01B_espana_rally_r2c3",
    "col": 3,
    "row": 2,
@@ -485,6 +980,141 @@
    "instances": 0
   },
   {
+   "name": "M_E01B_espana_rally_r13c3",
+   "col": 3,
+   "row": 13,
+   "file": "Chunks/r13c3.bin",
+   "center_uu": [
+    130000.0,
+    30000.0
+   ],
+   "vertices": 1187,
+   "triangles": 1818,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r14c3",
+   "col": 3,
+   "row": 14,
+   "file": "Chunks/r14c3.bin",
+   "center_uu": [
+    140000.0,
+    30000.0
+   ],
+   "vertices": 709,
+   "triangles": 958,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r15c3",
+   "col": 3,
+   "row": 15,
+   "file": "Chunks/r15c3.bin",
+   "center_uu": [
+    150000.0,
+    30000.0
+   ],
+   "vertices": 834,
+   "triangles": 1180,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r16c3",
+   "col": 3,
+   "row": 16,
+   "file": "Chunks/r16c3.bin",
+   "center_uu": [
+    160000.0,
+    30000.0
+   ],
+   "vertices": 998,
+   "triangles": 1474,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r17c3",
+   "col": 3,
+   "row": 17,
+   "file": "Chunks/r17c3.bin",
+   "center_uu": [
+    170000.0,
+    30000.0
+   ],
+   "vertices": 955,
+   "triangles": 1384,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r18c3",
+   "col": 3,
+   "row": 18,
+   "file": "Chunks/r18c3.bin",
+   "center_uu": [
+    180000.0,
+    30000.0
+   ],
+   "vertices": 1345,
+   "triangles": 2064,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r1c4",
+   "col": 4,
+   "row": 1,
+   "file": "Chunks/r1c4.bin",
+   "center_uu": [
+    10000.0,
+    40000.0
+   ],
+   "vertices": 1580,
+   "triangles": 2637,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r2c4",
+   "col": 4,
+   "row": 2,
+   "file": "Chunks/r2c4.bin",
+   "center_uu": [
+    20000.0,
+    40000.0
+   ],
+   "vertices": 1395,
+   "triangles": 2098,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r3c4",
+   "col": 4,
+   "row": 3,
+   "file": "Chunks/r3c4.bin",
+   "center_uu": [
+    30000.0,
+    40000.0
+   ],
+   "vertices": 1132,
+   "triangles": 1676,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
    "name": "M_E01B_espana_rally_r4c4",
    "col": 4,
    "row": 4,
@@ -509,6 +1139,66 @@
    "vertices": 1946,
    "triangles": 3300,
    "instances": 0
+  },
+  {
+   "name": "M_E01B_espana_rally_r6c4",
+   "col": 4,
+   "row": 6,
+   "file": "Chunks/r6c4.bin",
+   "center_uu": [
+    60000.0,
+    40000.0
+   ],
+   "vertices": 698,
+   "triangles": 928,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r7c4",
+   "col": 4,
+   "row": 7,
+   "file": "Chunks/r7c4.bin",
+   "center_uu": [
+    70000.0,
+    40000.0
+   ],
+   "vertices": 573,
+   "triangles": 710,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r8c4",
+   "col": 4,
+   "row": 8,
+   "file": "Chunks/r8c4.bin",
+   "center_uu": [
+    80000.0,
+    40000.0
+   ],
+   "vertices": 508,
+   "triangles": 600,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r9c4",
+   "col": 4,
+   "row": 9,
+   "file": "Chunks/r9c4.bin",
+   "center_uu": [
+    90000.0,
+    40000.0
+   ],
+   "vertices": 611,
+   "triangles": 782,
+   "instances": 0,
+   "collision": false,
+   "background": true
   },
   {
    "name": "M_E01B_espana_rally_r10c4",
@@ -563,6 +1253,231 @@
    "instances": 0
   },
   {
+   "name": "M_E01B_espana_rally_r14c4",
+   "col": 4,
+   "row": 14,
+   "file": "Chunks/r14c4.bin",
+   "center_uu": [
+    140000.0,
+    40000.0
+   ],
+   "vertices": 761,
+   "triangles": 1048,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r15c4",
+   "col": 4,
+   "row": 15,
+   "file": "Chunks/r15c4.bin",
+   "center_uu": [
+    150000.0,
+    40000.0
+   ],
+   "vertices": 1182,
+   "triangles": 1758,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r16c4",
+   "col": 4,
+   "row": 16,
+   "file": "Chunks/r16c4.bin",
+   "center_uu": [
+    160000.0,
+    40000.0
+   ],
+   "vertices": 1829,
+   "triangles": 2994,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r17c4",
+   "col": 4,
+   "row": 17,
+   "file": "Chunks/r17c4.bin",
+   "center_uu": [
+    170000.0,
+    40000.0
+   ],
+   "vertices": 962,
+   "triangles": 1384,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r18c4",
+   "col": 4,
+   "row": 18,
+   "file": "Chunks/r18c4.bin",
+   "center_uu": [
+    180000.0,
+    40000.0
+   ],
+   "vertices": 1310,
+   "triangles": 2000,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r1c5",
+   "col": 5,
+   "row": 1,
+   "file": "Chunks/r1c5.bin",
+   "center_uu": [
+    10000.0,
+    50000.0
+   ],
+   "vertices": 1355,
+   "triangles": 2283,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r2c5",
+   "col": 5,
+   "row": 2,
+   "file": "Chunks/r2c5.bin",
+   "center_uu": [
+    20000.0,
+    50000.0
+   ],
+   "vertices": 1293,
+   "triangles": 1978,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r3c5",
+   "col": 5,
+   "row": 3,
+   "file": "Chunks/r3c5.bin",
+   "center_uu": [
+    30000.0,
+    50000.0
+   ],
+   "vertices": 905,
+   "triangles": 1290,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r4c5",
+   "col": 5,
+   "row": 4,
+   "file": "Chunks/r4c5.bin",
+   "center_uu": [
+    40000.0,
+    50000.0
+   ],
+   "vertices": 1175,
+   "triangles": 1772,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r5c5",
+   "col": 5,
+   "row": 5,
+   "file": "Chunks/r5c5.bin",
+   "center_uu": [
+    50000.0,
+    50000.0
+   ],
+   "vertices": 1802,
+   "triangles": 2962,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r6c5",
+   "col": 5,
+   "row": 6,
+   "file": "Chunks/r6c5.bin",
+   "center_uu": [
+    60000.0,
+    50000.0
+   ],
+   "vertices": 949,
+   "triangles": 1362,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r7c5",
+   "col": 5,
+   "row": 7,
+   "file": "Chunks/r7c5.bin",
+   "center_uu": [
+    70000.0,
+    50000.0
+   ],
+   "vertices": 593,
+   "triangles": 750,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r8c5",
+   "col": 5,
+   "row": 8,
+   "file": "Chunks/r8c5.bin",
+   "center_uu": [
+    80000.0,
+    50000.0
+   ],
+   "vertices": 559,
+   "triangles": 682,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r9c5",
+   "col": 5,
+   "row": 9,
+   "file": "Chunks/r9c5.bin",
+   "center_uu": [
+    90000.0,
+    50000.0
+   ],
+   "vertices": 743,
+   "triangles": 1012,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r10c5",
+   "col": 5,
+   "row": 10,
+   "file": "Chunks/r10c5.bin",
+   "center_uu": [
+    100000.0,
+    50000.0
+   ],
+   "vertices": 880,
+   "triangles": 1276,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
    "name": "M_E01B_espana_rally_r11c5",
    "col": 5,
    "row": 11,
@@ -615,6 +1530,231 @@
    "instances": 0
   },
   {
+   "name": "M_E01B_espana_rally_r15c5",
+   "col": 5,
+   "row": 15,
+   "file": "Chunks/r15c5.bin",
+   "center_uu": [
+    150000.0,
+    50000.0
+   ],
+   "vertices": 1088,
+   "triangles": 1590,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r16c5",
+   "col": 5,
+   "row": 16,
+   "file": "Chunks/r16c5.bin",
+   "center_uu": [
+    160000.0,
+    50000.0
+   ],
+   "vertices": 1349,
+   "triangles": 2062,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r17c5",
+   "col": 5,
+   "row": 17,
+   "file": "Chunks/r17c5.bin",
+   "center_uu": [
+    170000.0,
+    50000.0
+   ],
+   "vertices": 1026,
+   "triangles": 1510,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r18c5",
+   "col": 5,
+   "row": 18,
+   "file": "Chunks/r18c5.bin",
+   "center_uu": [
+    180000.0,
+    50000.0
+   ],
+   "vertices": 1483,
+   "triangles": 2334,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r1c6",
+   "col": 6,
+   "row": 1,
+   "file": "Chunks/r1c6.bin",
+   "center_uu": [
+    10000.0,
+    60000.0
+   ],
+   "vertices": 1094,
+   "triangles": 1938,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r2c6",
+   "col": 6,
+   "row": 2,
+   "file": "Chunks/r2c6.bin",
+   "center_uu": [
+    20000.0,
+    60000.0
+   ],
+   "vertices": 1253,
+   "triangles": 2067,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r3c6",
+   "col": 6,
+   "row": 3,
+   "file": "Chunks/r3c6.bin",
+   "center_uu": [
+    30000.0,
+    60000.0
+   ],
+   "vertices": 1019,
+   "triangles": 1480,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r4c6",
+   "col": 6,
+   "row": 4,
+   "file": "Chunks/r4c6.bin",
+   "center_uu": [
+    40000.0,
+    60000.0
+   ],
+   "vertices": 1138,
+   "triangles": 1672,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r5c6",
+   "col": 6,
+   "row": 5,
+   "file": "Chunks/r5c6.bin",
+   "center_uu": [
+    50000.0,
+    60000.0
+   ],
+   "vertices": 1155,
+   "triangles": 1748,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r6c6",
+   "col": 6,
+   "row": 6,
+   "file": "Chunks/r6c6.bin",
+   "center_uu": [
+    60000.0,
+    60000.0
+   ],
+   "vertices": 893,
+   "triangles": 1282,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r7c6",
+   "col": 6,
+   "row": 7,
+   "file": "Chunks/r7c6.bin",
+   "center_uu": [
+    70000.0,
+    60000.0
+   ],
+   "vertices": 522,
+   "triangles": 608,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r8c6",
+   "col": 6,
+   "row": 8,
+   "file": "Chunks/r8c6.bin",
+   "center_uu": [
+    80000.0,
+    60000.0
+   ],
+   "vertices": 591,
+   "triangles": 742,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r9c6",
+   "col": 6,
+   "row": 9,
+   "file": "Chunks/r9c6.bin",
+   "center_uu": [
+    90000.0,
+    60000.0
+   ],
+   "vertices": 775,
+   "triangles": 1070,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r10c6",
+   "col": 6,
+   "row": 10,
+   "file": "Chunks/r10c6.bin",
+   "center_uu": [
+    100000.0,
+    60000.0
+   ],
+   "vertices": 989,
+   "triangles": 1456,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r11c6",
+   "col": 6,
+   "row": 11,
+   "file": "Chunks/r11c6.bin",
+   "center_uu": [
+    110000.0,
+    60000.0
+   ],
+   "vertices": 1140,
+   "triangles": 1754,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
    "name": "M_E01B_espana_rally_r12c6",
    "col": 6,
    "row": 12,
@@ -654,6 +1794,231 @@
    "instances": 0
   },
   {
+   "name": "M_E01B_espana_rally_r15c6",
+   "col": 6,
+   "row": 15,
+   "file": "Chunks/r15c6.bin",
+   "center_uu": [
+    150000.0,
+    60000.0
+   ],
+   "vertices": 1073,
+   "triangles": 1598,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r16c6",
+   "col": 6,
+   "row": 16,
+   "file": "Chunks/r16c6.bin",
+   "center_uu": [
+    160000.0,
+    60000.0
+   ],
+   "vertices": 908,
+   "triangles": 1294,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r17c6",
+   "col": 6,
+   "row": 17,
+   "file": "Chunks/r17c6.bin",
+   "center_uu": [
+    170000.0,
+    60000.0
+   ],
+   "vertices": 925,
+   "triangles": 1320,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r18c6",
+   "col": 6,
+   "row": 18,
+   "file": "Chunks/r18c6.bin",
+   "center_uu": [
+    180000.0,
+    60000.0
+   ],
+   "vertices": 1666,
+   "triangles": 2680,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r2c7",
+   "col": 7,
+   "row": 2,
+   "file": "Chunks/r2c7.bin",
+   "center_uu": [
+    20000.0,
+    70000.0
+   ],
+   "vertices": 435,
+   "triangles": 740,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r3c7",
+   "col": 7,
+   "row": 3,
+   "file": "Chunks/r3c7.bin",
+   "center_uu": [
+    30000.0,
+    70000.0
+   ],
+   "vertices": 1101,
+   "triangles": 1807,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r4c7",
+   "col": 7,
+   "row": 4,
+   "file": "Chunks/r4c7.bin",
+   "center_uu": [
+    40000.0,
+    70000.0
+   ],
+   "vertices": 1003,
+   "triangles": 1482,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r5c7",
+   "col": 7,
+   "row": 5,
+   "file": "Chunks/r5c7.bin",
+   "center_uu": [
+    50000.0,
+    70000.0
+   ],
+   "vertices": 949,
+   "triangles": 1384,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r6c7",
+   "col": 7,
+   "row": 6,
+   "file": "Chunks/r6c7.bin",
+   "center_uu": [
+    60000.0,
+    70000.0
+   ],
+   "vertices": 742,
+   "triangles": 1016,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r7c7",
+   "col": 7,
+   "row": 7,
+   "file": "Chunks/r7c7.bin",
+   "center_uu": [
+    70000.0,
+    70000.0
+   ],
+   "vertices": 700,
+   "triangles": 944,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r8c7",
+   "col": 7,
+   "row": 8,
+   "file": "Chunks/r8c7.bin",
+   "center_uu": [
+    80000.0,
+    70000.0
+   ],
+   "vertices": 725,
+   "triangles": 986,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r9c7",
+   "col": 7,
+   "row": 9,
+   "file": "Chunks/r9c7.bin",
+   "center_uu": [
+    90000.0,
+    70000.0
+   ],
+   "vertices": 971,
+   "triangles": 1436,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r10c7",
+   "col": 7,
+   "row": 10,
+   "file": "Chunks/r10c7.bin",
+   "center_uu": [
+    100000.0,
+    70000.0
+   ],
+   "vertices": 1116,
+   "triangles": 1706,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r11c7",
+   "col": 7,
+   "row": 11,
+   "file": "Chunks/r11c7.bin",
+   "center_uu": [
+    110000.0,
+    70000.0
+   ],
+   "vertices": 975,
+   "triangles": 1448,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r12c7",
+   "col": 7,
+   "row": 12,
+   "file": "Chunks/r12c7.bin",
+   "center_uu": [
+    120000.0,
+    70000.0
+   ],
+   "vertices": 750,
+   "triangles": 1010,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
    "name": "M_E01B_espana_rally_r13c7",
    "col": 7,
    "row": 13,
@@ -691,6 +2056,201 @@
    "vertices": 957,
    "triangles": 1402,
    "instances": 0
+  },
+  {
+   "name": "M_E01B_espana_rally_r16c7",
+   "col": 7,
+   "row": 16,
+   "file": "Chunks/r16c7.bin",
+   "center_uu": [
+    160000.0,
+    70000.0
+   ],
+   "vertices": 688,
+   "triangles": 918,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r17c7",
+   "col": 7,
+   "row": 17,
+   "file": "Chunks/r17c7.bin",
+   "center_uu": [
+    170000.0,
+    70000.0
+   ],
+   "vertices": 969,
+   "triangles": 1442,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r18c7",
+   "col": 7,
+   "row": 18,
+   "file": "Chunks/r18c7.bin",
+   "center_uu": [
+    180000.0,
+    70000.0
+   ],
+   "vertices": 1443,
+   "triangles": 2250,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r3c8",
+   "col": 8,
+   "row": 3,
+   "file": "Chunks/r3c8.bin",
+   "center_uu": [
+    30000.0,
+    80000.0
+   ],
+   "vertices": 1250,
+   "triangles": 2221,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r4c8",
+   "col": 8,
+   "row": 4,
+   "file": "Chunks/r4c8.bin",
+   "center_uu": [
+    40000.0,
+    80000.0
+   ],
+   "vertices": 876,
+   "triangles": 1284,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r5c8",
+   "col": 8,
+   "row": 5,
+   "file": "Chunks/r5c8.bin",
+   "center_uu": [
+    50000.0,
+    80000.0
+   ],
+   "vertices": 1134,
+   "triangles": 1728,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r6c8",
+   "col": 8,
+   "row": 6,
+   "file": "Chunks/r6c8.bin",
+   "center_uu": [
+    60000.0,
+    80000.0
+   ],
+   "vertices": 877,
+   "triangles": 1240,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r7c8",
+   "col": 8,
+   "row": 7,
+   "file": "Chunks/r7c8.bin",
+   "center_uu": [
+    70000.0,
+    80000.0
+   ],
+   "vertices": 969,
+   "triangles": 1440,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r8c8",
+   "col": 8,
+   "row": 8,
+   "file": "Chunks/r8c8.bin",
+   "center_uu": [
+    80000.0,
+    80000.0
+   ],
+   "vertices": 1037,
+   "triangles": 1516,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r9c8",
+   "col": 8,
+   "row": 9,
+   "file": "Chunks/r9c8.bin",
+   "center_uu": [
+    90000.0,
+    80000.0
+   ],
+   "vertices": 1229,
+   "triangles": 1880,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r10c8",
+   "col": 8,
+   "row": 10,
+   "file": "Chunks/r10c8.bin",
+   "center_uu": [
+    100000.0,
+    80000.0
+   ],
+   "vertices": 1146,
+   "triangles": 1748,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r11c8",
+   "col": 8,
+   "row": 11,
+   "file": "Chunks/r11c8.bin",
+   "center_uu": [
+    110000.0,
+    80000.0
+   ],
+   "vertices": 834,
+   "triangles": 1174,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r12c8",
+   "col": 8,
+   "row": 12,
+   "file": "Chunks/r12c8.bin",
+   "center_uu": [
+    120000.0,
+    80000.0
+   ],
+   "vertices": 912,
+   "triangles": 1330,
+   "instances": 0,
+   "collision": false,
+   "background": true
   },
   {
    "name": "M_E01B_espana_rally_r13c8",
@@ -771,6 +2331,156 @@
    "instances": 0
   },
   {
+   "name": "M_E01B_espana_rally_r3c9",
+   "col": 9,
+   "row": 3,
+   "file": "Chunks/r3c9.bin",
+   "center_uu": [
+    30000.0,
+    90000.0
+   ],
+   "vertices": 406,
+   "triangles": 713,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r4c9",
+   "col": 9,
+   "row": 4,
+   "file": "Chunks/r4c9.bin",
+   "center_uu": [
+    40000.0,
+    90000.0
+   ],
+   "vertices": 1296,
+   "triangles": 2389,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r5c9",
+   "col": 9,
+   "row": 5,
+   "file": "Chunks/r5c9.bin",
+   "center_uu": [
+    50000.0,
+    90000.0
+   ],
+   "vertices": 1739,
+   "triangles": 3059,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r6c9",
+   "col": 9,
+   "row": 6,
+   "file": "Chunks/r6c9.bin",
+   "center_uu": [
+    60000.0,
+    90000.0
+   ],
+   "vertices": 1259,
+   "triangles": 1942,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r7c9",
+   "col": 9,
+   "row": 7,
+   "file": "Chunks/r7c9.bin",
+   "center_uu": [
+    70000.0,
+    90000.0
+   ],
+   "vertices": 1041,
+   "triangles": 1542,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r8c9",
+   "col": 9,
+   "row": 8,
+   "file": "Chunks/r8c9.bin",
+   "center_uu": [
+    80000.0,
+    90000.0
+   ],
+   "vertices": 1238,
+   "triangles": 1962,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r9c9",
+   "col": 9,
+   "row": 9,
+   "file": "Chunks/r9c9.bin",
+   "center_uu": [
+    90000.0,
+    90000.0
+   ],
+   "vertices": 1061,
+   "triangles": 1574,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r10c9",
+   "col": 9,
+   "row": 10,
+   "file": "Chunks/r10c9.bin",
+   "center_uu": [
+    100000.0,
+    90000.0
+   ],
+   "vertices": 1263,
+   "triangles": 1932,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r11c9",
+   "col": 9,
+   "row": 11,
+   "file": "Chunks/r11c9.bin",
+   "center_uu": [
+    110000.0,
+    90000.0
+   ],
+   "vertices": 1181,
+   "triangles": 1790,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r12c9",
+   "col": 9,
+   "row": 12,
+   "file": "Chunks/r12c9.bin",
+   "center_uu": [
+    120000.0,
+    90000.0
+   ],
+   "vertices": 1080,
+   "triangles": 1612,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
    "name": "M_E01B_espana_rally_r13c9",
    "col": 9,
    "row": 13,
@@ -849,6 +2559,156 @@
    "instances": 0
   },
   {
+   "name": "M_E01B_espana_rally_r5c10",
+   "col": 10,
+   "row": 5,
+   "file": "Chunks/r5c10.bin",
+   "center_uu": [
+    50000.0,
+    100000.0
+   ],
+   "vertices": 285,
+   "triangles": 468,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r6c10",
+   "col": 10,
+   "row": 6,
+   "file": "Chunks/r6c10.bin",
+   "center_uu": [
+    60000.0,
+    100000.0
+   ],
+   "vertices": 1866,
+   "triangles": 3295,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r7c10",
+   "col": 10,
+   "row": 7,
+   "file": "Chunks/r7c10.bin",
+   "center_uu": [
+    70000.0,
+    100000.0
+   ],
+   "vertices": 1297,
+   "triangles": 2286,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r8c10",
+   "col": 10,
+   "row": 8,
+   "file": "Chunks/r8c10.bin",
+   "center_uu": [
+    80000.0,
+    100000.0
+   ],
+   "vertices": 396,
+   "triangles": 645,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r9c10",
+   "col": 10,
+   "row": 9,
+   "file": "Chunks/r9c10.bin",
+   "center_uu": [
+    90000.0,
+    100000.0
+   ],
+   "vertices": 1231,
+   "triangles": 2164,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r10c10",
+   "col": 10,
+   "row": 10,
+   "file": "Chunks/r10c10.bin",
+   "center_uu": [
+    100000.0,
+    100000.0
+   ],
+   "vertices": 1415,
+   "triangles": 2275,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r11c10",
+   "col": 10,
+   "row": 11,
+   "file": "Chunks/r11c10.bin",
+   "center_uu": [
+    110000.0,
+    100000.0
+   ],
+   "vertices": 1328,
+   "triangles": 2038,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r12c10",
+   "col": 10,
+   "row": 12,
+   "file": "Chunks/r12c10.bin",
+   "center_uu": [
+    120000.0,
+    100000.0
+   ],
+   "vertices": 1019,
+   "triangles": 1506,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r13c10",
+   "col": 10,
+   "row": 13,
+   "file": "Chunks/r13c10.bin",
+   "center_uu": [
+    130000.0,
+    100000.0
+   ],
+   "vertices": 748,
+   "triangles": 1032,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r14c10",
+   "col": 10,
+   "row": 14,
+   "file": "Chunks/r14c10.bin",
+   "center_uu": [
+    140000.0,
+    100000.0
+   ],
+   "vertices": 668,
+   "triangles": 876,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
    "name": "M_E01B_espana_rally_r15c10",
    "col": 10,
    "row": 15,
@@ -899,9 +2759,1089 @@
    "vertices": 14789,
    "triangles": 28702,
    "instances": 0
+  },
+  {
+   "name": "M_E01B_espana_rally_r6c11",
+   "col": 11,
+   "row": 6,
+   "file": "Chunks/r6c11.bin",
+   "center_uu": [
+    60000.0,
+    110000.0
+   ],
+   "vertices": 564,
+   "triangles": 1020,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r10c11",
+   "col": 11,
+   "row": 10,
+   "file": "Chunks/r10c11.bin",
+   "center_uu": [
+    100000.0,
+    110000.0
+   ],
+   "vertices": 749,
+   "triangles": 1294,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r11c11",
+   "col": 11,
+   "row": 11,
+   "file": "Chunks/r11c11.bin",
+   "center_uu": [
+    110000.0,
+    110000.0
+   ],
+   "vertices": 1252,
+   "triangles": 2064,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r12c11",
+   "col": 11,
+   "row": 12,
+   "file": "Chunks/r12c11.bin",
+   "center_uu": [
+    120000.0,
+    110000.0
+   ],
+   "vertices": 1907,
+   "triangles": 3252,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r13c11",
+   "col": 11,
+   "row": 13,
+   "file": "Chunks/r13c11.bin",
+   "center_uu": [
+    130000.0,
+    110000.0
+   ],
+   "vertices": 909,
+   "triangles": 1306,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r14c11",
+   "col": 11,
+   "row": 14,
+   "file": "Chunks/r14c11.bin",
+   "center_uu": [
+    140000.0,
+    110000.0
+   ],
+   "vertices": 713,
+   "triangles": 960,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r15c11",
+   "col": 11,
+   "row": 15,
+   "file": "Chunks/r15c11.bin",
+   "center_uu": [
+    150000.0,
+    110000.0
+   ],
+   "vertices": 789,
+   "triangles": 1084,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r16c11",
+   "col": 11,
+   "row": 16,
+   "file": "Chunks/r16c11.bin",
+   "center_uu": [
+    160000.0,
+    110000.0
+   ],
+   "vertices": 1309,
+   "triangles": 1992,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r17c11",
+   "col": 11,
+   "row": 17,
+   "file": "Chunks/r17c11.bin",
+   "center_uu": [
+    170000.0,
+    110000.0
+   ],
+   "vertices": 2509,
+   "triangles": 4028,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r18c11",
+   "col": 11,
+   "row": 18,
+   "file": "Chunks/r18c11.bin",
+   "center_uu": [
+    180000.0,
+    110000.0
+   ],
+   "vertices": 2835,
+   "triangles": 4788,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r0c12",
+   "col": 12,
+   "row": 0,
+   "file": "Chunks/r0c12.bin",
+   "center_uu": [
+    0.0,
+    120000.0
+   ],
+   "vertices": 981,
+   "triangles": 1683,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r11c12",
+   "col": 12,
+   "row": 11,
+   "file": "Chunks/r11c12.bin",
+   "center_uu": [
+    110000.0,
+    120000.0
+   ],
+   "vertices": 193,
+   "triangles": 302,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r12c12",
+   "col": 12,
+   "row": 12,
+   "file": "Chunks/r12c12.bin",
+   "center_uu": [
+    120000.0,
+    120000.0
+   ],
+   "vertices": 1264,
+   "triangles": 2175,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r13c12",
+   "col": 12,
+   "row": 13,
+   "file": "Chunks/r13c12.bin",
+   "center_uu": [
+    130000.0,
+    120000.0
+   ],
+   "vertices": 1341,
+   "triangles": 2148,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r14c12",
+   "col": 12,
+   "row": 14,
+   "file": "Chunks/r14c12.bin",
+   "center_uu": [
+    140000.0,
+    120000.0
+   ],
+   "vertices": 679,
+   "triangles": 896,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r15c12",
+   "col": 12,
+   "row": 15,
+   "file": "Chunks/r15c12.bin",
+   "center_uu": [
+    150000.0,
+    120000.0
+   ],
+   "vertices": 1138,
+   "triangles": 1722,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r16c12",
+   "col": 12,
+   "row": 16,
+   "file": "Chunks/r16c12.bin",
+   "center_uu": [
+    160000.0,
+    120000.0
+   ],
+   "vertices": 1632,
+   "triangles": 2534,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r17c12",
+   "col": 12,
+   "row": 17,
+   "file": "Chunks/r17c12.bin",
+   "center_uu": [
+    170000.0,
+    120000.0
+   ],
+   "vertices": 2395,
+   "triangles": 3834,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r18c12",
+   "col": 12,
+   "row": 18,
+   "file": "Chunks/r18c12.bin",
+   "center_uu": [
+    180000.0,
+    120000.0
+   ],
+   "vertices": 1960,
+   "triangles": 3148,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r0c13",
+   "col": 13,
+   "row": 0,
+   "file": "Chunks/r0c13.bin",
+   "center_uu": [
+    0.0,
+    130000.0
+   ],
+   "vertices": 1223,
+   "triangles": 2070,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r6c13",
+   "col": 13,
+   "row": 6,
+   "file": "Chunks/r6c13.bin",
+   "center_uu": [
+    60000.0,
+    130000.0
+   ],
+   "vertices": 712,
+   "triangles": 1292,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r7c13",
+   "col": 13,
+   "row": 7,
+   "file": "Chunks/r7c13.bin",
+   "center_uu": [
+    70000.0,
+    130000.0
+   ],
+   "vertices": 1037,
+   "triangles": 1898,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r13c13",
+   "col": 13,
+   "row": 13,
+   "file": "Chunks/r13c13.bin",
+   "center_uu": [
+    130000.0,
+    130000.0
+   ],
+   "vertices": 1300,
+   "triangles": 2207,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r14c13",
+   "col": 13,
+   "row": 14,
+   "file": "Chunks/r14c13.bin",
+   "center_uu": [
+    140000.0,
+    130000.0
+   ],
+   "vertices": 912,
+   "triangles": 1314,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r15c13",
+   "col": 13,
+   "row": 15,
+   "file": "Chunks/r15c13.bin",
+   "center_uu": [
+    150000.0,
+    130000.0
+   ],
+   "vertices": 991,
+   "triangles": 1444,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r16c13",
+   "col": 13,
+   "row": 16,
+   "file": "Chunks/r16c13.bin",
+   "center_uu": [
+    160000.0,
+    130000.0
+   ],
+   "vertices": 2160,
+   "triangles": 3502,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r17c13",
+   "col": 13,
+   "row": 17,
+   "file": "Chunks/r17c13.bin",
+   "center_uu": [
+    170000.0,
+    130000.0
+   ],
+   "vertices": 2511,
+   "triangles": 4034,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r18c13",
+   "col": 13,
+   "row": 18,
+   "file": "Chunks/r18c13.bin",
+   "center_uu": [
+    180000.0,
+    130000.0
+   ],
+   "vertices": 2221,
+   "triangles": 3618,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r0c14",
+   "col": 14,
+   "row": 0,
+   "file": "Chunks/r0c14.bin",
+   "center_uu": [
+    0.0,
+    140000.0
+   ],
+   "vertices": 1918,
+   "triangles": 3430,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r6c14",
+   "col": 14,
+   "row": 6,
+   "file": "Chunks/r6c14.bin",
+   "center_uu": [
+    60000.0,
+    140000.0
+   ],
+   "vertices": 233,
+   "triangles": 436,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r7c14",
+   "col": 14,
+   "row": 7,
+   "file": "Chunks/r7c14.bin",
+   "center_uu": [
+    70000.0,
+    140000.0
+   ],
+   "vertices": 527,
+   "triangles": 952,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r13c14",
+   "col": 14,
+   "row": 13,
+   "file": "Chunks/r13c14.bin",
+   "center_uu": [
+    130000.0,
+    140000.0
+   ],
+   "vertices": 912,
+   "triangles": 1547,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r14c14",
+   "col": 14,
+   "row": 14,
+   "file": "Chunks/r14c14.bin",
+   "center_uu": [
+    140000.0,
+    140000.0
+   ],
+   "vertices": 1064,
+   "triangles": 1596,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r15c14",
+   "col": 14,
+   "row": 15,
+   "file": "Chunks/r15c14.bin",
+   "center_uu": [
+    150000.0,
+    140000.0
+   ],
+   "vertices": 1029,
+   "triangles": 1520,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r16c14",
+   "col": 14,
+   "row": 16,
+   "file": "Chunks/r16c14.bin",
+   "center_uu": [
+    160000.0,
+    140000.0
+   ],
+   "vertices": 1823,
+   "triangles": 2896,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r17c14",
+   "col": 14,
+   "row": 17,
+   "file": "Chunks/r17c14.bin",
+   "center_uu": [
+    170000.0,
+    140000.0
+   ],
+   "vertices": 2134,
+   "triangles": 3446,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r18c14",
+   "col": 14,
+   "row": 18,
+   "file": "Chunks/r18c14.bin",
+   "center_uu": [
+    180000.0,
+    140000.0
+   ],
+   "vertices": 1760,
+   "triangles": 2808,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r0c15",
+   "col": 15,
+   "row": 0,
+   "file": "Chunks/r0c15.bin",
+   "center_uu": [
+    0.0,
+    150000.0
+   ],
+   "vertices": 1989,
+   "triangles": 3539,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r1c15",
+   "col": 15,
+   "row": 1,
+   "file": "Chunks/r1c15.bin",
+   "center_uu": [
+    10000.0,
+    150000.0
+   ],
+   "vertices": 84,
+   "triangles": 142,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r8c15",
+   "col": 15,
+   "row": 8,
+   "file": "Chunks/r8c15.bin",
+   "center_uu": [
+    80000.0,
+    150000.0
+   ],
+   "vertices": 373,
+   "triangles": 660,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r9c15",
+   "col": 15,
+   "row": 9,
+   "file": "Chunks/r9c15.bin",
+   "center_uu": [
+    90000.0,
+    150000.0
+   ],
+   "vertices": 280,
+   "triangles": 472,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r13c15",
+   "col": 15,
+   "row": 13,
+   "file": "Chunks/r13c15.bin",
+   "center_uu": [
+    130000.0,
+    150000.0
+   ],
+   "vertices": 568,
+   "triangles": 1015,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r14c15",
+   "col": 15,
+   "row": 14,
+   "file": "Chunks/r14c15.bin",
+   "center_uu": [
+    140000.0,
+    150000.0
+   ],
+   "vertices": 1192,
+   "triangles": 1916,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r15c15",
+   "col": 15,
+   "row": 15,
+   "file": "Chunks/r15c15.bin",
+   "center_uu": [
+    150000.0,
+    150000.0
+   ],
+   "vertices": 1410,
+   "triangles": 2176,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r16c15",
+   "col": 15,
+   "row": 16,
+   "file": "Chunks/r16c15.bin",
+   "center_uu": [
+    160000.0,
+    150000.0
+   ],
+   "vertices": 1757,
+   "triangles": 2784,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r17c15",
+   "col": 15,
+   "row": 17,
+   "file": "Chunks/r17c15.bin",
+   "center_uu": [
+    170000.0,
+    150000.0
+   ],
+   "vertices": 1925,
+   "triangles": 3018,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r18c15",
+   "col": 15,
+   "row": 18,
+   "file": "Chunks/r18c15.bin",
+   "center_uu": [
+    180000.0,
+    150000.0
+   ],
+   "vertices": 1644,
+   "triangles": 2634,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r0c16",
+   "col": 16,
+   "row": 0,
+   "file": "Chunks/r0c16.bin",
+   "center_uu": [
+    0.0,
+    160000.0
+   ],
+   "vertices": 1614,
+   "triangles": 2710,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r1c16",
+   "col": 16,
+   "row": 1,
+   "file": "Chunks/r1c16.bin",
+   "center_uu": [
+    10000.0,
+    160000.0
+   ],
+   "vertices": 395,
+   "triangles": 669,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r8c16",
+   "col": 16,
+   "row": 8,
+   "file": "Chunks/r8c16.bin",
+   "center_uu": [
+    80000.0,
+    160000.0
+   ],
+   "vertices": 1404,
+   "triangles": 2535,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r9c16",
+   "col": 16,
+   "row": 9,
+   "file": "Chunks/r9c16.bin",
+   "center_uu": [
+    90000.0,
+    160000.0
+   ],
+   "vertices": 1999,
+   "triangles": 3673,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r14c16",
+   "col": 16,
+   "row": 14,
+   "file": "Chunks/r14c16.bin",
+   "center_uu": [
+    140000.0,
+    160000.0
+   ],
+   "vertices": 955,
+   "triangles": 1656,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r15c16",
+   "col": 16,
+   "row": 15,
+   "file": "Chunks/r15c16.bin",
+   "center_uu": [
+    150000.0,
+    160000.0
+   ],
+   "vertices": 1752,
+   "triangles": 2896,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r16c16",
+   "col": 16,
+   "row": 16,
+   "file": "Chunks/r16c16.bin",
+   "center_uu": [
+    160000.0,
+    160000.0
+   ],
+   "vertices": 1360,
+   "triangles": 2080,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r17c16",
+   "col": 16,
+   "row": 17,
+   "file": "Chunks/r17c16.bin",
+   "center_uu": [
+    170000.0,
+    160000.0
+   ],
+   "vertices": 1397,
+   "triangles": 2118,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r18c16",
+   "col": 16,
+   "row": 18,
+   "file": "Chunks/r18c16.bin",
+   "center_uu": [
+    180000.0,
+    160000.0
+   ],
+   "vertices": 1349,
+   "triangles": 2138,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r0c17",
+   "col": 17,
+   "row": 0,
+   "file": "Chunks/r0c17.bin",
+   "center_uu": [
+    0.0,
+    170000.0
+   ],
+   "vertices": 2065,
+   "triangles": 3532,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r1c17",
+   "col": 17,
+   "row": 1,
+   "file": "Chunks/r1c17.bin",
+   "center_uu": [
+    10000.0,
+    170000.0
+   ],
+   "vertices": 1128,
+   "triangles": 2026,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r7c17",
+   "col": 17,
+   "row": 7,
+   "file": "Chunks/r7c17.bin",
+   "center_uu": [
+    70000.0,
+    170000.0
+   ],
+   "vertices": 216,
+   "triangles": 414,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r8c17",
+   "col": 17,
+   "row": 8,
+   "file": "Chunks/r8c17.bin",
+   "center_uu": [
+    80000.0,
+    170000.0
+   ],
+   "vertices": 1351,
+   "triangles": 2454,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r9c17",
+   "col": 17,
+   "row": 9,
+   "file": "Chunks/r9c17.bin",
+   "center_uu": [
+    90000.0,
+    170000.0
+   ],
+   "vertices": 2161,
+   "triangles": 3926,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r10c17",
+   "col": 17,
+   "row": 10,
+   "file": "Chunks/r10c17.bin",
+   "center_uu": [
+    100000.0,
+    170000.0
+   ],
+   "vertices": 72,
+   "triangles": 108,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r14c17",
+   "col": 17,
+   "row": 14,
+   "file": "Chunks/r14c17.bin",
+   "center_uu": [
+    140000.0,
+    170000.0
+   ],
+   "vertices": 89,
+   "triangles": 140,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r15c17",
+   "col": 17,
+   "row": 15,
+   "file": "Chunks/r15c17.bin",
+   "center_uu": [
+    150000.0,
+    170000.0
+   ],
+   "vertices": 1458,
+   "triangles": 2652,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r16c17",
+   "col": 17,
+   "row": 16,
+   "file": "Chunks/r16c17.bin",
+   "center_uu": [
+    160000.0,
+    170000.0
+   ],
+   "vertices": 1907,
+   "triangles": 3479,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r17c17",
+   "col": 17,
+   "row": 17,
+   "file": "Chunks/r17c17.bin",
+   "center_uu": [
+    170000.0,
+    170000.0
+   ],
+   "vertices": 1305,
+   "triangles": 2329,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r18c17",
+   "col": 17,
+   "row": 18,
+   "file": "Chunks/r18c17.bin",
+   "center_uu": [
+    180000.0,
+    170000.0
+   ],
+   "vertices": 1375,
+   "triangles": 2493,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r0c18",
+   "col": 18,
+   "row": 0,
+   "file": "Chunks/r0c18.bin",
+   "center_uu": [
+    0.0,
+    180000.0
+   ],
+   "vertices": 1385,
+   "triangles": 2186,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r1c18",
+   "col": 18,
+   "row": 1,
+   "file": "Chunks/r1c18.bin",
+   "center_uu": [
+    10000.0,
+    180000.0
+   ],
+   "vertices": 1173,
+   "triangles": 2016,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r8c18",
+   "col": 18,
+   "row": 8,
+   "file": "Chunks/r8c18.bin",
+   "center_uu": [
+    80000.0,
+    180000.0
+   ],
+   "vertices": 51,
+   "triangles": 68,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r9c18",
+   "col": 18,
+   "row": 9,
+   "file": "Chunks/r9c18.bin",
+   "center_uu": [
+    90000.0,
+    180000.0
+   ],
+   "vertices": 509,
+   "triangles": 898,
+   "instances": 0,
+   "collision": false,
+   "background": true
+  },
+  {
+   "name": "M_E01B_espana_rally_r10c18",
+   "col": 18,
+   "row": 10,
+   "file": "Chunks/r10c18.bin",
+   "center_uu": [
+    100000.0,
+    180000.0
+   ],
+   "vertices": 174,
+   "triangles": 295,
+   "instances": 0,
+   "collision": false,
+   "background": true
   }
  ],
- "description": "Espa\u00f1a para el Rally (punto a punto): del Pirineo aragon\u00e9s a la playa de M\u00e1laga por el Ebro, la Meseta, el Tajo y Despe\u00f1aperros, con el relieve real (1 m de juego = 0,4 km, exageraci\u00f3n 4,5x); calzada tallada de 14 m y fuera del corredor, el vac\u00edo.",
+ "description": "Espa\u00f1a para el Rally (punto a punto): del Pirineo aragon\u00e9s a la playa de M\u00e1laga por el Ebro, la Meseta, el Tajo y Despe\u00f1aperros, con el relieve real (1 m de juego = 0,4 km, exageraci\u00f3n 4,5x); calzada tallada de 14 m y, fuera del corredor, el resto de Espa\u00f1a de fondo (sin colisi\u00f3n).",
  "mode": "rally",
  "closed": false,
  "laps": 1,
@@ -1052,7 +3992,14 @@
    0.08,
    0.25
   ],
-  "near_m": 20.0
+  "near_m": 20.0,
+  "background_decimate_m": 0.6
+ },
+ "triangles": {
+  "corridor": 381072,
+  "background": 334353,
+  "total": 715425,
+  "budget": 1200000
  },
  "geo": {
   "source": "ES_dem.png (E01)",
