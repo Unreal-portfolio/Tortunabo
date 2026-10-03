@@ -1,7 +1,11 @@
 #include "Player/TN_TurtleMovementComponent.h"
 #include "Core/TN_Log.h"
+#include "Player/TN_MovementLimits.h"
+#include "Player/TN_StaminaComponent.h"
 #include "Player/TortugaCharacter.h"
+#include "Player/TN_WadingComponent.h"
 #include "World/Beach/TN_BeachTrampoline.h"
+#include "World/Beach/TN_RaceItemComponent.h"
 #include "World/ProcMap/TN_ProcMapGenerator.h"
 #include "CollisionQueryParams.h"
 #include "Components/CapsuleComponent.h"
@@ -61,8 +65,13 @@ namespace TNBellySlide
 		ECVF_Cheat);
 
 	// ─────────────────────────────────────────────────────────────────────────
-	// Movimientos guardados del cliente: el estado del arrastre viaja con cada uno para repetirlo tras una corrección
+	// Movimientos guardados del cliente: el estado del arrastre y el turbo viajan con cada uno para repetirlos tras una
+	// corrección
 	// ─────────────────────────────────────────────────────────────────────────
+
+	/** Marca del movimiento que va con el turbo de carrera (al servidor solo el bit; el multiplicador lo pone él). */
+	// FLAG_Custom_0 es la petición de sprint (#250).
+	constexpr uint8 RaceBoostFlag = FSavedMove_Character::FLAG_Custom_1;
 
 	class FTNSavedMove_Turtle : public FSavedMove_Character
 	{
@@ -76,6 +85,28 @@ namespace TNBellySlide
 			SavedBellyTime = 0.f;
 			SavedSlideSerial = 0;
 			SavedCapsuleHalfHeight = 0.f;
+			bSavedWantsToSprint = false;
+			SavedRaceBoost = 1.f;
+		}
+
+		virtual void SetMoveFor(ACharacter* C, float InDeltaTime, FVector const& NewAccel, FNetworkPredictionData_Client_Character& ClientData) override
+		{
+			Super::SetMoveFor(C, InDeltaTime, NewAccel, ClientData);
+			const UTN_TurtleMovementComponent* TurtleMove = C ? Cast<UTN_TurtleMovementComponent>(C->GetCharacterMovement()) : nullptr;
+			bSavedWantsToSprint = TurtleMove && TurtleMove->InputWantsToSprint();
+			// El turbo de este movimiento (ControlledCharacterMove lo acaba de tomar de los objetos de carrera).
+			SavedRaceBoost = TurtleMove ? TurtleMove->GetRaceBoostMultiplier() : 1.f;
+		}
+
+		virtual uint8 GetCompressedFlags() const override
+		{
+			// La petición de sprint viaja con el movimiento: el servidor corre en el mismo movimiento que el cliente.
+			uint8 Flags = Super::GetCompressedFlags() | (bSavedWantsToSprint ? FLAG_Custom_0 : 0);
+			if (SavedRaceBoost > 1.f)
+			{
+				Flags |= RaceBoostFlag;
+			}
+			return Flags;
 		}
 
 		virtual void SetInitialPosition(ACharacter* C) override
@@ -97,6 +128,12 @@ namespace TNBellySlide
 			{
 				return false;
 			}
+			// Con otra petición de sprint u otro turbo no (la marca ya la compara el motor; el multiplicador también cuenta al
+			// repetirlos).
+			if (Other && (Other->bSavedWantsToSprint != bSavedWantsToSprint || !FMath::IsNearlyEqual(Other->SavedRaceBoost, SavedRaceBoost)))
+			{
+				return false;
+			}
 			return Super::CanCombineWith(NewMove, InCharacter, MaxDelta);
 		}
 
@@ -106,6 +143,7 @@ namespace TNBellySlide
 			if (UTN_TurtleMovementComponent* TurtleMove = C ? Cast<UTN_TurtleMovementComponent>(C->GetCharacterMovement()) : nullptr)
 			{
 				TurtleMove->RestoreBellyState(SavedBellyPhase, SavedBellyTime, SavedSlideSerial, SavedCapsuleHalfHeight);
+				TurtleMove->RestoreRaceBoost(SavedRaceBoost);
 			}
 		}
 
@@ -125,6 +163,9 @@ namespace TNBellySlide
 		uint8 SavedSlideSerial = 0;
 		/** Semialtura de la cápsula sin escalar al empezar el movimiento. */
 		float SavedCapsuleHalfHeight = 0.f;
+		bool bSavedWantsToSprint = false;
+		/** Multiplicador del turbo de carrera con que se hizo (1 = sin turbo). */
+		float SavedRaceBoost = 1.f;
 	};
 
 	class FTNNetworkPredictionData_Client_Turtle : public FNetworkPredictionData_Client_Character
@@ -250,6 +291,12 @@ void UTN_TurtleMovementComponent::ConsumeMoveStartBellyState(uint8& OutPhase, fl
 void UTN_TurtleMovementComponent::UpdateCharacterStateBeforeMovement(float DeltaSeconds)
 {
 	Super::UpdateCharacterStateBeforeMovement(DeltaSeconds);
+	// Fuera de una repetición, quien la controla corre con lo que pide ahora (al repetir se quedó lo del último movimiento).
+	if (CharacterOwner && CharacterOwner->IsLocallyControlled() && !CharacterOwner->bClientUpdating)
+	{
+		bWantsToSprint = bInputWantsToSprint;
+	}
+	UpdateMoveWadingMultiplier();
 	bPendingBounce = false;
 	// El movimiento ya se ha guardado (el cliente guarda antes de simular): lo de antes del brinco ya no sirve.
 	bHasPreJumpBelly = false;
@@ -794,9 +841,80 @@ FRotator UTN_TurtleMovementComponent::ComputeOrientToMovementRotation(const FRot
 	return CurrentRotation;
 }
 
+void UTN_TurtleMovementComponent::UpdateFromCompressedFlags(uint8 Flags)
+{
+	Super::UpdateFromCompressedFlags(Flags);
+	bWantsToSprint = (Flags & FSavedMove_Character::FLAG_Custom_0) != 0;
+
+	// Servidor: la estamina (gasto, réplica a los demás y animación) corre cuando corre el movimiento del cliente.
+	if (CharacterOwner && CharacterOwner->HasAuthority() && !CharacterOwner->IsLocallyControlled())
+	{
+		if (const ATortugaCharacter* Turtle = GetTurtle())
+		{
+			if (UTN_StaminaComponent* Stamina = Turtle->GetStaminaComponent())
+			{
+				Stamina->SetSprintRequested(bWantsToSprint);
+			}
+		}
+	}
+
+	// Turbo: solo el servidor con los movimientos de un cliente: el cliente, al repetir los suyos, ya tiene el multiplicador
+	// con que los hizo (PrepMoveFor). Un movimiento sin marca va sin turbo aunque aquí ya lo tenga (el dueño aún no lo sabía).
+	if (CharacterOwner && CharacterOwner->GetLocalRole() == ROLE_Authority)
+	{
+		const UTN_RaceItemComponent* Items = RaceItems.Get();
+		const bool bClaimsBoost = (Flags & TNBellySlide::RaceBoostFlag) != 0;
+		RaceBoostMultiplier = (bClaimsBoost && Items) ? FMath::Max(1.f, Items->ResolveOwnerBoostMultiplier()) : 1.f;
+	}
+}
+
+void UTN_TurtleMovementComponent::UpdateMoveWadingMultiplier()
+{
+	MoveWadingMultiplier = 1.f;
+	const ATortugaCharacter* Turtle = GetTurtle();
+	const UTN_WadingComponent* Wading = Turtle ? Turtle->FindComponentByClass<UTN_WadingComponent>() : nullptr;
+	const UCapsuleComponent* Capsule = Turtle ? Turtle->GetCapsuleComponent() : nullptr;
+	if (Wading && Capsule && UpdatedComponent)
+	{
+		const double FeetZ = UpdatedComponent->GetComponentLocation().Z - Capsule->GetScaledCapsuleHalfHeight();
+		MoveWadingMultiplier = Wading->GetSpeedMultiplierAt(FeetZ, IsMovingOnGround());
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Turbo de los objetos de carrera en la predicción (issue #22)
+// ─────────────────────────────────────────────────────────────────────────────
+
+void UTN_TurtleMovementComponent::SetRaceItems(UTN_RaceItemComponent* InRaceItems)
+{
+	RaceItems = InRaceItems;
+}
+
+void UTN_TurtleMovementComponent::ControlledCharacterMove(const FVector& InputVector, float DeltaSeconds)
+{
+	// El dueño (o el anfitrión con la suya) decide el turbo de este movimiento con lo que sabe ahora: lo guarda el movimiento
+	// (FTNSavedMove_Turtle::SetMoveFor) antes de simularlo y el servidor lo valida al recibirlo.
+	const UTN_RaceItemComponent* Items = RaceItems.Get();
+	RaceBoostMultiplier = Items ? FMath::Max(1.f, Items->GetSpeedMultiplier()) : 1.f;
+	Super::ControlledCharacterMove(InputVector, DeltaSeconds);
+}
+
+float UTN_TurtleMovementComponent::GetMaxAcceleration() const
+{
+	return TNMovementLimits::RaceBoostAcceleration(Super::GetMaxAcceleration(), RaceBoostMultiplier);
+}
+
 float UTN_TurtleMovementComponent::GetMaxSpeed() const
 {
-	const float Base = Super::GetMaxSpeed();
+	float Base = Super::GetMaxSpeed();
+	// Andando (y en el aire, que usa la misma): la de este movimiento, con su sprint, su vadeo (ver SetWantsToSprint) y su
+	// turbo de carrera (al menos la velocidad de correr, por el multiplicador y con los topes).
+	const ATortugaCharacter* Turtle = GetTurtle();
+	const UTN_StaminaComponent* Stamina = Turtle ? Turtle->GetStaminaComponent() : nullptr;
+	if (Stamina && !IsCrouching() && (MovementMode == MOVE_Walking || MovementMode == MOVE_NavWalking || MovementMode == MOVE_Falling))
+	{
+		Base = Stamina->ComputeMaxWalkSpeed(Stamina->CanSprint(bWantsToSprint), MoveWadingMultiplier, RaceBoostMultiplier);
+	}
 	if (!IsMovingOnGround())
 	{
 		return Base;
