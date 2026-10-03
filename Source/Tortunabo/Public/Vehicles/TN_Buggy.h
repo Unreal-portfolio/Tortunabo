@@ -325,6 +325,11 @@ private:
 	void ApplyRaceBrake();
 	/** Al soltar el freno de carrera, quita el freno que puso (servidor y conductora local). */
 	void ReleaseRaceBrake();
+	/**
+	 * Con el freno de carrera y apoyado, deja el buggy en su sitio aunque esté en cuesta (#611): sin velocidad en el plano del
+	 * suelo salvo la que lo devuelve a su ancla (TNBuggy::GridHoldVelocity) y sin guiñada. Servidor y conductora local.
+	 */
+	void HoldOnGrid();
 
 	UFUNCTION()
 	void OnRep_RaceBrake();
@@ -536,6 +541,9 @@ private:
 	bool bBoostHeld = false;
 	bool bAirborne = false;
 	bool bBoostEffectsOn = false;
+	/** Sitio en que se ancla el buggy con el freno de carrera (HoldOnGrid): lo toma al apoyarse y lo suelta con el freno. */
+	FVector GridAnchor = FVector::ZeroVector;
+	bool bHasGridAnchor = false;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UNiagaraComponent> BoostEffectComponent;

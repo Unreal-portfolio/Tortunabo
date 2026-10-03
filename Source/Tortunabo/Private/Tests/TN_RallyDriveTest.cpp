@@ -17,22 +17,39 @@ bool FTNRallyDriveSteerCurveTest::RunTest(const FString& Parameters)
 {
 	using namespace TNBuggy;
 	const float Top = TNRallyTurret::BuggyTopSpeedCms;
-	TestEqual(TEXT("parado gira 40 grados"), MaxSteerAngleDeg(0.f), 40.f);
-	TestEqual(TEXT("a punta gira 12 grados"), MaxSteerAngleDeg(Top), 12.f, 0.01f);
-	TestEqual(TEXT("con turbo (punta +15 %) sigue en 12 grados"), MaxSteerAngleDeg(Top * 1.15f), 12.f, 0.01f);
+	const UTN_BuggyData* Tuning = GetDefault<UTN_BuggyData>();
+	// #606: el ángulo de un buggy real (35-40 grados), el mismo a cualquier velocidad (antes, 40 parado y 12 a punta).
+	TestTrue(TEXT("el ángulo por defecto está entre 35 y 40 grados"), DefaultSteerAngleDeg >= 35.f && DefaultSteerAngleDeg <= 40.f);
+	TestEqual(TEXT("el asset de ajuste trae el mismo ángulo"), Tuning->MaxSteerAngleDeg, DefaultSteerAngleDeg);
+	TestEqual(TEXT("parado gira el ángulo entero"), MaxSteerAngleDeg(0.f), DefaultSteerAngleDeg);
+	TestEqual(TEXT("a 80 km/h gira lo mismo"), MaxSteerAngleDeg(2222.f), DefaultSteerAngleDeg, 0.01f);
+	TestEqual(TEXT("a punta gira lo mismo"), MaxSteerAngleDeg(Top), DefaultSteerAngleDeg, 0.01f);
+	TestEqual(TEXT("con turbo (punta +15 %) gira lo mismo"), MaxSteerAngleDeg(Top * 1.15f), DefaultSteerAngleDeg, 0.01f);
 	TestEqual(TEXT("marcha atrás vale lo mismo que hacia delante"), MaxSteerAngleDeg(-1000.f), MaxSteerAngleDeg(1000.f));
-	const float At80Kmh = MaxSteerAngleDeg(2222.f);
-	TestTrue(TEXT("a 80 km/h gira entre 14 y 16 grados"), At80Kmh >= 14.f && At80Kmh <= 16.f);
+	TestEqual(TEXT("el ángulo base se respeta"), MaxSteerAngleDeg(1500.f, 30.f), 30.f, 0.01f);
 
-	float Previous = MaxSteerAngleDeg(0.f);
-	bool bMonotonic = true;
-	for (float Speed = 50.f; Speed <= Top * 1.2f; Speed += 50.f)
-	{
-		const float Angle = MaxSteerAngleDeg(Speed);
-		bMonotonic &= Angle <= Previous + KINDA_SMALL_NUMBER;
-		Previous = Angle;
-	}
-	TestTrue(TEXT("el ángulo nunca sube con la velocidad"), bMonotonic);
+	// Volante más rápido y lineal que el de serie de Chaos (2,5 por segundo y cuadrático).
+	TestTrue(TEXT("el volante llega a tope en menos de 0,2 s"), Tuning->SteerRiseRate >= 5.f);
+	TestTrue(TEXT("respuesta lineal"), Tuning->bLinearSteerResponse);
+
+	// Radio de giro: objetivo < 6 m a 20 km/h (buggy_measure lo mide en la pista con TN.Rally.MeasureTurn).
+	const float Radius = KinematicTurnRadiusCm(WheelbaseCm, DefaultSteerAngleDeg, SteerAngleRatio);
+	TestTrue(*FString::Printf(TEXT("radio cinemático %.0f cm, menos de 6 m"), Radius), Radius > 0.f && Radius < 600.f);
+	// La curva antigua daba 35,1 grados a 20 km/h (556 cm/s) y 15 a 80 km/h.
+	TestTrue(TEXT("antes, a 20 km/h, el radio era mayor"), KinematicTurnRadiusCm(WheelbaseCm, 35.1f, SteerAngleRatio) > Radius);
+	TestTrue(TEXT("y a 80 km/h, mucho mayor"), KinematicTurnRadiusCm(WheelbaseCm, 15.f, SteerAngleRatio) > 2.f * Radius);
+	TestEqual(TEXT("radio medido: v / guiñada"), TurnRadiusFromYawRate(556.f, 1.f), 556.f, 0.01f);
+	TestEqual(TEXT("sin guiñada no hay radio"), TurnRadiusFromYawRate(556.f, 0.f), 0.f);
+
+	// Piloto IA: a 20 km/h gira a tope; a 90 km/h, solo lo que no pasa de 0,9 g de lateral (no vuelca en la curva).
+	const float LateralCap = 0.9f * 981.f;
+	TestEqual(TEXT("despacio, toda la dirección"), SafeSteerFraction(556.f, DefaultSteerAngleDeg, WheelbaseCm, LateralCap), 1.f);
+	const float Fast = SafeSteerFraction(2500.f, DefaultSteerAngleDeg, WheelbaseCm, LateralCap);
+	TestTrue(TEXT("a 90 km/h, menos de un cuarto de la dirección"), Fast > 0.f && Fast < 0.25f);
+	const float FastDeg = Fast * DefaultSteerAngleDeg;
+	const float FastLateral = FMath::Square(2500.f) / (WheelbaseCm / FMath::Tan(FMath::DegreesToRadians(FastDeg)));
+	TestTrue(TEXT("y esa dirección no pasa de 0,9 g"), FastLateral <= LateralCap * 1.01f);
+	TestEqual(TEXT("sin velocidad, sin límite"), SafeSteerFraction(0.f, DefaultSteerAngleDeg, WheelbaseCm, LateralCap), 1.f);
 
 	const FCurveKey Keys[] = { { 0.f, 2.f }, { 10.f, 4.f } };
 	TestEqual(TEXT("EvalLinearKeys interpola"), EvalLinearKeys(Keys, 5.f), 3.f);
@@ -241,6 +258,65 @@ bool FTNRallyDriveCameraTest::RunTest(const FString& Parameters)
 		bBounded &= ShakeRotation(1.f, Time, Tuning.MaxShakeDeg).GetAbsMax() <= Tuning.MaxShakeDeg + KINDA_SMALL_NUMBER;
 	}
 	TestTrue(TEXT("la sacudida no pasa de su amplitud"), bBounded);
+	return true;
+}
+
+namespace TNRallyDriveTestHelpers
+{
+	/**
+	 * Buggy apoyado en una rampa de SlopeDeg grados durante Seconds, a 60 Hz: la gravedad a lo largo de la rampa lo empuja
+	 * cuesta abajo (el suelo anula la normal) y, con bHold, TNBuggy::GridHoldVelocity corrige cada fotograma como
+	 * ATN_Buggy::HoldOnGrid. Devuelve cuánto se ha desplazado (cm).
+	 */
+	double SlideOnRamp(double SlopeDeg, double Seconds, bool bHold, const TNBuggy::FGridHoldTuning& Tuning)
+	{
+		const double Slope = FMath::DegreesToRadians(SlopeDeg);
+		// Rampa que baja hacia +X: la normal se inclina hacia +X.
+		const FVector Up(FMath::Sin(Slope), 0.0, FMath::Cos(Slope));
+		const FVector Gravity(0.0, 0.0, -981.0);
+		const FVector AlongRamp = Gravity - Up * (Gravity | Up);
+		const double Dt = 1.0 / 60.0;
+		const FVector Anchor = FVector::ZeroVector;
+		FVector Location = Anchor;
+		FVector Velocity = FVector::ZeroVector;
+		for (int32 Step = 0; Step < FMath::RoundToInt32(Seconds / Dt); ++Step)
+		{
+			if (bHold)
+			{
+				Velocity = TNBuggy::GridHoldVelocity(Velocity, Up, Location - Anchor, Tuning);
+			}
+			Velocity += AlongRamp * Dt;
+			Location += Velocity * Dt;
+		}
+		return FVector::Dist(Location, Anchor);
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNRallyDriveGridHoldTest,
+	"Tortunabo.Rally.Drive.GridHoldOnRamp",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNRallyDriveGridHoldTest::RunTest(const FString& Parameters)
+{
+	using namespace TNBuggy;
+	// #611: en la espera y la cuenta atrás, el buggy no rueda cuesta abajo (< 5 cm en 5 s en una rampa de 15 grados).
+	FGridHoldTuning Tuning;
+	Tuning.PositionGain = GetDefault<UTN_BuggyData>()->GridHoldGain;
+	const double Free = TNRallyDriveTestHelpers::SlideOnRamp(15.0, 5.0, false, Tuning);
+	const double Held = TNRallyDriveTestHelpers::SlideOnRamp(15.0, 5.0, true, Tuning);
+	TestTrue(*FString::Printf(TEXT("sin el freno de la parrilla rueda %.0f cm (el fallo de #611)"), Free), Free > 100.0);
+	TestTrue(*FString::Printf(TEXT("con el freno de la parrilla se desplaza %.2f cm, menos de 5"), Held), Held < 5.0);
+
+	// La componente a lo largo de la normal (la suspensión que se asienta) no se toca; la guiñada sí se quita.
+	const FVector Up = FVector(0.3, 0.0, 1.0).GetSafeNormal();
+	const FVector Settling = Up * -50.0;
+	TestTrue(TEXT("el asentado de la suspensión se conserva"), GridHoldVelocity(Settling, Up, FVector::ZeroVector, Tuning).Equals(Settling, 0.01));
+	TestTrue(TEXT("en su sitio, sin velocidad en el plano del suelo"),
+		GridHoldVelocity(FVector(300.0, 200.0, 0.0), FVector::UpVector, FVector::ZeroVector, Tuning).IsNearlyZero(0.01));
+	TestTrue(TEXT("la corrección tiene tope"),
+		GridHoldVelocity(FVector::ZeroVector, FVector::UpVector, FVector(1000.0, 0.0, 0.0), Tuning).Size() <= Tuning.MaxCorrectionCms + 0.01);
+	TestTrue(TEXT("la guiñada se quita y el cabeceo se queda"),
+		GridHoldAngularVelocity(FVector(0.5, 0.0, 2.0), FVector::UpVector).Equals(FVector(0.5, 0.0, 0.0), 0.001));
 	return true;
 }
 

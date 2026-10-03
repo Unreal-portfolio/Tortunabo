@@ -268,7 +268,11 @@ void ATN_Buggy::SetRaceBrakeHeld(bool bHeld)
 
 void ATN_Buggy::OnRep_RaceBrake()
 {
-	if (!bRaceBrakeHeld)
+	if (bRaceBrakeHeld)
+	{
+		ApplyRaceBrake();
+	}
+	else
 	{
 		ReleaseRaceBrake();
 	}
@@ -281,17 +285,50 @@ void ATN_Buggy::ApplyRaceBrake()
 	{
 		return;
 	}
-	// Cada fotograma: la entrada de la conductora (o del piloto IA) puede haber vuelto a pisar el acelerador.
+	// Freno de estacionamiento de Chaos (par del freno de mano en las cuatro ruedas), en cada máquina. El pedal de freno no
+	// sirve parado: con bReverseAsBrake, frenar a menos de WrongDirectionThreshold mete la marcha atrás y el freno pasa a
+	// acelerador (ChaosVehicleMovementComponent::CalcThrottleBrakeInput), y con el motor cortado el buggy rodaba (#611).
+	Move->SetParked(true);
+	// Cada fotograma: la entrada de la conductora (o del piloto IA) puede haber vuelto a pisar el acelerador o el freno.
 	Move->SetThrottleInput(0.f);
-	Move->SetBrakeInput(1.f);
+	Move->SetBrakeInput(0.f);
 }
 
 void ATN_Buggy::ReleaseRaceBrake()
 {
-	// El freno de la carrera se quita; si la conductora tiene pisado el suyo, su entrada lo vuelve a poner el siguiente
-	// fotograma (Triggered).
-	if (UChaosWheeledVehicleMovementComponent* Move = GetWheeledMovement(); Move && (HasAuthority() || IsLocallyControlled()))
+	bHasGridAnchor = false;
+	UChaosWheeledVehicleMovementComponent* Move = GetWheeledMovement();
+	if (!Move)
+	{
+		return;
+	}
+	// Todos los buggies se sueltan a la vez con el verde (StartRacing), sin tirón: solo se quita el freno de estacionamiento.
+	Move->SetParked(false);
+	if (HasAuthority() || IsLocallyControlled())
 	{
 		Move->SetBrakeInput(0.f);
 	}
+}
+
+void ATN_Buggy::HoldOnGrid()
+{
+	USkeletalMeshComponent* Chassis = GetMesh();
+	const float Gain = GetData()->GridHoldGain;
+	if (!bRaceBrakeHeld || bAirborne || Gain <= 0.f || !Chassis || !Chassis->IsSimulatingPhysics())
+	{
+		// En el aire (al nacer cae unos centímetros hasta apoyarse) no se ancla: se toma el sitio al tocar el suelo.
+		return;
+	}
+	TNBuggy::FGridHoldTuning Tuning;
+	Tuning.PositionGain = Gain;
+	const FVector Location = GetActorLocation();
+	if (!bHasGridAnchor || FVector::Dist(Location, GridAnchor) > Tuning.ReanchorDistanceCm)
+	{
+		// Primer apoyo o lo han recolocado (hueco de la parrilla, reaparición): ese es su sitio.
+		GridAnchor = Location;
+		bHasGridAnchor = true;
+	}
+	const FVector Up = GetActorUpVector();
+	Chassis->SetPhysicsLinearVelocity(TNBuggy::GridHoldVelocity(Chassis->GetPhysicsLinearVelocity(), Up, Location - GridAnchor, Tuning));
+	Chassis->SetPhysicsAngularVelocityInRadians(TNBuggy::GridHoldAngularVelocity(Chassis->GetPhysicsAngularVelocityInRadians(), Up));
 }
