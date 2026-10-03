@@ -521,7 +521,8 @@ void ATN_Buggy::ApplySteeringAssist()
 	const float WobbleLeft = WobbleEndServerTime - static_cast<float>(GetServerNow());
 	const float Wobble = TNBuggy::SteerWobble(WobbleLeft, TNRallyTurret::CocoWobbleSeconds, Tuning->WobbleAmplitude, Tuning->WobbleFrequency);
 	Move->SetSteeringInput(FMath::Clamp(
-		TNBuggy::AssistSteer(SteerRequest, Slip, Tuning->CounterSteerAssist, Tuning->MaxAssistAngleDeg) + Wobble, -1.f, 1.f));
+		TNBuggy::AssistSteer(SteerRequest, Slip, Tuning->CounterSteerAssist, Tuning->MaxAssistAngleDeg, Tuning->CounterSteerStartSlipDeg)
+		+ Wobble, -1.f, 1.f));
 }
 
 void ATN_Buggy::ApplyBumpKicks()
@@ -602,8 +603,12 @@ void ATN_Buggy::ApplyAntiRoll()
 	AntiRoll.Stiffness = Tuning->AntiRollStiffness;
 	AntiRoll.Damping = Tuning->AntiRollDamping;
 	AntiRoll.MaxAccel = Tuning->AntiRollMaxAccel;
+	AntiRoll.GroundRollFullSpeedCms = Tuning->AntiRollGroundRollFullSpeedCms;
+	AntiRoll.GroundRollZeroSpeedCms = Tuning->AntiRollGroundRollZeroSpeedCms;
+	const FVector Velocity = GetVelocity();
+	const float FlatSpeed = static_cast<float>(FVector(Velocity.X, Velocity.Y, 0.f).Size());
 	const FVector Accel = TNBuggy::AntiRollAccel(GetActorForwardVector(), GetActorUpVector(),
-		Chassis->GetPhysicsAngularVelocityInRadians(), bAirborne, AntiRoll);
+		Chassis->GetPhysicsAngularVelocityInRadians(), bAirborne, AntiRoll, FlatSpeed);
 	if (!Accel.IsNearlyZero())
 	{
 		// Como aceleración (bAccelChange): igual para cualquier masa e inercia del chasis.

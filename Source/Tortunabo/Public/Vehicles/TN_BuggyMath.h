@@ -26,10 +26,19 @@ namespace TNBuggy
 	TORTUNABO_API float SlipAngleDeg(const FVector& Forward, const FVector& Velocity);
 
 	/**
-	 * Dirección final en [-1, 1]: la pedida más un contravolante proporcional a la deriva (Assist a MaxAngleDeg o más).
-	 * Sin corrección si la deriva supera MaxAssistedSlipDeg.
+	 * Dirección final en [-1, 1]: la pedida más un contravolante proporcional a la deriva que pasa de StartDeg (0 en StartDeg,
+	 * Assist en MaxAngleDeg o más). Sin corrección si la deriva supera MaxAssistedSlipDeg. Con StartDeg > 0, la deriva de un
+	 * giro con agarre (unos grados a mucha velocidad) no resta dirección (#606).
 	 */
-	TORTUNABO_API float AssistSteer(float Input, float SlipDeg, float Assist, float MaxAngleDeg);
+	TORTUNABO_API float AssistSteer(float Input, float SlipDeg, float Assist, float MaxAngleDeg, float StartDeg = 0.f);
+
+	/**
+	 * Ángulo efectivo de la rueda interior (grados, con signo) con la palanca Input, a SpeedCms y con SlipDeg de deriva: el
+	 * de la curva de dirección (MaxSteerAngleDeg) por la dirección tras el contravolante (AssistSteer). Es lo que manda
+	 * ATN_Buggy::ApplySteeringAssist a Chaos; los tests comprueban que no cae con la velocidad (#606).
+	 */
+	TORTUNABO_API float EffectiveSteerDeg(float Input, float SpeedCms, float SlipDeg, float BaseAngleDeg, float Assist,
+		float AssistMaxAngleDeg, float AssistStartDeg);
 
 	// ── Golpe de rueda contra un escalón ────────────────────────────────────────
 
@@ -108,15 +117,26 @@ namespace TNBuggy
 		float Damping = 4.f;
 		/** Tope de la aceleración angular (rad/s²). */
 		float MaxAccel = 25.f;
+		/**
+		 * Con ruedas en el suelo, la corrección del alabeo es entera hasta esta velocidad horizontal (cm/s, 45 km/h) y se
+		 * apaga del todo en GroundRollZeroSpeedCms (70 km/h): despacio el giro cerrado no vuelca; muy rápido, girar fuerte
+		 * vuelca el buggy por la transferencia de peso (#606) y el enderezado lo recupera. El cabeceo y el aire no cambian.
+		 */
+		float GroundRollFullSpeedCms = 1250.f;
+		float GroundRollZeroSpeedCms = 1950.f;
 	};
+
+	/** Fracción (0..1) de la corrección del alabeo en el suelo a SpeedCms (FAntiRollTuning::GroundRollFullSpeedCms). */
+	TORTUNABO_API float GroundRollHelp(float SpeedCms, const FAntiRollTuning& Tuning);
 
 	/**
 	 * Aceleración angular (rad/s², ejes del mundo) que devuelve el buggy hacia la vertical: muelle sobre el alabeo y el
 	 * cabeceo que pasan de lo tolerado (en el aire no se tolera nada) y amortiguador sobre su velocidad. No toca la
-	 * guiñada. Cero si ya está volcado (UpZ < FlippedUpZ: lo endereza DecideSelfRight) o si el ajuste es nulo.
+	 * guiñada. Cero si ya está volcado (UpZ < FlippedUpZ: lo endereza DecideSelfRight) o si el ajuste es nulo. En el suelo, el
+	 * alabeo se corrige por GroundRollHelp(SpeedCms): a mucha velocidad, nada.
 	 */
 	TORTUNABO_API FVector AntiRollAccel(const FVector& Forward, const FVector& Up, const FVector& AngularVelocityRad, bool bAirborne,
-		const FAntiRollTuning& Tuning);
+		const FAntiRollTuning& Tuning, float SpeedCms = 0.f);
 
 	/** Botón de reaparecer: true el frame en que se cumplen HoldSeconds pulsado (una vez por pulsación). */
 	struct FHold

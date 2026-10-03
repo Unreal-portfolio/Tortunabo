@@ -16,14 +16,23 @@ namespace TNBuggy
 		return FMath::RadiansToDegrees(FMath::Atan2(FVector::CrossProduct(F, V).Z, FVector::DotProduct(F, V)));
 	}
 
-	float AssistSteer(float Input, float SlipDeg, float Assist, float MaxAngleDeg)
+	float AssistSteer(float Input, float SlipDeg, float Assist, float MaxAngleDeg, float StartDeg)
 	{
-		if (FMath::Abs(SlipDeg) > MaxAssistedSlipDeg || MaxAngleDeg <= 0.f)
+		const float AbsSlip = FMath::Abs(SlipDeg);
+		const float Start = FMath::Max(0.f, StartDeg);
+		if (AbsSlip > MaxAssistedSlipDeg || MaxAngleDeg <= Start)
 		{
 			return FMath::Clamp(Input, -1.f, 1.f);
 		}
-		const float Correction = Assist * FMath::Clamp(SlipDeg / MaxAngleDeg, -1.f, 1.f);
+		const float Fraction = FMath::Clamp((AbsSlip - Start) / (MaxAngleDeg - Start), 0.f, 1.f);
+		const float Correction = Assist * Fraction * FMath::Sign(SlipDeg);
 		return FMath::Clamp(Input + Correction, -1.f, 1.f);
+	}
+
+	float EffectiveSteerDeg(float Input, float SpeedCms, float SlipDeg, float BaseAngleDeg, float Assist,
+		float AssistMaxAngleDeg, float AssistStartDeg)
+	{
+		return MaxSteerAngleDeg(SpeedCms, BaseAngleDeg) * AssistSteer(Input, SlipDeg, Assist, AssistMaxAngleDeg, AssistStartDeg);
 	}
 
 	bool IsRise(float StepCm, bool bBothInContact, const FBumpTuning& Tuning)
@@ -116,8 +125,19 @@ namespace TNBuggy
 		}
 	}
 
+	float GroundRollHelp(float SpeedCms, const FAntiRollTuning& Tuning)
+	{
+		const float Full = FMath::Max(0.f, Tuning.GroundRollFullSpeedCms);
+		const float Zero = Tuning.GroundRollZeroSpeedCms;
+		if (Zero <= Full)
+		{
+			return 1.f;
+		}
+		return 1.f - FMath::Clamp((FMath::Abs(SpeedCms) - Full) / (Zero - Full), 0.f, 1.f);
+	}
+
 	FVector AntiRollAccel(const FVector& Forward, const FVector& Up, const FVector& AngularVelocityRad, bool bAirborne,
-		const FAntiRollTuning& Tuning)
+		const FAntiRollTuning& Tuning, float SpeedCms)
 	{
 		if (IsFlipped(static_cast<float>(Up.Z)) || Tuning.Stiffness <= 0.f)
 		{
@@ -132,7 +152,9 @@ namespace TNBuggy
 		// El amortiguador solo actúa mientras hay exceso (o en el aire): en el suelo no frena el balanceo normal.
 		const double RollRate = (Roll != 0.0 || bAirborne) ? (AngularVelocityRad | F) : 0.0;
 		const double PitchRate = (Pitch != 0.0 || bAirborne) ? (AngularVelocityRad | R) : 0.0;
-		const FVector Accel = F * (-Tuning.Stiffness * Roll - Tuning.Damping * RollRate)
+		// En el suelo, el alabeo se deja libre a mucha velocidad: girar fuerte puede volcar (#606).
+		const double RollHelp = bAirborne ? 1.0 : GroundRollHelp(SpeedCms, Tuning);
+		const FVector Accel = F * (RollHelp * (-Tuning.Stiffness * Roll - Tuning.Damping * RollRate))
 			+ R * (-Tuning.Stiffness * Pitch - Tuning.Damping * PitchRate);
 		return Accel.GetClampedToMaxSize(FMath::Max(0.f, Tuning.MaxAccel));
 	}

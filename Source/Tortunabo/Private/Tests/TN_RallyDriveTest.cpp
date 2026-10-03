@@ -59,6 +59,84 @@ bool FTNRallyDriveSteerCurveTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNRallyDriveSteerAtSpeedTest,
+	"Tortunabo.Rally.Drive.SteerAtSpeed",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNRallyDriveSteerAtSpeedTest::RunTest(const FString& Parameters)
+{
+	using namespace TNBuggy;
+	const UTN_BuggyData* Tuning = GetDefault<UTN_BuggyData>();
+	const float Base = Tuning->MaxSteerAngleDeg;
+	const float Top = TNRallyTurret::BuggyTopSpeedCms * Tuning->BoostTopSpeedMultiplier;
+	// #606: con el volante a tope y la deriva de un giro con agarre (hasta 10 grados a cualquier lado), la rueda gira el
+	// ángulo entero a cualquier velocidad, con turbo incluido.
+	const float GripSlips[] = { -10.f, -6.f, -3.f, 0.f, 3.f, 6.f, 10.f };
+	float MinDeg = TNumericLimits<float>::Max();
+	for (float Speed = 0.f; Speed <= Top; Speed += 250.f)
+	{
+		for (const float Slip : GripSlips)
+		{
+			MinDeg = FMath::Min(MinDeg, EffectiveSteerDeg(1.f, Speed, Slip, Base, Tuning->CounterSteerAssist,
+				Tuning->MaxAssistAngleDeg, Tuning->CounterSteerStartSlipDeg));
+		}
+	}
+	TestTrue(*FString::Printf(TEXT("la dirección efectiva no cae con la velocidad (mínimo %.2f de %.2f grados)"), MinDeg, Base),
+		MinDeg >= Base - 0.01f);
+	TestEqual(TEXT("a punta, la izquierda gira lo mismo que la derecha"),
+		EffectiveSteerDeg(-1.f, Top, 8.f, Base, Tuning->CounterSteerAssist, Tuning->MaxAssistAngleDeg, Tuning->CounterSteerStartSlipDeg),
+		-Base, 0.01f);
+	// Caso negativo: con el contravolante desde 0 grados (antes de #606), 10 grados de deriva quitaban más de un 10 %.
+	TestTrue(TEXT("sin zona muerta, la deriva de un giro rápido restaba dirección"),
+		EffectiveSteerDeg(1.f, Top, -10.f, Base, Tuning->CounterSteerAssist, Tuning->MaxAssistAngleDeg, 0.f) < 0.9f * Base);
+	// El derrape de verdad sigue con contravolante.
+	TestTrue(TEXT("con 30 grados de deriva hay contravolante"),
+		EffectiveSteerDeg(1.f, Top, -30.f, Base, Tuning->CounterSteerAssist, Tuning->MaxAssistAngleDeg, Tuning->CounterSteerStartSlipDeg) < Base);
+	TestEqual(TEXT("contravolante: lo de antes con zona muerta 0"), AssistSteer(0.f, 17.5f, 0.8f, 35.f, 0.f), 0.4f, 0.001f);
+	TestEqual(TEXT("contravolante: en la zona muerta, nada"), AssistSteer(0.5f, -11.f, 0.8f, 35.f, 12.f), 0.5f, 0.001f);
+	TestEqual(TEXT("contravolante: al llegar a su máximo, entero"), AssistSteer(0.f, -35.f, 0.8f, 35.f, 12.f), -0.8f, 0.001f);
+
+	// El control de estabilidad del asset no frena la guiñada de una curva rápida con agarre (antes empezaba a 6 grados).
+	FStabilityTuning Stability;
+	Stability.StartSlipDeg = Tuning->StabilityStartSlipDeg;
+	Stability.Stiffness = Tuning->StabilityStiffness;
+	Stability.Damping = Tuning->StabilityDamping;
+	Stability.MaxAccel = Tuning->StabilityMaxAccel;
+	TestEqual(TEXT("estabilidad: curva rápida con 15 grados de deriva, sin freno de guiñada"),
+		StabilityYawAccel(-15.f, 1.5f, Top, false, false, Stability), 0.f);
+	TestTrue(TEXT("estabilidad: un trompo (40 grados) sí se ataja"), StabilityYawAccel(-40.f, 1.5f, Top, false, false, Stability) < 0.f);
+
+	// Antivuelco del asset: despacio sujeta el alabeo en el suelo; a mucha velocidad lo deja libre (vuelca) y en el aire, no.
+	FAntiRollTuning AntiRoll;
+	AntiRoll.GroundFreeRollDeg = Tuning->AntiRollGroundFreeRollDeg;
+	AntiRoll.GroundFreePitchDeg = Tuning->AntiRollGroundFreePitchDeg;
+	AntiRoll.Stiffness = Tuning->AntiRollStiffness;
+	AntiRoll.Damping = Tuning->AntiRollDamping;
+	AntiRoll.MaxAccel = Tuning->AntiRollMaxAccel;
+	AntiRoll.GroundRollFullSpeedCms = Tuning->AntiRollGroundRollFullSpeedCms;
+	AntiRoll.GroundRollZeroSpeedCms = Tuning->AntiRollGroundRollZeroSpeedCms;
+	TestEqual(TEXT("antivuelco: parado, entero"), GroundRollHelp(0.f, AntiRoll), 1.f);
+	TestEqual(TEXT("antivuelco: a 45 km/h, entero"), GroundRollHelp(1250.f, AntiRoll), 1.f);
+	TestEqual(TEXT("antivuelco: a 70 km/h, nada"), GroundRollHelp(1950.f, AntiRoll), 0.f);
+	const float Mid = GroundRollHelp(1600.f, AntiRoll);
+	TestTrue(TEXT("antivuelco: entre medias, a medias"), Mid > 0.f && Mid < 1.f);
+	TestTrue(TEXT("antivuelco: marcha atrás cuenta igual"), FMath::IsNearlyEqual(GroundRollHelp(-1600.f, AntiRoll), Mid));
+
+	const FVector Forward = FVector::ForwardVector;
+	const FVector Rolled = FQuat(Forward, FMath::DegreesToRadians(45.0)).RotateVector(FVector::UpVector);
+	const FVector RollRate = Forward * 2.0;
+	TestFalse(TEXT("45 grados de alabeo a 20 km/h en el suelo: lo sujeta"),
+		AntiRollAccel(Forward, Rolled, RollRate, false, AntiRoll, 556.f).IsNearlyZero());
+	TestTrue(TEXT("45 grados de alabeo a 90 km/h en el suelo: lo deja volcar"),
+		AntiRollAccel(Forward, Rolled, RollRate, false, AntiRoll, 2500.f).IsNearlyZero());
+	TestFalse(TEXT("el mismo alabeo a 90 km/h en el aire: lo corrige"),
+		AntiRollAccel(Forward, Rolled, RollRate, true, AntiRoll, 2500.f).IsNearlyZero());
+	const FVector Pitched = FQuat(FVector::RightVector, FMath::DegreesToRadians(50.0)).RotateVector(FVector::UpVector);
+	TestFalse(TEXT("el cabeceo se corrige también a mucha velocidad"),
+		AntiRollAccel(Forward, Pitched, FVector::ZeroVector, false, AntiRoll, 2500.f).IsNearlyZero());
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNRallyDriveTorqueCurveTest,
 	"Tortunabo.Rally.Drive.TorqueCurve",
 	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
