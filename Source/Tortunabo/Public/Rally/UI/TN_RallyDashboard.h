@@ -70,6 +70,13 @@ namespace TNRallyDashboard
 
 	/** Tiempo de carrera «m:ss.d». */
 	TORTUNABO_API FText RaceTime(float Seconds);
+
+	/**
+	 * Si los paneles 3D se pintan enmascarados (#605; consola TN.Rally.PanelMasked, 1 por defecto). Translúcidos no escriben
+	 * velocidad: el suavizado temporal (TSR) y el desenfoque de movimiento les ponían la del fondo y dejaban estela fantasma
+	 * con el buggy en marcha. Enmascarados se pintan en el pase base, con su velocidad y su profundidad, y se leen nítidos.
+	 */
+	TORTUNABO_API bool UseMaskedPanels();
 }
 
 /** Un panel del buggy (C++ sin asset UMG): lee el buggy y su fila de puestos (estado replicado). */

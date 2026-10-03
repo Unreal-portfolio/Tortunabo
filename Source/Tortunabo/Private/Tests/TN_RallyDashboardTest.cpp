@@ -5,6 +5,7 @@
 #include "Misc/AutomationTest.h"
 #include "Rally/TN_RallyLogic.h"
 #include "Rally/TN_RallyPaceNotes.h"
+#include "Rally/TN_RallyPlayerController.h"
 #include "Rally/UI/TN_RallyDashboard.h"
 #include "Vehicles/TN_Buggy.h"
 #include "Vehicles/TN_BuggyMath.h"
@@ -96,6 +97,23 @@ bool FTNRallyDashboardAmmoRowsTest::RunTest(const FString& Parameters)
 	const TArray<double> Wrap = TNRallyPaceNotes::ArcsAhead({ 1000.0 }, 300000.0, true, 299000.0, 40000.0);
 	TestTrue(TEXT("Circuito: la fila de 10 m tras la salida está a 20 m"), Wrap.Num() == 1 && FMath::IsNearlyEqual(Wrap[0], 2000.0));
 	TestEqual(TEXT("Punto a punto: nada detrás"), TNRallyPaceNotes::ArcsAhead({ 1000.0 }, 300000.0, false, 2000.0, 40000.0).Num(), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNRallyDashboardNoGhostingTest, "Tortunabo.Rally.Dashboard.NoGhosting",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FTNRallyDashboardNoGhostingTest::RunTest(const FString& Parameters)
+{
+	// #605: los paneles 3D se pintan enmascarados (con velocidad propia: sin estela del TSR) y el Rally va sin desenfoque.
+	TestTrue(TEXT("Paneles 3D enmascarados por defecto"), TNRallyDashboard::UseMaskedPanels());
+	const ATN_RallyPlayerController* Defaults = GetDefault<ATN_RallyPlayerController>();
+	TestEqual(TEXT("Sin desenfoque de movimiento por defecto"), Defaults->MotionBlurAmount, 0.f);
+	const FPostProcessSettings Settings = ATN_RallyPlayerController::MakeRallyPostProcess(Defaults->MotionBlurAmount);
+	TestTrue(TEXT("El postproceso del Rally fuerza el desenfoque"), Settings.bOverride_MotionBlurAmount != 0);
+	TestEqual(TEXT("...a la cantidad configurada"), Settings.MotionBlurAmount, 0.f);
+	TestFalse(TEXT("...y no toca la exposición del nivel"), Settings.bOverride_AutoExposureBias != 0);
+	TestEqual(TEXT("Una cantidad fuera de rango se acota"), ATN_RallyPlayerController::MakeRallyPostProcess(3.f).MotionBlurAmount, 1.f);
 	return true;
 }
 

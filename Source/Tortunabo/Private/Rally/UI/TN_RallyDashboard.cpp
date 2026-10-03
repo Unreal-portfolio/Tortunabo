@@ -10,6 +10,7 @@
 #include "Core/TN_LocText.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+#include "HAL/IConsoleManager.h"
 #include "Rally/TN_RallyGameState.h"
 #include "Rally/TN_RallyLogic.h"
 #include "Vehicles/TN_Buggy.h"
@@ -21,6 +22,15 @@ namespace TNRallyDashboard
 	constexpr float RefreshSeconds = 0.1f;
 	/** Fondo de los paneles: el azul de la interfaz, más opaco para que se lea sobre la arena. */
 	const FLinearColor PanelFill(0.012f, 0.045f, 0.08f, 0.88f);
+
+	/** Paneles enmascarados (#605) o translúcidos como antes, para comparar en el juego. Se aplica al crear los paneles. */
+	TAutoConsoleVariable<int32> CVarPanelMasked(TEXT("TN.Rally.PanelMasked"), 1,
+		TEXT("Rally: 1 = paneles 3D del buggy enmascarados (nítidos en movimiento, #605); 0 = translúcidos (estela con TSR). Vale para los paneles nuevos."));
+
+	bool UseMaskedPanels()
+	{
+		return CVarPanelMasked.GetValueOnGameThread() != 0;
+	}
 
 	FPanelLayout DashLayout()
 	{
@@ -336,7 +346,7 @@ UWidgetComponent* UTN_RallyDashboardComponent::MakePanel(ATN_Buggy& Buggy, APlay
 	Component->SetRelativeScale3D(FVector(Layout.CmPerPx));
 	Component->SetWidgetSpace(EWidgetSpace::World);
 	Component->SetDrawSize(FVector2D(Layout.DrawSizePx));
-	Component->SetBlendMode(EWidgetBlendMode::Transparent);
+	Component->SetBlendMode(TNRallyDashboard::UseMaskedPanels() ? EWidgetBlendMode::Masked : EWidgetBlendMode::Transparent);
 	Component->SetTwoSided(false);
 	Component->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	Component->SetCastShadow(false);
