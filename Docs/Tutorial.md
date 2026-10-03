@@ -83,7 +83,7 @@ suelo vuelve el control y sale el mensaje de despedida.
 
 ## Reiniciarlo para probar
 
-**Archivo**: crear `Saved/ResetTutorial.txt` en la carpeta del proyecto. Cada vez que arranca el juego o el PIE, el tutorial
+**Archivo** (no en Shipping): crear `Saved/ResetTutorial.txt` en la carpeta del proyecto. Cada vez que arranca el juego o el PIE, el tutorial
 vuelve a quedar por hacer y el log lo dice con un aviso (`[Tutorial] ...ResetTutorial.txt existe: tutorial reiniciado para
 la ventana N`).
 

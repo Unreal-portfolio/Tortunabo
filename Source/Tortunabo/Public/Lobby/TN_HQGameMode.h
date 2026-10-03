@@ -57,6 +57,9 @@ public:
 	 */
 	virtual void HandleSeamlessTravelPlayer(AController*& C) override;
 
+	/** Un ServerTravel a un mapa que no existe no empieza (UTN_TravelFailureSubsystem::CanServerTravelTo): los invitados no lo reciben. */
+	virtual bool CanServerTravel(const FString& URL, bool bAbsolute) override;
+
 	/**
 	 * @brief Setup final tras seamless travel: re-aplica cosméticos a todos los jugadores que han vuelto.
 	 *        Usa retry timer (5 × 0.1s) para cubrir la race PlayerState/Pawn possession.

@@ -5,6 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "World/ProcMap/TN_ProcMapGenerator.h"
+#include "Core/TN_ProjectMaterials.h"
 #include "World/ProcMap/TN_ProcMapFlora.h"
 #include "World/ProcMap/TN_ProcMapTypes.h"
 #include "Core/TN_Log.h"
@@ -199,7 +200,7 @@ void ATN_ProcMapGenerator::BuildFlora()
 
 	UMaterialInterface* Material = Settings && Settings->FoliageMaterial ? Settings->FoliageMaterial.Get() : nullptr;
 	if (!Material) { Material = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/ProcMap/Materials/M_ProcFoliage.M_ProcFoliage")); }
-	if (!Material) { Material = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial")); }
+	if (!Material) { Material = TNMaterials::VertexColor(); }
 
 	int32 Meshes = 0;
 	int32 Total = 0;

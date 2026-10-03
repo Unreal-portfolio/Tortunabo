@@ -1,4 +1,5 @@
 #include "World/Beach/TN_BeachElement.h"
+#include "World/Beach/TN_BeachTickWakeSubsystem.h"
 #include "Core/TN_Log.h"
 #include "Engine/World.h"
 #include "Net/UnrealNetwork.h"
@@ -125,6 +126,28 @@ void ATN_BeachElement::BeginPlay()
 		bSpecApplied = true;
 		ApplySpec();
 	}
+	UWorld* World = GetWorld();
+	if (PrimaryActorTick.bCanEverTick && GetTickWakeDistance() > 0.f && World && World->IsGameWorld())
+	{
+		if (UTN_BeachTickWakeSubsystem* Wake = World->GetSubsystem<UTN_BeachTickWakeSubsystem>())
+		{
+			bTickWakeRegistered = true;
+			Wake->Register(this);
+		}
+	}
+}
+
+void ATN_BeachElement::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (bTickWakeRegistered)
+	{
+		bTickWakeRegistered = false;
+		if (UTN_BeachTickWakeSubsystem* Wake = GetWorld() ? GetWorld()->GetSubsystem<UTN_BeachTickWakeSubsystem>() : nullptr)
+		{
+			Wake->Unregister(this);
+		}
+	}
+	Super::EndPlay(EndPlayReason);
 }
 
 void ATN_BeachElement::OnRep_Spec()

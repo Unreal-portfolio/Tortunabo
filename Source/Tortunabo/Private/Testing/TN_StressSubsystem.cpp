@@ -14,6 +14,7 @@
 #include "Player/TortugaCharacter.h"
 #include "RHI.h"
 #include "RenderTimer.h"
+#include "Testing/TN_CpuCoreProbe.h"
 #include "Testing/TN_MonkeyPlan.h"
 #include "Testing/TN_MonkeySubsystem.h"
 #include "World/Beach/TN_BeachElement.h"
@@ -29,6 +30,36 @@ namespace TNStressDetail
 {
 	/** Segundos al principio de cada fase que no cuentan en el promedio (el propio parón de crear los actores). */
 	constexpr double SettleSeconds = 1.5;
+
+	/** Reparto de los fotogramas entre núcleos de eficiencia (E) y de rendimiento (P): porcentaje en E, mediana en cada uno y picos en E. */
+	void WriteCoreSplit(FJsonObject& Item, const TArray<float>& FrameMs, const TArray<uint8>& OnECore, float SpikeThresholdMs)
+	{
+		if (FrameMs.Num() == 0 || FrameMs.Num() != OnECore.Num())
+		{
+			return;
+		}
+		TArray<float> OnE;
+		TArray<float> OnP;
+		int32 Spikes = 0;
+		int32 SpikesOnE = 0;
+		for (int32 Index = 0; Index < FrameMs.Num(); ++Index)
+		{
+			const bool bE = OnECore[Index] != 0;
+			(bE ? OnE : OnP).Add(FrameMs[Index]);
+			if (FrameMs[Index] > SpikeThresholdMs)
+			{
+				++Spikes;
+				SpikesOnE += bE ? 1 : 0;
+			}
+		}
+		Item.SetNumberField(TEXT("frames_on_efficiency_core_pct"), 100.0 * OnE.Num() / FrameMs.Num());
+		Item.SetNumberField(TEXT("frame_p50_ms_on_efficiency_core"), TNMonkey::Summarize(OnE).P50);
+		Item.SetNumberField(TEXT("frame_p50_ms_on_performance_core"), TNMonkey::Summarize(OnP).P50);
+		Item.SetNumberField(TEXT("spikes_on_efficiency_core_pct"), Spikes > 0 ? 100.0 * SpikesOnE / Spikes : 0.0);
+	}
+
+	/** Clases con Tick que salen en el informe de cada fase (actores y componentes juntos, de más a menos). */
+	constexpr int32 TopTickingClasses = 30;
 
 	UTN_StressSubsystem* FromWorld(UWorld* World)
 	{
@@ -127,6 +158,12 @@ bool UTN_StressSubsystem::StartSession(const TNStress::FScenario& InScenario, fl
 		Data.Plan = Plan;
 	}
 	Stream.Initialize(4242);
+	// Sin ventana visible ni audio (-nullrhi -nosound), Windows baja la QoS del proceso y en CPU híbridas manda el hilo de juego
+	// a núcleos de eficiencia a ratos: picos de 1,6-2 veces que no son del juego. -TNStressDefaultQoS mide sin corregirlo.
+	bHighQoSRequested = !FParse::Param(FCommandLine::Get(), TEXT("TNStressDefaultQoS"));
+	bHighQoSApplied = bHighQoSRequested && TNCpuCore::RequestHighQoS();
+	bPerformanceCoresApplied = bHighQoSRequested && TNCpuCore::PreferPerformanceCores();
+	bLastFrameOnECore = false;
 	SessionStart = FPlatformTime::Seconds();
 	MemoryStartMB = TNTestReport::UsedPhysicalMB();
 
@@ -314,6 +351,7 @@ void UTN_StressSubsystem::BeginPhase(int32 Index)
 void UTN_StressSubsystem::SampleFrame(FPhaseData& Phase)
 {
 	const double Now = FPlatformTime::Seconds();
+	const bool bOnECore = TNCpuCore::IsOnEfficiencyCore();
 	if (LastFrame > 0.0)
 	{
 		const float Ms = static_cast<float>((Now - LastFrame) * 1000.0);
@@ -328,9 +366,11 @@ void UTN_StressSubsystem::SampleFrame(FPhaseData& Phase)
 			Phase.GameThreadMs.Add(static_cast<float>(FPlatformTime::ToMilliseconds(GGameThreadTime)));
 			Phase.RenderThreadMs.Add(static_cast<float>(FPlatformTime::ToMilliseconds(GRenderThreadTime)));
 			Phase.GpuMs.Add(static_cast<float>(FPlatformTime::ToMilliseconds(RHIGetGPUFrameCycles())));
+			Phase.FrameOnECore.Add((bOnECore || bLastFrameOnECore) ? 1 : 0);
 		}
 	}
 	LastFrame = Now;
+	bLastFrameOnECore = bOnECore;
 }
 
 void UTN_StressSubsystem::SampleNet(FPhaseData& Phase)
@@ -388,9 +428,9 @@ void UTN_StressSubsystem::EndPhase(int32 Index)
 		Phase.TopTicking.Add(TPair<FString, int32>(Pair.Key, Pair.Value));
 	}
 	Phase.TopTicking.Sort([](const TPair<FString, int32>& A, const TPair<FString, int32>& B) { return A.Value > B.Value; });
-	if (Phase.TopTicking.Num() > 12)
+	if (Phase.TopTicking.Num() > TNStressDetail::TopTickingClasses)
 	{
-		Phase.TopTicking.SetNum(12);
+		Phase.TopTicking.SetNum(TNStressDetail::TopTickingClasses);
 	}
 }
 
@@ -469,6 +509,10 @@ TSharedRef<FJsonObject> UTN_StressSubsystem::BuildReport(const TCHAR* Reason) co
 	Root->SetNumberField(TEXT("memory_start_mb"), MemoryStartMB);
 	Root->SetNumberField(TEXT("memory_peak_mb"), TNTestReport::PeakPhysicalMB());
 	Root->SetStringField(TEXT("monkey_report"), MonkeyReportPath);
+	Root->SetBoolField(TEXT("cpu_hybrid"), TNCpuCore::IsHybrid());
+	Root->SetBoolField(TEXT("high_qos_requested"), bHighQoSRequested);
+	Root->SetBoolField(TEXT("high_qos_applied"), bHighQoSApplied);
+	Root->SetBoolField(TEXT("performance_cores_only"), bPerformanceCoresApplied);
 
 	TArray<TSharedPtr<FJsonValue>> PhasesJson;
 	TArray<TSharedPtr<FJsonValue>> CostsJson;
@@ -495,6 +539,7 @@ TSharedRef<FJsonObject> UTN_StressSubsystem::BuildReport(const TCHAR* Reason) co
 		TNMonkey::FindSpikePeriod(Phase.FrameMs, Phase.FrameStampMs, 1.8f, Spikes, SpikePeriod);
 		Item->SetNumberField(TEXT("spikes_over_1_8x_median"), Spikes);
 		Item->SetNumberField(TEXT("spike_median_period_ms"), SpikePeriod);
+		TNStressDetail::WriteCoreSplit(*Item, Phase.FrameMs, Phase.FrameOnECore, Frame.P50 * 1.8f);
 		Item->SetNumberField(TEXT("game_thread_avg_ms"), TNMonkey::Summarize(Phase.GameThreadMs).Average);
 		Item->SetNumberField(TEXT("render_thread_avg_ms"), TNMonkey::Summarize(Phase.RenderThreadMs).Average);
 		Item->SetNumberField(TEXT("gpu_avg_ms"), TNMonkey::Summarize(Phase.GpuMs).Average);
