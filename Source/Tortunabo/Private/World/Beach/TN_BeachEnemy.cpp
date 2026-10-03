@@ -1,4 +1,5 @@
 #include "World/Beach/TN_BeachEnemy.h"
+#include "Game/TN_BeachRaceDecisions.h"
 #include "World/Beach/TN_BeachCameraShake.h"
 #include "World/Beach/TN_BeachEnemySynth.h"
 #include "World/Beach/TN_BeachRaceGenerator.h"
@@ -529,9 +530,7 @@ bool ATN_BeachEnemy::IsRaceLive(const UObject* WorldContext)
 	const ATN_BeachRaceGameState* GS = World ? World->GetGameState<ATN_BeachRaceGameState>() : nullptr;
 	// Solo se para al acabar la cuenta de meta (gusanos y «¡TODAS AL AGUA!»), en el recuento, en el título del sprint final
 	// y en el podio: si la fase se quedara en Waiting por lo que sea, se sigue atacando.
-	return !GS || (GS->RacePhase != ETNBeachRacePhase::RoundResults && GS->RacePhase != ETNBeachRacePhase::Champion
-		&& GS->RacePhase != ETNBeachRacePhase::SprintIntro && GS->FinishCountdown != ETNBeachFinishCountdown::TimeUp
-		&& GS->FinishCountdown != ETNBeachFinishCountdown::AllIn);
+	return !GS || TNBeachRaceRules::IsRaceLive(GS->RacePhase, GS->FinishCountdown);
 }
 
 bool ATN_BeachEnemy::TraceGround(const UObject* WorldContext, const FVector& Where, float& OutZ, FVector* OutNormal, float Up, float Down)
