@@ -84,21 +84,13 @@ void UTN_SlopeTiltComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 	}
 
 	// En ragdoll la malla la mueve la física: no se toca. El derribo guardó su giro relativo (con la inclinación) para
-	// devolverlo al levantarse: si lo devuelve tal cual, se le quita la inclinación.
+	// devolverlo al levantarse: se recuerda la inclinación para seguir desde ella (Resume).
 	if (Mesh->IsSimulatingPhysics())
 	{
-		bRestoreAfterRagdoll |= bTiltApplied;
+		RememberTilt();
 		bTiltApplied = false;
 		CurrentTilt = TargetTilt = FRotator::ZeroRotator;
 		return;
-	}
-	if (bRestoreAfterRagdoll)
-	{
-		bRestoreAfterRagdoll = false;
-		if (Mesh->GetRelativeRotation().Equals(LastWrittenRelative, TNSlopeTiltPrivate::SameRotationTolerance))
-		{
-			Mesh->SetRelativeRotation(BaseRelative);
-		}
 	}
 
 	const TNSlopeTilt::FTiltGate Gate = ReadGate(*Character);
@@ -106,6 +98,15 @@ void UTN_SlopeTiltComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 	{
 		DropTilt(*Mesh);
 		return;
+	}
+
+	// Al levantarse (o al acabar la eclosión del huevo) la malla vuelve a la foto inclinada: se retoma esa inclinación y se
+	// interpola hacia la del suelo, sin enderezarla de golpe.
+	if (Resume.TryResume(Mesh->GetRelativeRotation(), TNSlopeTiltPrivate::SameRotationTolerance, BaseRelative, CurrentTilt))
+	{
+		LastWrittenRelative = Mesh->GetRelativeRotation();
+		LastAppliedTilt = CurrentTilt;
+		bTiltApplied = true;
 	}
 
 	TargetTilt = FRotator::ZeroRotator;
@@ -208,6 +209,8 @@ void UTN_SlopeTiltComponent::ApplyToVisual(USceneComponent& Visual)
 	const bool bExternalWrite = !bTiltApplied || !Now.Equals(LastWrittenRelative, TNSlopeTiltPrivate::SameRotationTolerance);
 	if (bExternalWrite)
 	{
+		// Otro sistema pone su pose encima de la nuestra (p. ej. la eclosión): si luego devuelve la foto, se retoma.
+		RememberTilt();
 		BaseRelative = Now.Quaternion();
 	}
 
@@ -228,14 +231,28 @@ void UTN_SlopeTiltComponent::ApplyToVisual(USceneComponent& Visual)
 		return;
 	}
 
+	// Escribiendo sobre una base propia de nuevo: la inclinación perdida ya no se va a devolver.
+	if (!bExternalWrite)
+	{
+		Resume.Forget();
+	}
 	Visual.SetRelativeRotation(TNSlopeTilt::ComposeTilt(BaseRelative, CurrentTilt));
 	LastWrittenRelative = Visual.GetRelativeRotation();
 	LastAppliedTilt = CurrentTilt;
 	bTiltApplied = true;
 }
 
+void UTN_SlopeTiltComponent::RememberTilt()
+{
+	if (bTiltApplied)
+	{
+		Resume.Remember(LastWrittenRelative, BaseRelative, LastAppliedTilt);
+	}
+}
+
 void UTN_SlopeTiltComponent::DropTilt(USceneComponent& Visual)
 {
+	RememberTilt();
 	// Si la malla sigue con lo que escribimos, vuelve a su base; si otro sistema ya la ha colocado, se deja como está.
 	if (bTiltApplied && Visual.GetRelativeRotation().Equals(LastWrittenRelative, TNSlopeTiltPrivate::SameRotationTolerance))
 	{

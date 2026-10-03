@@ -227,4 +227,46 @@ bool FTNSlopeTiltLandingTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNSlopeTiltResumeTest,
+	"Tortunabo.Player.SlopeTilt.ResumeAfterSnapshot",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNSlopeTiltResumeTest::RunTest(const FString& Parameters)
+{
+	using namespace TNSlopeTilt;
+
+	// Derribo en una cuesta de 35° (#586): el derribo hace una foto de la malla inclinada, la suelta a la física y al
+	// levantarse la devuelve. Al retomar se sigue desde la inclinación de la foto: el primer paso hacia el llano (o hacia
+	// otra cuesta) es de unos grados, no los 35° de golpe que se veían al poner la base.
+	constexpr float Tolerance = 1.e-2f;
+	const FQuat Base = FRotator(0.f, -90.f, 0.f).Quaternion();
+	const FRotator Tilt(-35.f, 0.f, 0.f);
+	const FRotator Written = ComposeTilt(Base, Tilt).Rotator();
+
+	FTiltResume Resume;
+	Resume.Remember(Written, Base, Tilt);
+	// Durante el derribo otros sistemas escriben su pose: se queda la de la foto.
+	Resume.Remember(FRotator(90.f, -90.f, 0.f), FQuat::Identity, FRotator(-10.f, 0.f, 0.f));
+
+	FQuat OutBase = FQuat::Identity;
+	FRotator OutTilt = FRotator::ZeroRotator;
+	TestFalse(TEXT("Con otra pose no se retoma"), Resume.TryResume(FRotator(90.f, -90.f, 0.f), Tolerance, OutBase, OutTilt));
+	// La foto vuelve por una transformación (cuaternión ida y vuelta).
+	const FRotator Restored = FTransform(Written).GetRotation().Rotator();
+	TestTrue(TEXT("Con la foto se retoma"), Resume.TryResume(Restored, Tolerance, OutBase, OutTilt));
+	TestTrue(TEXT("Retoma la inclinación de la foto"), OutTilt.Equals(Tilt, 0.01f));
+	TestTrue(TEXT("Retoma la base de la foto (sin inclinación doble)"), OutBase.Equals(Base, 1.e-4f));
+	TestFalse(TEXT("Se retoma una sola vez"), Resume.TryResume(Restored, Tolerance, OutBase, OutTilt));
+
+	const FRotator Next = StepTilt(OutTilt, FRotator::ZeroRotator, 1.f / 30.f, DefaultInterpSpeed, DefaultMaxRateDegPerSec);
+	const float FirstStepDeg = static_cast<float>(FVector2D(Next.Pitch - OutTilt.Pitch, Next.Roll - OutTilt.Roll).Size());
+	TestTrue(FString::Printf(TEXT("Primer paso al llano a 30 fps <= 5° (%.2f°)"), FirstStepDeg), FirstStepDeg <= 5.f);
+
+	FTiltResume Forgotten;
+	Forgotten.Remember(Written, Base, Tilt);
+	Forgotten.Forget();
+	TestFalse(TEXT("Olvidada no se retoma"), Forgotten.TryResume(Written, Tolerance, OutBase, OutTilt));
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

@@ -93,8 +93,11 @@ private:
 	/** Hay inclinación aplicada sobre la malla (BaseRelative y LastWrittenRelative valen). */
 	bool bTiltApplied = false;
 
-	/** Había inclinación al soltarse a la física: al acabar el ragdoll se quita de la pose que devuelva el derribo. */
-	bool bRestoreAfterRagdoll = false;
+	/** Inclinación perdida por el ragdoll, el derribo u otro sistema: se retoma si la malla vuelve a su giro. */
+	TNSlopeTilt::FTiltResume Resume;
+
+	/** Guarda la inclinación aplicada (si la hay) para retomarla si la malla vuelve a ese giro. */
+	void RememberTilt();
 
 	/** Caché de la traza de los proxies simulados. */
 	FVector LastTraceLocation = FVector(UE_BIG_NUMBER);

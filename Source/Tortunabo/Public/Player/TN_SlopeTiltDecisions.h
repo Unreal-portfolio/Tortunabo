@@ -111,4 +111,47 @@ namespace TNSlopeTilt
 	{
 		return FRotator(Tilt.Pitch, 0.f, Tilt.Roll).Quaternion() * BaseRelative;
 	}
+
+	/**
+	 * Inclinación que otro sistema le quitó a la malla tras hacerle una foto (el derribo y la eclosión del huevo guardan el
+	 * giro relativo inclinado y lo devuelven al acabar). Cuando la malla vuelve a tener exactamente ese giro, se retoma la
+	 * inclinación desde ahí y se interpola hacia la del suelo, en vez de enderezarla de golpe o de tomar la pose inclinada
+	 * como base (inclinación doble).
+	 */
+	struct FTiltResume
+	{
+		bool bPending = false;
+		/** Giro relativo escrito (base + inclinación) cuando se perdió. */
+		FRotator Relative = FRotator::ZeroRotator;
+		FQuat Base = FQuat::Identity;
+		FRotator Tilt = FRotator::ZeroRotator;
+
+		/** Guarda la última inclinación escrita; si ya hay una pendiente se queda la primera (la de la foto). */
+		void Remember(const FRotator& Written, const FQuat& InBase, const FRotator& InTilt)
+		{
+			if (bPending)
+			{
+				return;
+			}
+			Relative = Written;
+			Base = InBase;
+			Tilt = InTilt;
+			bPending = true;
+		}
+
+		/** Si la malla ha vuelto al giro guardado, da la base y la inclinación desde las que seguir y la olvida. */
+		bool TryResume(const FRotator& MeshRelative, float Tolerance, FQuat& OutBase, FRotator& OutTilt)
+		{
+			if (!bPending || !MeshRelative.Equals(Relative, Tolerance))
+			{
+				return false;
+			}
+			OutBase = Base;
+			OutTilt = Tilt;
+			bPending = false;
+			return true;
+		}
+
+		void Forget() { bPending = false; }
+	};
 }
