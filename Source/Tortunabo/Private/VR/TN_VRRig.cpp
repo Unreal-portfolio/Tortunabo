@@ -49,11 +49,14 @@ namespace TNVRRigDetail
 {
 	const TCHAR* const ControlsPath = TEXT("/Game/Blueprints/Gameplay/Controls/");
 
-	/** Color sRGB 0xRRGGBB para M_CosmeticVertexColor (MakeStaticMesh decodifica una vez más: así llega lineal). */
+	/**
+	 * Color sRGB 0xRRGGBB para M_CosmeticVertexColor (MakeStaticMesh decodifica una vez más: así llega lineal). El alfa
+	 * es el brillo del material (0 = mate, sin metal): las aletas son piel, no metal.
+	 */
 	FLinearColor Pal(uint32 Hex)
 	{
 		return FLinearColor(TNProcRuntimeMesh::SRGBToLinear(((Hex >> 16) & 255) / 255.f), TNProcRuntimeMesh::SRGBToLinear(((Hex >> 8) & 255) / 255.f),
-			TNProcRuntimeMesh::SRGBToLinear((Hex & 255) / 255.f), 1.f);
+			TNProcRuntimeMesh::SRGBToLinear((Hex & 255) / 255.f), 0.f);
 	}
 
 	UMaterialInterface* VertexColorMaterial()
