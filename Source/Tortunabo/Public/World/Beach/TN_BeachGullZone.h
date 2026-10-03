@@ -279,6 +279,11 @@ private:
 	float MarkerGroundTimer = 0.f;
 	FVector DropNormal = FVector::UpVector;
 	float DropGroundTimer = 0.f;
+	/**
+	 * Dónde cae de verdad la cagada: cuánto queda por encima de la arena del blanco lo primero firme desde arriba (un castillo,
+	 * una fortaleza, una sombrilla; 0 en la arena). Con ella se colocan la sombra y la cagada que cae; se mira a menudo.
+	 */
+	float DropSurfaceLift = 0.f;
 	TNAmbientFX::FEmitter Droplets;
 	TNAmbientFX::FEmitter Feathers;
 	TNAmbientFX::FEmitter Trail;

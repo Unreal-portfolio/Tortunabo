@@ -2346,11 +2346,14 @@ existe): `TNGhost::ReviveIntoEgg(PC, EggTransform)`, `OnHatched()`, `IsReviving`
 
 ### 23.1 Interactuar (E)
 
-- **Detección**: cada 0,1 s (`InteractionScanInterval`) se buscan actores `ATN_InteractableBase` en una esfera de **350 cm**
-  alrededor de la tortuga; gana el más cercano por su punto de interacción (`GetInteractionPointFor`). El HUD muestra la tecla y
-  el texto del interactuable (`UTN_RunHUDWidget::TickPrompt`).
-- **Validación en el servidor** (`ServerTryInteract`): distancia ≤ `max(350, distancia del interactuable) + 100 + holgura por
-  ping` (el 25 % del ping, hasta 120 cm).
+- **Detección**: cada 0,1 s (`InteractionScanInterval`) se buscan actores `ATN_InteractableBase` en una esfera de **250 cm**
+  (`MaxInteractionDistance`, bajada de 350 en #214; sale de `ATortugaCharacter::DefaultInteractionDistance`) alrededor de la
+  tortuga; gana el más cercano por su punto de interacción (`GetInteractionPointFor`). El HUD muestra la tecla y el texto del
+  interactuable (`UTN_RunHUDWidget::TickPrompt`).
+- **Validación en el servidor** (`ServerTryInteract`): distancia ≤ `max(250, distancia del interactuable) + 100 + holgura por
+  ping` (el 25 % del ping, hasta 120 cm). La distancia propia del interactuable (`InteractionDistance`: 250 de serie) solo
+  cuenta aquí y solo si supera a la de la tortuga; ningún interactuable la supera ya (rescates y entrada del tutorial bajaron
+  de 300 a 250).
 - **Orden de prioridades al pulsar E** (`ATortugaCharacter::TryInteract`):
   1. Derribada o en el caparazón: nada.
   2. **Llevando a alguien**: lo lanza (§19).
@@ -2360,7 +2363,7 @@ existe): `TNGhost::ReviveIntoEgg(PC, EggTransform)`, `OnHatched()`, `IsReviving`
   6. Caso especial: si el interactuable a mano es un objeto que no cabe (las dos ranuras llenas) y hay un objeto equipado, el
      servidor **usa el objeto de la mano** en vez de perder la pulsación.
 - **Interacción de mantener** (`ServerBeginHoldInteract` / `ServerEndHoldInteract`): el aro del HUD se llena mientras se mantiene
-  E; soltar antes cancela; el servidor cuenta el tiempo y vigila que la tortuga siga cerca (alcance + 1,2 m) y en condiciones
+  E; soltar antes cancela; el servidor cuenta el tiempo y vigila que la tortuga siga cerca (alcance + 0,85 m) y en condiciones
   (no se meta en el caparazón, no quede tumbada, no muera, no la cojan). Rebuscar: 1,3 s; cofre del lobby: 5 s; cofre de la
   playa: 5,5 s (§28.4).
 - **Los interactuables** (§34, §36.15): botones, placas, tienda y probador, tótem, sombrilla, rescates, objetos del suelo,
@@ -2524,7 +2527,7 @@ texturas de relleno del motor, [DT]).
 
 ### 27.2 Recoger
 
-- Con **E** cerca de un objeto del suelo (`ATN_PickupInteractableBase`, esfera de 350 cm como cualquier interactuable).
+- Con **E** cerca de un objeto del suelo (`ATN_PickupInteractableBase`, esfera de 250 cm como cualquier interactuable).
 - **Destino** (`TNInventoryLogic::DecideAddSlot`): mano libre → la mano; si no, y el caparazón está libre → al caparazón (con la
   animación de guardar); con **las dos llenas no se recoge** (`CanReceiveItem(…, false)`: el objeto se queda en el suelo y esa
   pulsación de E **usa el objeto de la mano**, §23).
@@ -2706,7 +2709,8 @@ mira**. En la playa las sombrillas clavadas son solo decorado (se rebuscan).
 
 Rebuscar y el cofre: marca común de lo que se coge (anillo dorado que gira en el suelo, columna de luz de 3,6 m visible a 150 m,
 chispitas a menos de 30 m, luz a menos de 18 m; el objeto sube 14 cm, flota ±6 cm y gira a 0,2 vueltas/s a menos de 40 m;
-`UTN_PickupGlowComponent`, [`Docs/Botin_Decorados.md`](Botin_Decorados.md)).
+`UTN_PickupGlowComponent`, [`Docs/Botin_Decorados.md`](Botin_Decorados.md)). En los rebuscables, el anillo está fijo
+alrededor del decorado y abarca su huella (en la playa, centrado en su montículo de arena), sin seguir a nadie.
 
 ## 29. Objetos de carrera
 
@@ -4038,7 +4042,7 @@ Dos actores: `ATN_BeachChest` es el elemento del reparto (solo servidor, no se r
 ### 34.12 Rebuscables y montículos que vibran (`TN_BeachLoot`, `World/Beach/TN_BeachLoot.*`, `TN_BeachSearchMounds.cpp`)
 
 En la playa se rebusca en casi todo el decorado (tablas de §33.3) con mantener E **1,3 s**: **70 % de suerte** (55 % en el
-cooperativo; `SearchLuck`), pesos por puesto de quien rebusca, saltito del objeto, anillo dorado a 18 m del borde (105 cm de radio)
+cooperativo; `SearchLuck`), pesos por puesto de quien rebusca, saltito del objeto, anillo dorado fijo en su montículo de arena
 y chispitas desde 35 m. La huella es la caja real de la malla (cápsula a lo largo del lado largo; la sombrilla se rebusca en el
 montón de arena de su pie). **Uno por corrillo** (9 m entre centros, 3 m entre bordes), **hasta 240 por ronda y 50 por sexto del
 recorrido** (360 y 75 con 1200 m), ×1,6 en Fácil y ×1,4 en Difícil.
@@ -4445,6 +4449,8 @@ Caracola de turbante de 2,24 m de diámetro (4 cm reales) con el ermitaño asoma
   últimos 7 m frena y se para al final.
 - **Derriba** a quien toca la bola (1,12 m + 0,7 m del tramo que recorre en ese fotograma, y a menos de 2,2 m en altura), **sin
   pararse**: a todas las que estén en fila. Tabla de §36.2 («¡BOLO!»/«¡STRIKE!»).
+- **Es sólido** cuando no rueda (esperando, metiéndose, asomando, andando o mareado): la tortuga choca con él. Rodando no
+  bloquea: derriba.
 - **Al final** asoma (0,35 s), se sacude la arena, se da la vuelta y **vuelve andando** a lo alto a 2,3 m/s (por la raíz del tamaño).
 - **Red**: los estados son función de su hora (reloj del servidor); la rodada es un camino calculado igual en cada máquina (pasos de
   1/60 s, 14 s como mucho). Los derribos, por el servidor.

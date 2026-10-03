@@ -389,7 +389,8 @@ def reconciliar_lotes(proyecto: dict, cambios: list, avisos: list) -> None:
         if lote["state"] != "OPEN" or not lotes.es_lote(lote):
             continue
         miembros = [b for b in (lote.get("blockedBy") or {}).get("nodes", [])]
-        pr = next((p["number"] for p in fusionadas if n in issues_de_pr(p) and p["baseRefName"] == INTEGRACION), None)
+        pr = next((p["number"] for p in fusionadas
+                   if n in issues_de_pr(p, menciones=True) and p["baseRefName"] == INTEGRACION), None)
         if pr is None or any(m["state"] == "OPEN" for m in miembros):
             continue
         if not tiene_resumen(n):
@@ -413,21 +414,31 @@ def reconciliar_prs(proyecto: dict, cambios: list, avisos: list) -> None:
         if pr["mergeable"] == "CONFLICTING":
             avisos.append(f"PR #{pr['number']} ({pr['author']['login']}) tiene conflictos con {pr['baseRefName']}: rebase del autor")
         if not refs:
-            avisos.append(f"PR #{pr['number']} no enlaza ninguna issue (falta «Closes #n» o rama tipo/<n>-slug)")
-        for n in refs:
-            issue = proyecto["items"].get(n, {})
-            if issue and objetos.es_objeto(issue):
-                avisos.append(f"PR #{pr['number']} enlaza el objeto #{n}: debe enlazar una de sus sub-issues")
-                continue
-            if issue and lotes.es_lote(issue):
-                continue
-            estado = issue.get("valores", {}).get("Status")
-            if estado in (None, "Backlog", "Ready", "In progress") and issue.get("valores", {}).get("Editor") == "Falla":
-                avisos.append(f"#{n} tiene PR abierta (#{pr['number']}) pero falla en el editor: no pasa a In review")
-            elif estado in (None, "Backlog", "Ready", "In progress"):
-                cambios.append((f"#{n} → In review (PR #{pr['number']})",
-                                lambda n=n, autor=pr["author"]["login"]: mover_a_review(proyecto, n, autor)))
+            avisos.append(f"PR #{pr['number']} no cierra ninguna issue (falta «Closes #n» o rama tipo/<n>-slug)")
+        for n in sorted(refs):
+            reconciliar_pr_issue(proyecto, pr, n, cambios, avisos)
     reconciliar_fusiones(proyecto, abiertas, cambios, avisos)
+
+
+def reconciliar_pr_issue(proyecto: dict, pr: dict, n: int, cambios: list, avisos: list) -> None:
+    """Issue que cierra una PR abierta: pasa a In review salvo que falle en el editor o espere una decisión."""
+    issue = proyecto["items"].get(n, {})
+    if issue and objetos.es_objeto(issue):
+        avisos.append(f"PR #{pr['number']} enlaza el objeto #{n}: debe enlazar una de sus sub-issues")
+        return
+    if issue and lotes.es_lote(issue):
+        return
+    valores = issue.get("valores", {})
+    if valores.get("Status") not in (None, "Backlog", "Ready", "In progress"):
+        return
+    if valores.get("Editor") == "Falla":
+        avisos.append(f"#{n} tiene PR abierta (#{pr['number']}) pero falla en el editor: no pasa a In review")
+    elif ETIQUETA_DECISION in etiquetas_de(issue):
+        avisos.append(f"#{n} tiene PR abierta (#{pr['number']}) pero espera una decisión (`decision`): "
+                      "no pasa a In review")
+    else:
+        cambios.append((f"#{n} → In review (PR #{pr['number']})",
+                        lambda n=n, autor=pr["author"]["login"]: mover_a_review(proyecto, n, autor)))
 
 
 def reconciliar_fusiones(proyecto: dict, abiertas: list[dict], cambios: list, avisos: list) -> None:
@@ -443,15 +454,18 @@ def reconciliar_fusiones(proyecto: dict, abiertas: list[dict], cambios: list, av
             if not issue or objetos.es_objeto(issue) or lotes.es_lote(issue) or issue["state"] != "OPEN":
                 continue  # los objetos y los lotes no llevan Status: solo se mueven las issues de trabajo
             actual = issue["valores"].get("Status")
-            if not flujo.mueve_por_fusion(actual, n in con_pr_abierta):
+            cierra_en_done = flujo.cierra_por_fusion(actual, issue["valores"], n in con_pr_abierta)
+            if not cierra_en_done and not flujo.mueve_por_fusion(actual, n in con_pr_abierta):
                 continue
             valores = valores_tras_fusion(issue["valores"])
             destino, cerrar = flujo.estado_objetivo(actual, valores, fusionada=True, en_lote=False)
-            if destino == actual and valores == issue["valores"]:
+            if destino == actual and valores == issue["valores"] and not cerrar:
                 continue
             if cerrar and not tiene_resumen(n):
                 avisos.append(f"#{n} se cierra sin comentario **Resumen**: añádelo con `resumen {n}`")
             motivo = "; revisada y probada: se cierra" if cerrar else ""
+            if cierra_en_done:
+                motivo = "; ya estaba en Done: se cierra"
             cambios.append((f"#{n} → {destino} (PR #{pr['number']} fusionada en {INTEGRACION}{motivo})",
                             lambda n=n: aplicar_fusion(proyecto, n)))
 
@@ -732,6 +746,8 @@ def anadir_comandos_de_alta(sub: argparse._SubParsersAction) -> None:
 
 
 def main() -> int:
+    for flujo_salida in (sys.stdout, sys.stderr):  # la consola de Windows (cp1252) no imprime «→» (#437)
+        flujo_salida.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description="Tablero de desarrollo de Tortunabo")
     sub = parser.add_subparsers(dest="cmd", required=True)
     anadir_comandos_de_flujo(sub)

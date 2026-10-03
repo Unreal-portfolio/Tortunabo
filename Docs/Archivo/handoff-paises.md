@@ -1,3 +1,5 @@
+> **Obsoleto** (2026-10-02): traspaso de la rama macro-update; los mapas aparcados se retoman desde `Docs/Catalogo-Mapas-2026-09-29.md` y las issues del tablero.
+
 # Traspaso: mapas de países (Tortunabo, rama macro-update)
 
 Base: commit c8380abc6 (pipeline de países, sin mapas versionados).

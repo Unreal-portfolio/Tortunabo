@@ -96,3 +96,13 @@ def editor_tras_fusion(valores: dict) -> str | None:
 def mueve_por_fusion(estado: str | None, con_pr_abierta: bool) -> bool:
     """Si una PR fusionada puede mover la issue: no si hay trabajo en marcha o una PR abierta."""
     return estado not in ESTADOS_EN_CURSO and not con_pr_abierta
+
+
+def cierra_por_fusion(estado: str | None, valores: dict, con_pr_abierta: bool) -> bool:
+    """Si una issue abierta que ya está en Done se cierra al fusionarse su PR en dev.
+
+    El ciclo de #282 la pasa a Done antes de fusionar, y `Closes #n` no cierra nada fuera de la rama
+    por defecto: sin esto se quedaría abierta en Done (#436).
+    """
+    return (estado == "Done" and not con_pr_abierta
+            and estado_objetivo(estado, valores, fusionada=True, en_lote=False) == ("Done", True))

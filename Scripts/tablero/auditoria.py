@@ -13,7 +13,7 @@ También comprueba la forma de la issue (`problemas_de_formato`): etiqueta de ti
 criterios de aceptación. `nueva` usa la misma función para no crear issues mal formadas.
 
 La detección es pura: `problemas` recibe la issue ya normalizada con el contexto de sus PR
-(`con_pr`, `fusionada`, `lote_fusionado`, `prs_sin_lote`, `revisor_sugerido`).
+(`con_pr`, `fusionada`, `lote_fusionado`, `prs_sin_lote`, `fuera_de_lote`, `revisor_sugerido`).
 """
 
 from __future__ import annotations
@@ -68,7 +68,7 @@ query($owner: String!, $repo: String!, $cursor: String, $since: DateTime) {
         labels(first: 20) { nodes { name } }
         assignees(first: 5) { nodes { login } }
         parent { number }
-        blockedBy(first: 10) { nodes { number state } }
+        blockedBy(first: 50) { nodes { number state } }
         blocking(first: 10) { nodes { number state labels(first: 10) { nodes { name } } } }
         comments(last: 40) { nodes { body author { login } } }
       }
@@ -176,11 +176,11 @@ def columna_correcta(issue: dict) -> str | None:
     """Columna que le corresponde según la regla, si es otra y el cambio es solo mover la tarjeta."""
     estado = issue["valores"].get("Status")
     fusionada, en_lote = issue.get("fusionada", False), bool(issue.get("lotes"))
-    if estado == "Validada" and not en_lote and not fusionada:
-        return "In review"  # Validada es solo para lotes: aprobada, a la espera de fusionarse
     if fusionada and not flujo.mueve_por_fusion(estado, con_pr_abierta=False):
         return None
     destino, _ = flujo.estado_objetivo(estado, issue["valores"], fusionada, en_lote)
+    if destino is None and estado == "Validada" and not fusionada:
+        return "In review"  # Validada exige revisión IA aprobada y Editor = Funciona (en un lote o suelta)
     return destino if destino and destino != estado and destino != "Done" else None
 
 
@@ -240,6 +240,9 @@ def organizacion_abierta(issue: dict) -> list[dict]:
         lista.append(problema("en Bloqueada sin dependencias registradas (`tablero.py bloquear <n> --por <m>`)"))
     for pr in issue.get("prs_sin_lote", []):
         lista.append(problema(f"su PR #{pr} cierra varias issues sin lote (`tablero.py lote crear`)"))
+    for pr, lote in issue.get("fuera_de_lote", []):
+        lista.append(problema(f"la cierra la PR #{pr} pero no es miembro del lote #{lote} "
+                              f"(`tablero.py lote añadir {lote} {issue['numero']}`)"))
     return lista
 
 

@@ -224,7 +224,10 @@ public:
 	 */
 	void ResetAll();
 
-	/** Guarda ya los ajustes pendientes (los propios y los de UGameUserSettings). */
+	/**
+	 * Guarda ya los ajustes pendientes (los propios y los de UGameUserSettings). Es un guardado forzado: no espera a que
+	 * pase la espera de los reintentos tras un fallo (esa solo la respeta el guardado automático del Tick).
+	 */
 	void SaveNow();
 
 	/** La parte gráfica cambió en UGameUserSettings: la aplica (sin la resolución) y la guardará. */
@@ -398,6 +401,18 @@ private:
 	bool bGraphicsDirty = false;
 	double DirtySince = 0.0;
 
+	/**
+	 * Veces seguidas que ha fallado escribir el fichero de ajustes (0 = el último guardado salió bien o no hubo). Alarga la
+	 * espera del guardado automático (TNSaveLogic::SaveRetryDelay) en vez de reintentar en cada fotograma.
+	 */
+	int32 SettingsSaveFailures = 0;
+
+	/**
+	 * Versión con la que guardó el fichero de ajustes una build más nueva, mientras siga en disco sin reescribir
+	 * (0 = no aplica). Antes de reescribirlo se copia aparte: esta build pierde los campos que no conoce.
+	 */
+	int32 NewerFileVersion = 0;
+
 	/** Resolución o modo de ventana aplicados y aún sin confirmar (no se guardan hasta confirmarlos). */
 	bool bVideoModePending = false;
 
@@ -483,6 +498,13 @@ private:
 
 	void LoadSettings();
 	void MarkDirty(bool bGraphics);
+
+	/** Escribe el fichero de ajustes propios si hay cambios. Si falla, sigue sucio y cuenta el fallo para la espera. */
+	void SaveSettingsFile();
+
+	/** Guarda lo gráfico de UGameUserSettings si hay cambios (no con una resolución sin confirmar). */
+	void SaveGraphicsSettings();
+
 	void CreateSoundClasses();
 
 	/** Aplica lo que no depende del mundo (brillo, filtro de color, interfaz, micrófono) y lo de audio del mundo actual. */

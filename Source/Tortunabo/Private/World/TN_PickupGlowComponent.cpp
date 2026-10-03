@@ -15,9 +15,8 @@ namespace TNPickupGlowDetail
 {
 	/** Intervalo del tick lejos de la cámara (s): solo mira la distancia. */
 	constexpr float FarTickInterval = 0.35f;
-	/** Grados por segundo del anillo (al revés que el objeto) y ritmo de su respiración. */
-	constexpr float RingDegreesPerSecond = -24.f;
-	constexpr float BreathRate = 2.4f;
+	/** Ritmo de la respiración (la del anillo es la del kit, TNLootGlow::RingPose; la columna y la luz respiran con ella). */
+	constexpr float BreathRate = TNLootGlow::RingBreathRate;
 	/** Lo que tarda en aparecer al pararse y en esconderse al moverse (1/s). */
 	constexpr float AppearSpeed = 3.f;
 	constexpr float HideSpeed = 10.f;
@@ -286,9 +285,8 @@ void UTN_PickupGlowComponent::TickComponent(float DeltaTime, ELevelTick TickType
 		RingComp->SetVisibility(bShow);
 		if (bShow)
 		{
-			const FQuat Spin(FVector::UpVector, FMath::DegreesToRadians(Clock * RingDegreesPerSecond));
-			RingComp->SetWorldTransform(FTransform(GroundTilt * Spin, GroundPoint + Up * 2.5f,
-				FVector(RingScaleBase * Grow * (1.f + 0.045f * Breath))));
+			RingComp->SetWorldTransform(TNLootGlow::RingPose(GroundPoint, GroundTilt, RingScaleBase * TNLootGlow::RingUnitRadius, Clock, Grow,
+				TNLootGlow::RingBreathDepth * Breath));
 		}
 	}
 

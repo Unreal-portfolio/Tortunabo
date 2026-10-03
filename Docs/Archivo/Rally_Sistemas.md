@@ -1,3 +1,5 @@
+> **Obsoleto** (2026-10-02): consolidado en `Docs/superpowers/specs/modos/03-Rally.md` (referencia del Rally).
+
 # Rally Tortuga: sistemas de carrera, efectos e interfaz
 
 Fecha: 2026-09-29 · Rama: `macro-update` · Complementa `Docs/Rally_E01B_y_Biplaza.md`, `Docs/Modos-UI-FX-2026-09-29.md` y el plan maestro §3.3.

@@ -297,6 +297,12 @@ void ATN_RaceFrisbee::ServerSweepHits(const FVector& Prev, const FVector& Cur)
 	{
 		return;
 	}
+	// Con la carrera parada («¡TIEMPO!», recuento, título del sprint, podio) el disco sigue su camino pero no derriba ni marea
+	// a nadie (#72), como la mina, el cangrejo y la gaviota.
+	if (!ATN_BeachEnemy::IsRaceLive(this))
+	{
+		return;
+	}
 	const ATortugaCharacter* Thrower = GetOwnerTurtle();
 	// Los golpes empujan en el sentido en que va el disco (en la vuelta, hacia quien lo lanzó).
 	FVector Heading = (Cur - Prev).GetSafeNormal2D();

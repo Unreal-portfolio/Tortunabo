@@ -337,11 +337,11 @@ void ATN_BeachRaceGenerator::BuildTerrain()
 	GridXs.Reset();
 	{
 		TArray<double> Back;
-		double X = TNBeachLayout::Length - 800.0;
-		while (X > -4200.0)
+		double X = TNBeachLayout::TerrainGridMaxX;
+		while (X > TNBeachLayout::TerrainGridFineMinX)
 		{
 			Back.Add(X);
-			X -= 300.0;
+			X -= TNBeachLayout::TerrainGridStep;
 		}
 		while (X > -24000.0)
 		{
@@ -356,8 +356,8 @@ void ATN_BeachRaceGenerator::BuildTerrain()
 	{
 		TArray<double> Side;
 		double Y = 0.0;
-		double Step = 300.0;
-		while (Y < TNBeachLayout::HalfWidth + 3000.0)
+		double Step = TNBeachLayout::TerrainGridStep;
+		while (Y < TNBeachLayout::TerrainGridFineHalfY)
 		{
 			Side.Add(Y);
 			Y += Step;

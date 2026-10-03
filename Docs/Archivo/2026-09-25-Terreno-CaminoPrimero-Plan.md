@@ -1,3 +1,5 @@
+> **Obsoleto** (2026-10-02): plan de implementación ya ejecutado; el diseño vigente está en `Docs/Diseno_Terreno_CaminoPrimero.md`.
+
 # Terreno «camino primero» — plan de implementación
 
 > **Para agentes:** SUB-SKILL OBLIGATORIA: usa superpowers:subagent-driven-development (recomendado) o superpowers:executing-plans para implementar este plan tarea a tarea. Los pasos usan casillas (`- [ ]`) para el seguimiento.

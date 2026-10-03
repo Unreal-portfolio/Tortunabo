@@ -62,6 +62,12 @@ public:
 	static constexpr int32 KNOCKDOWN_EMOTE_ID = 100;
 
 	/**
+	 * Alcance de interacción por defecto (cm) para coger e interactuar: MaxInteractionDistance lo toma de aquí y el alcance
+	 * de los rebuscables (TNSearchSpotDetail::Reach en TN_ProcSearchSpot.cpp) también, para que no se separen. Antes 350.
+	 */
+	static constexpr float DefaultInteractionDistance = 250.f;
+
+	/**
 	 * Re-aplica el Enhanced Input Mapping Context localmente.
 	 * Llamar desde el servidor para el listen-server tras un revival, un tick después
 	 * de Possess + ClientRestart, para garantizar que el input queda activo.
@@ -467,8 +473,13 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Interaction")
 	float InteractionScanInterval = 0.1f;
 
+	/**
+	 * Alcance (cm) para coger e interactuar: radio del escaneo de interactuables (UpdateFocusedInteractable) y base de la
+	 * validación del servidor (ServerTryInteract / ServerBeginHoldInteract: max(esto, el del interactuable) + 100 + holgura
+	 * por ping). Bajado de 350 a 250 (#214). El BP_TortugaCharacter no lo pisa.
+	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Interaction")
-	float MaxInteractionDistance = 350.f;
+	float MaxInteractionDistance = DefaultInteractionDistance;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Interaction|Networking", meta = (ClampMin = "0.0"))
 	float MaxLagCompensationDistance = 120.f;

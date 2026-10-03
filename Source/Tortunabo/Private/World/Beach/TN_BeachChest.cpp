@@ -664,10 +664,9 @@ ATN_BeachChestSpot::ATN_BeachChestSpot()
 	bRepeatable = false;
 	// Suena a chismes y monedas más que a arena.
 	RummagePitch = 1.4f;
-	// Grande y a la escala de la playa: chispitas desde más lejos y el anillo de dónde abrirlo, antes y más grande.
+	// Grande y a la escala de la playa: chispitas desde más lejos. El anillo fijo abarca su huella (SpotRadius) y se ve,
+	// como el de los objetos del suelo, desde 90 m.
 	HintDistance = 5000.f;
-	MarkerDistance = 2200.f;
-	MarkerRadius = 140.f;
 	// La playa mide 0,8 km: se ve (y su columna de luz) desde lejos; lo de serie son 150 m.
 	SetNetCullDistanceSquared(FMath::Square(40000.f));
 

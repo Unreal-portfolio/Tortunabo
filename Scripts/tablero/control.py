@@ -2,7 +2,7 @@
 
 - `resumen` y `decidir`: la memoria del equipo vive en las issues (memoria.py).
 - `auditar`: problemas de organización de las issues de trabajo (auditoria.py).
-- `colisiones`: PR abiertas contra dev que tocan los mismos ficheros (colisiones.py).
+- `colisiones`: PR abiertas contra dev que chocan al mezclarse (colisiones.py).
 - `bloquear`: dependencias nativas de GitHub y estado Bloqueada (bloqueos.py).
 - `lote` y `resumenes`: en control_lotes.py.
 - `asegurar-estados`: añade Bloqueada y Validada al campo Status sin perder valores (estados.py).
@@ -52,22 +52,33 @@ def contexto_prs(nodos: list[dict], proyecto: dict, abiertas: list[dict], fusion
         asignados = [a["login"] for a in nodo["assignees"]["nodes"]]
         contexto[n] = {"con_pr": n in con_pr, "fusionada": esta_fusionada(n, fusionadas, abiertas),
                        "revisor_sugerido": elegir_revisor(proyecto, asignados[0]) if asignados else None,
-                       "prs_sin_lote": [], "lote_fusionado": None}
+                       "prs_sin_lote": [], "lote_fusionado": None, "fuera_de_lote": []}
     for nodo in nodos:
         if nodo["number"] not in lotes_abiertos:
             continue
         pr = next((p["number"] for p in fusionadas if p["baseRefName"] == INTEGRACION
-                   and nodo["number"] in issues_de_pr(p)), None)
+                   and nodo["number"] in issues_de_pr(p, menciones=True)), None)
         for miembro in bloqueos.bloqueantes(nodo):
             if pr and miembro["number"] in contexto:
                 contexto[miembro["number"]]["lote_fusionado"] = pr
+    miembros = {n["number"]: {b["number"] for b in bloqueos.bloqueantes(n)}
+                for n in nodos if n["number"] in lotes_abiertos}
+    marcar_prs_abiertas(contexto, abiertas, miembros, no_trabajo)
+    return contexto
+
+
+def marcar_prs_abiertas(contexto: dict[int, dict], abiertas: list[dict], miembros: dict[int, set[int]],
+                        no_trabajo: set[int]) -> None:
+    """PR que cierran varias issues sin lote, e issues que cierra la PR de un lote sin ser miembros de él."""
     for pr in abiertas:
-        refs = issues_de_pr(pr)
-        trabajo = refs - no_trabajo
-        if lotes.pr_necesita_lote(trabajo, con_lote=bool(refs & lotes_abiertos)):
+        trabajo = issues_de_pr(pr) - no_trabajo
+        enlazados = {lote: miembros[lote] for lote in issues_de_pr(pr, menciones=True) & miembros.keys()}
+        if lotes.pr_necesita_lote(trabajo, con_lote=bool(enlazados)):
             for n in trabajo & contexto.keys():
                 contexto[n]["prs_sin_lote"].append(pr["number"])
-    return contexto
+        for n, lotes_pr in lotes.fuera_del_lote(trabajo, enlazados).items():
+            if n in contexto:
+                contexto[n]["fuera_de_lote"] += [(pr["number"], lote) for lote in lotes_pr]
 
 
 def issues_auditables(proyecto: dict, ahora: datetime) -> list[dict]:
@@ -155,20 +166,39 @@ def aplicar_auditoria(proyecto: dict, informe: list[tuple[dict, list[dict]]]) ->
 
 def cmd_colisiones(args: argparse.Namespace) -> None:
     prs = {p["number"]: p for p in prs_abiertas() if p["baseRefName"] == INTEGRACION}
-    pares = colisiones.pares({n: colisiones.ficheros_de_pr(gh, REPO, n) for n in prs})
-    existentes = colisiones.colisiones_abiertas(gh, REPO)
+    con_git = colisiones.traer_cabezas(prs)
+    if not con_git:
+        print("Aviso: no se pudieron descargar las cabezas de las PR; cuento los ficheros en común.\n")
+    pares = colisiones.pares({n: colisiones.ficheros_de_pr(gh, REPO, n) for n in prs},
+                             colisiones.conflicto_git if con_git else None)
+    abiertas = colisiones.colisiones_abiertas(gh, REPO)
+    existentes = {i["title"].strip() for i in abiertas}
     nuevos = [par for par in pares if colisiones.titulo(par[0], par[1]) not in existentes]
-    print(f"## Colisiones entre PR abiertas contra {INTEGRACION} · {len(prs)} PR, {len(pares)} pares, "
-          f"{len(nuevos)} sin issue" + ("" if args.aplicar else " (simulación: usa --aplicar)") + "\n")
+    resueltas = colisiones.resueltas(abiertas, set(prs), {(a, b) for a, b, _ in pares}) if con_git else []
+    print(f"## Colisiones entre PR abiertas contra {INTEGRACION} · {len(prs)} PR, {len(pares)} pares en conflicto, "
+          f"{len(nuevos)} sin issue, {len(resueltas)} issues resueltas"
+          + ("" if args.aplicar else " (simulación: usa --aplicar)") + "\n")
     for a, b, ficheros in pares:
         estado = "nueva" if (a, b, ficheros) in nuevos else "ya tiene issue"
         binarios = "; con binarios: decision" if colisiones.hay_binarios(ficheros) else ""
-        print(f"- PR #{a} y #{b}: {len(ficheros)} ficheros en común ({estado}{binarios})")
-    if args.aplicar and nuevos:
+        localizacion = "; solo localización" if colisiones.solo_localizacion(ficheros) else ""
+        print(f"- PR #{a} y #{b}: {len(ficheros)} ficheros en conflicto ({estado}{binarios}{localizacion})")
+    for numero, motivo in resueltas:
+        print(f"- #{numero} resuelta: {motivo}")
+    if not args.aplicar:
+        return
+    proyecto = cargar_proyecto() if nuevos or resueltas else None
+    if nuevos:
         objetos.crear_etiqueta_si_falta(gh, REPO, colisiones.ETIQUETA, colisiones.COLOR, colisiones.DESCRIPCION_ETIQUETA)
-        proyecto = cargar_proyecto()
         for a, b, ficheros in nuevos:
             crear_issue_colision(proyecto, prs[a], prs[b], ficheros)
+    for numero, motivo in resueltas:
+        comentar(numero, memoria.texto_resumen("dos PR abiertas chocaban al mezclarse",
+                                               f"ya no hace falta mezclarlas: {motivo} (`tablero.py colisiones`)"))
+        gh("issue", "close", str(numero), "--repo", REPO, "--reason", "completed")
+        if numero in proyecto["items"]:  # sin esperar al sync: que no siga en Revisiones
+            poner_campo(proyecto, numero, "Status", "Done")
+        print(f"#{numero} cerrada y en Done: {motivo}")
 
 
 def objeto_y_area(proyecto: dict, pr: dict) -> tuple[int | None, str | None]:
@@ -195,7 +225,7 @@ def crear_issue_colision(proyecto: dict, pr_a: dict, pr_b: dict, ficheros: list[
     padre, area = objeto_y_area(proyecto, pr_a)
     if padre:
         objetos.colgar(gh, REPO, numero, padre)
-    for campo, valor in {"Status": "Revisiones", "Prioridad": "P1", "Tamaño": "S", "Área": area}.items():
+    for campo, valor in {"Status": "Revisiones", "Prioridad": "P1", "Tamaño": "S", "Área": area, "Fase": "Sin fase"}.items():
         if valor:
             poner_campo(proyecto, numero, campo, valor)
     print(f"#{numero} creada: {titulo}{f' (dentro de #{padre})' if padre else ''}")
@@ -207,6 +237,7 @@ def cmd_bloquear(args: argparse.Namespace) -> None:
     """Registra de qué issues depende `numero` (relación nativa «blocked by») y la pasa a Bloqueada.
 
     En Backlog solo registra la dependencia: la issue aún no está aprobada y bloquearla no la aprueba.
+    Un objeto o un lote no llevan Status: solo se registra la dependencia.
     """
     issue = objetos.leer_issue(gh, REPO, args.numero)
     try:
@@ -219,7 +250,13 @@ def cmd_bloquear(args: argparse.Namespace) -> None:
            "-f", f"bloqueante={bloqueante['id']}")
     todas = ", ".join(f"#{m}" for m in sorted({*args.por, *(b["number"] for b in bloqueos.bloqueantes(issue))}))
     proyecto = cargar_proyecto(args.numero)
-    actual = proyecto["items"].get(args.numero, {}).get("valores", {}).get("Status")
+    item = proyecto["items"].get(args.numero, {})
+    if objetos.es_objeto(item) or lotes.es_lote(item):
+        print(f"#{args.numero} es un objeto o un lote: depende de {todas}, "
+              f"sin Status ni etiqueta `{bloqueos.ETIQUETA}`."
+              + (" Para meter miembros en un lote, `lote añadir`." if lotes.es_lote(item) else ""))
+        return
+    actual = item.get("valores", {}).get("Status")
     if bloqueos.estado_tras_bloquear(actual) is None:
         print(f"#{args.numero} sigue en Backlog; depende de {todas}. Al aprobarla pasará a Bloqueada si siguen abiertas.")
         return
@@ -267,7 +304,7 @@ def anadir_comandos(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--quien", help="quién decide (por defecto, tu login)")
     p.set_defaults(fn=cmd_decidir)
     for nombre, ayuda, fn in (("auditar", "problemas de organización de las issues de trabajo", cmd_auditar),
-                              ("colisiones", "PR abiertas contra dev que tocan los mismos ficheros", cmd_colisiones),
+                              ("colisiones", "PR abiertas contra dev que chocan al mezclarse", cmd_colisiones),
                               ("asegurar-estados", "añadir Bloqueada y Validada a Status sin perder valores",
                                cmd_asegurar_estados)):
         p = sub.add_parser(nombre, help=ayuda)

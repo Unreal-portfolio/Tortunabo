@@ -2285,6 +2285,58 @@ namespace TNBeachLayout
 	}
 
 	/**
+	 * Rejilla de la malla de la arena en la playa (ATN_BeachRaceGenerator::BuildTerrain): filas cada 3 m desde Length - 800
+	 * hacia atrás hasta TerrainGridFineMinX, columnas cada 3 m desde Y = 0 hasta TerrainGridFineHalfY. Más allá, más separadas.
+	 */
+	constexpr double TerrainGridStep = 300.0;
+	constexpr double TerrainGridMaxX = Length - 800.0;
+	constexpr double TerrainGridFineMinX = -4200.0;
+	constexpr double TerrainGridFineHalfY = HalfWidth + 3000.0;
+
+	/**
+	 * La arena tal como se dibuja en (X, Y): el triángulo de la rejilla de 3 m que lo contiene, con sus vértices a la cota
+	 * de la arena con los asientos de la ronda (como ComputeTile). Entre vértices no es la arena analítica: lo pequeño que
+	 * se coloca con SandZ y a nivel queda flotando en las cuestas. OutNormal, la del triángulo; fuera de la rejilla fina,
+	 * SeatedZ y la vertical.
+	 */
+	inline double MeshSandZ(const FRoundLayout& L, double X, double Y, FVector* OutNormal = nullptr)
+	{
+		const double S = TerrainGridStep;
+		if (X >= TerrainGridMaxX || X <= TerrainGridFineMinX + S || FMath::Abs(Y) >= TerrainGridFineHalfY - S)
+		{
+			if (OutNormal) { *OutNormal = FVector::UpVector; }
+			return SeatedZ(L, X, Y, SandZ(X, Y));
+		}
+		const double Xa = TerrainGridMaxX + FMath::FloorToDouble((X - TerrainGridMaxX) / S) * S;
+		const double Ya = FMath::FloorToDouble(Y / S) * S;
+		auto Node = [&L](double NX, double NY) { return SeatedZ(L, NX, NY, SandZ(NX, NY)); };
+		const double Z00 = Node(Xa, Ya);
+		const double Z10 = Node(Xa + S, Ya);
+		const double Z01 = Node(Xa, Ya + S);
+		const double Z11 = Node(Xa + S, Ya + S);
+		const double U = FMath::Clamp((X - Xa) / S, 0.0, 1.0);
+		const double V = FMath::Clamp((Y - Ya) / S, 0.0, 1.0);
+		// La diagonal va de (Xa + S, Ya) a (Xa, Ya + S), como los triángulos de ComputeTile.
+		double DzDx = 0.0;
+		double DzDy = 0.0;
+		double Z = 0.0;
+		if (U + V <= 1.0)
+		{
+			DzDx = (Z10 - Z00) / S;
+			DzDy = (Z01 - Z00) / S;
+			Z = Z00 + U * (Z10 - Z00) + V * (Z01 - Z00);
+		}
+		else
+		{
+			DzDx = (Z11 - Z01) / S;
+			DzDy = (Z11 - Z10) / S;
+			Z = Z11 - (1.0 - U) * (Z11 - Z01) - (1.0 - V) * (Z11 - Z10);
+		}
+		if (OutNormal) { *OutNormal = FVector(-DzDx, -DzDy, 1.0).GetSafeNormal(); }
+		return Z;
+	}
+
+	/**
 	 * Densidad buscada en las bandas: fracción del área ocupada (por lo que ocupa cada elemento), del 66 % en la salida al
 	 * 76 % junto al mar. No se llega (se queda en ~50 %: los huecos que quedan son más estrechos que la pieza más pequeña);
 	 * el relleno para cuando se le acaban los huecos.
