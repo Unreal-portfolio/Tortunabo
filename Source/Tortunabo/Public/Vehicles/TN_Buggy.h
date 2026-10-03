@@ -150,6 +150,13 @@ public:
 	/** Hora del servidor (vale en cualquier máquina). */
 	double GetServerNow() const;
 
+	// ── Pruebas de la torreta (TN_Buggy_TurretFit.cpp; sin efecto en Shipping) ──
+
+	/** Sienta a la artillera visual aunque la plaza esté vacía, para medir y fotografiar la torreta (servidor o standalone). */
+	void DebugShowGunner();
+	/** Solapes de la torreta con la artillera y con la carrocería con el apuntado actual, en una línea para el registro. */
+	FString DebugMeasureTurretFit() const;
+
 	// ── Impactos (solo servidor) ────────────────────────────────────────────────
 
 	/** Coco: impulso lateral y bamboleo de la dirección. HitDir es la dirección del proyectil. */
