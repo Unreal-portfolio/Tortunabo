@@ -512,6 +512,19 @@ bool ATN_ProcSlideZone::FindFlowAt(const FVector& Point, FVector& OutFlow) const
 	return false;
 }
 
+bool ATN_ProcSlideZone::GetTop(FVector& OutTop, FVector& OutFlow) const
+{
+	if (Segments.Num() == 0 || !Segments[0] || SegmentDirs.Num() == 0)
+	{
+		return false;
+	}
+	const UBoxComponent* First = Segments[0];
+	OutFlow = SegmentDirs[0];
+	// El tramo va centrado entre sus dos puntos y 120 cm por encima: su principio es el labio.
+	OutTop = First->GetComponentLocation() - OutFlow * First->GetUnscaledBoxExtent().X - FVector(0.f, 0.f, 120.f);
+	return true;
+}
+
 bool ATN_ProcSlideZone::GetPool(FVector& OutCenter, float& OutRadius) const
 {
 	OutCenter = PoolCenterWorld;

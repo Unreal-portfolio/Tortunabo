@@ -117,6 +117,7 @@ private:
 	TArray<TWeakObjectPtr<ATN_ProcSlideZone>> Slides;
 	int32 CachedGeneration = 0;
 	double LastGeyserLaunch = -1000.0;
+	double LastSlideLog = -1000.0;
 	/** Vuelo del géiser en curso: salida, velocidad inicial, gravedad y duración (0 = sin vuelo). */
 	FVector FlightOrigin = FVector::ZeroVector;
 	FVector FlightVelocity = FVector::ZeroVector;

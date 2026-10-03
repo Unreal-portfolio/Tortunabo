@@ -7,6 +7,7 @@
 #include "HAL/IConsoleManager.h"
 #include "Kart/TN_KartAIController.h"
 #include "Kart/TN_KartBuggy.h"
+#include "Vehicles/TN_Buggy.h"
 #include "Kart/TN_KartItemBox.h"
 #include "Kart/TN_KartItemComponent.h"
 #include "Kart/TN_KartGameState.h"
@@ -18,6 +19,10 @@
 #include "Rally/TN_RallyLogic.h"
 #include "World/ProcMap/TN_ProcMapGenerator.h"
 #include "World/ProcMap/TN_ProcMapTypes.h"
+#include "World/ProcMap/TN_ProcMapLayout.h"
+#include "World/ProcMap/TN_ProcTraversalActors.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "TimerManager.h"
 
 namespace TNKartMode
 {
@@ -265,7 +270,8 @@ void ATN_KartGameMode::LogStartDiagnostics()
 {
 	const ATN_KartGameState* KartState = GetKartState();
 	const ATN_KartTrack* KartTrack = KartState ? KartState->GetKartTrack() : nullptr;
-	if (!KartTrack || KartState->Phase != ETNRallyPhase::Racing)
+	const bool bCountdown = KartState && KartState->Phase == ETNRallyPhase::Countdown;
+	if (!KartTrack || (KartState->Phase != ETNRallyPhase::Racing && !bCountdown))
 	{
 		return;
 	}
@@ -274,7 +280,8 @@ void ATN_KartGameMode::LogStartDiagnostics()
 	{
 		return;
 	}
-	NextStartLogTime = Now + 1.0;
+	// Durante el semáforo y los primeros 3 s, cada medio segundo (salida a la vez); luego, cada segundo.
+	NextStartLogTime = Now + (Now - KartState->StartServerTime < 3.0 ? 0.5 : 1.0);
 	static const IConsoleVariable* ProbeVar = IConsoleManager::Get().FindConsoleVariable(TEXT("TN.Kart.ProbeArc"));
 	const int32 ProbeArcM = ProbeVar ? ProbeVar->GetInt() : 0;
 	if (ProbeArcM > 0 && Now - KartState->StartServerTime < 1.5)
@@ -416,5 +423,122 @@ static FAutoConsoleCommandWithWorldAndArgs GTNKartGiveItemCommand(
 		}
 		Items->GiveItem(static_cast<ETNKartItem>(Value), true);
 		UE_LOG(LogTNRally, Display, TEXT("TN.Kart.GiveItem: %s."), *Args[0]);
+	}));
+
+namespace TNKartDebug
+{
+	/** Coloca el kart del equipo TeamIndex (-1 = el del jugador local) junto a un géiser, en lo alto de una cascada o en el agua. */
+	void PlaceKart(UWorld* World, const FString& What, int32 TeamIndex)
+	{
+		const ATN_RallyGameState* RallyState = World ? World->GetGameState<ATN_RallyGameState>() : nullptr;
+		const APlayerController* Player = World ? World->GetFirstPlayerController() : nullptr;
+		ATN_Buggy* Kart = nullptr;
+		for (const FTNRallyStanding& Entry : RallyState ? RallyState->Standings : TArray<FTNRallyStanding>())
+		{
+			const bool bMine = TeamIndex < 0 && Player && (Entry.Driver == Player->PlayerState || Entry.Gunner == Player->PlayerState);
+			if (bMine || Entry.TeamIndex == TeamIndex)
+			{
+				Kart = Cast<ATN_Buggy>(Entry.Vehicle);
+			}
+		}
+		if (!Kart || !Kart->HasAuthority())
+		{
+			UE_LOG(LogTNRally, Display, TEXT("TN.Kart.Place: no hay kart del equipo %d en el servidor."), TeamIndex);
+			return;
+		}
+		FVector Where = FVector::ZeroVector;
+		FVector Facing = Kart->GetActorForwardVector();
+		float Speed = 0.f;
+		bool bFound = false;
+		if (What.Equals(TEXT("Geyser"), ESearchCase::IgnoreCase))
+		{
+			for (TActorIterator<ATN_ProcGeyser> It(World); It && !bFound; ++It)
+			{
+				if (!It->IsShaft())
+				{
+					// Encima de la boca, mirando a la cima: sale lanzado al momento.
+					Where = It->GetActorLocation();
+					Facing = (It->GetTarget() - Where).GetSafeNormal2D();
+					bFound = true;
+				}
+			}
+		}
+		else if (What.Equals(TEXT("Cascada"), ESearchCase::IgnoreCase))
+		{
+			for (TActorIterator<ATN_ProcSlideZone> It(World); It && !bFound; ++It)
+			{
+				FVector Flow;
+				if (It->GetTop(Where, Flow))
+				{
+					// En el labio, hacia abajo y con algo de velocidad.
+					Facing = Flow.GetSafeNormal2D();
+					Where -= Facing * 300.0;
+					Speed = 500.f;
+					bFound = true;
+				}
+			}
+		}
+		else if (What.Equals(TEXT("Agua"), ESearchCase::IgnoreCase))
+		{
+			TArray<FTNProcPathPoint> Points;
+			for (TActorIterator<ATN_ProcMapGenerator> It(World); It; ++It)
+			{
+				It->GetMainPathWorld(Points);
+				break;
+			}
+			for (int32 Index = 1; Index < Points.Num() && !bFound; ++Index)
+			{
+				if ((Points[Index].Flags & TNProcMap::PathFlags::Islet) != 0)
+				{
+					Where = Points[FMath::Min(Index + 3, Points.Num() - 1)].Location;
+					Facing = Points[Index].Direction;
+					bFound = true;
+				}
+			}
+			for (TActorIterator<ATN_ProcSlideZone> It(World); It && !bFound; ++It)
+			{
+				float Radius = 0.f;
+				bFound = It->GetPool(Where, Radius);
+			}
+		}
+		if (!bFound)
+		{
+			UE_LOG(LogTNRally, Display, TEXT("TN.Kart.Place: este mapa no tiene %s."), *What);
+			return;
+		}
+		Kart->RallyTeleport(FTransform(FRotator(0.0, Facing.Rotation().Yaw, 0.0), Where + FVector(0.0, 0.0, 50.0)), 0.f, 0.f);
+		if (USkeletalMeshComponent* Chassis = Kart->GetMesh(); Chassis && Speed > 0.f)
+		{
+			Chassis->SetPhysicsLinearVelocity(Facing * Speed);
+		}
+		UE_LOG(LogTNRally, Display, TEXT("TN.Kart.Place: %s (equipo %d) en %s, en (%.0f, %.0f, %.0f)."), *Kart->GetName(), TeamIndex, *What,
+			Where.X, Where.Y, Where.Z);
+	}
+}
+
+static FAutoConsoleCommandWithWorldAndArgs GTNKartPlaceCommand(
+	TEXT("TN.Kart.Place"),
+	TEXT("Karts (servidor o partida sola, pruebas): TN.Kart.Place Geyser|Cascada|Agua [equipo, -1 = el tuyo] [segundos de espera]. Coloca el kart encima de un géiser, en lo alto de una cascada o en el agua."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+	{
+		if (!World || Args.Num() < 1)
+		{
+			UE_LOG(LogTNRally, Display, TEXT("TN.Kart.Place Geyser|Cascada|Agua [equipo] [segundos]"));
+			return;
+		}
+		const FString What = Args[0];
+		const int32 TeamIndex = Args.Num() > 1 ? FCString::Atoi(*Args[1]) : -1;
+		const float Delay = Args.Num() > 2 ? FCString::Atof(*Args[2]) : 0.f;
+		if (Delay <= 0.f)
+		{
+			TNKartDebug::PlaceKart(World, What, TeamIndex);
+			return;
+		}
+		FTimerHandle Handle;
+		TWeakObjectPtr<UWorld> WeakWorld(World);
+		World->GetTimerManager().SetTimer(Handle, FTimerDelegate::CreateLambda([WeakWorld, What, TeamIndex]()
+		{
+			TNKartDebug::PlaceKart(WeakWorld.Get(), What, TeamIndex);
+		}), Delay, false);
 	}));
 #endif

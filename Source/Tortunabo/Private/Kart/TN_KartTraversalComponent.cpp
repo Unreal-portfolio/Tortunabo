@@ -355,6 +355,11 @@ void UTN_KartTraversalComponent::ApplySlide(float DeltaSeconds)
 			continue;
 		}
 		// Por la cascada: empujón ladera abajo, el morro hacia donde baja el agua y sin dar vueltas de campana.
+		if (Kart->HasAuthority() && GetWorld()->GetTimeSeconds() - LastSlideLog > 3.0)
+		{
+			UE_LOG(LogTNRally, Verbose, TEXT("[Karts] %s baja por la cascada en (%.0f, %.0f, %.0f)."), *Kart->GetName(), Location.X, Location.Y, Location.Z);
+		}
+		LastSlideLog = GetWorld()->GetTimeSeconds();
 		Chassis->AddForce(Flow * SlideAccelCms2, NAME_None, true);
 		const FVector Forward = Kart->GetActorForwardVector().GetSafeNormal2D();
 		const FVector FlowFlat = Flow.GetSafeNormal2D();

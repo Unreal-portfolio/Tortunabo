@@ -149,6 +149,9 @@ public:
 	/** La poza del pie de la cascada: centro a la cota del agua y radio (cm). False si no tiene. */
 	bool GetPool(FVector& OutCenter, float& OutRadius) const;
 
+	/** Lo alto de la cascada (el labio, en el suelo) y hacia dónde baja. False si no tiene tramos. */
+	bool GetTop(FVector& OutTop, FVector& OutFlow) const;
+
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Slide")
 	TObjectPtr<USceneComponent> Root;

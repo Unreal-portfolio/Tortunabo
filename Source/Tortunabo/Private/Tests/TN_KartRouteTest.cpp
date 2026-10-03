@@ -8,6 +8,7 @@
 #include "Kart/TN_KartRoutePlan.h"
 #include "Kart/TN_KartTrack.h"
 #include "World/ProcMap/TN_ProcMapGenerator.h"
+#include "World/ProcMap/TN_ProcMapTerrain.h"
 #include "World/ProcMap/TN_ProcMapGenerate.h"
 #include "World/ProcMap/TN_ProcMapTypes.h"
 
@@ -207,6 +208,85 @@ bool FTNKartRouteHazardGatesTest::RunTest(const FString& Parameters)
 		const bool bNear = X >= 30000.0 - TNKart::GateAwayFromHazardCm && X <= 32000.0 + TNKart::GateAwayFromHazardCm;
 		TestEqual(*FString::Printf(TEXT("Muestra a %.0f m: puerta %s"), X / 100.0, bNear ? TEXT("prohibida") : TEXT("permitida")),
 			Samples[Index].bNoGate, bNear);
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNKartRouteGeneratedMapsTest, "Tortunabo.Kart.Route.GeneratedMaps",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNKartRouteGeneratedMapsTest::RunTest(const FString& Parameters)
+{
+	using namespace TNProcMap;
+	// El mapa de los karts de tres semillas (fácil y normal): puertas, salida y meta sobre el camino, la meta en la playa y
+	// ninguna puerta a menos de 25 m del agua, las cascadas, los géiseres o los huecos (lo mismo que ATN_KartTrack, sin mundo).
+	constexpr uint32 Hazard = PathFlags::Islet | PathFlags::Slide | PathFlags::GeyserBase | PathFlags::CliffUp | PathFlags::Gap
+		| PathFlags::RiverCross;
+	const TPair<uint32, ETNProcDifficulty> Maps[] = { { 11u, ETNProcDifficulty::Easy }, { 4242u, ETNProcDifficulty::Easy },
+		{ 777u, ETNProcDifficulty::Normal } };
+	for (const TPair<uint32, ETNProcDifficulty>& Map : Maps)
+	{
+		FGenParams Params = TN_MakeDefaultProcProfile(ETNProcGameMode::Coop, Map.Value).ToGenParams(Map.Key);
+		Params.bDrivable = true;
+		FLayout Layout;
+		if (!GenerateLayout(Params, Layout))
+		{
+			AddError(FString::Printf(TEXT("Sin mapa de karts con la semilla %u"), Map.Key));
+			continue;
+		}
+		TArray<FTNProcPathPoint> Points;
+		TArray<double> PathArc;
+		for (const FPathSample& Sample : Layout.Main)
+		{
+			FTNProcPathPoint& Point = Points.AddDefaulted_GetRef();
+			Point.Location = FVector(Sample.P.X, Sample.P.Y, Sample.Z);
+			Point.Direction = FVector(Sample.Dir.X, Sample.Dir.Y, 0.0);
+			Point.Width = static_cast<float>(Sample.Width);
+			Point.Flags = Sample.Flags;
+			PathArc.Add(PathArc.Num() > 0 ? PathArc.Last() + FVector::Dist(Points[Points.Num() - 2].Location, Point.Location) : 0.0);
+		}
+		const TNKart::FRoutePlan Plan = TNKart::PlanRouteFromPath(TNKart::RouteSamplesFrom(Points), TNKart::MakePlanParams(SeaLevel));
+		const FString Where = FString::Printf(TEXT("semilla %u"), Map.Key);
+		if (!TestTrue(*FString::Printf(TEXT("Hay pista (%s)"), *Where), Plan.bValid && Plan.Gates.Num() >= 3))
+		{
+			continue;
+		}
+		for (int32 Gate = 0; Gate < Plan.Gates.Num(); ++Gate)
+		{
+			// La muestra más cercana del camino.
+			int32 Nearest = 0;
+			double Best = TNumericLimits<double>::Max();
+			for (int32 Index = 0; Index < Points.Num(); ++Index)
+			{
+				const double D = FVector::Dist2D(Points[Index].Location, Plan.Gates[Gate].Location);
+				if (D < Best) { Best = D; Nearest = Index; }
+			}
+			TestTrue(*FString::Printf(TEXT("Puerta %d sobre el camino (%s): a %.1f m del centro"), Gate, *Where, Best / 100.0),
+				Best <= 0.5 * Points[Nearest].Width + 100.0);
+			if (Gate > 0)
+			{
+				TestTrue(*FString::Printf(TEXT("Puertas en orden (%s)"), *Where), Plan.GateArcCm[Gate] > Plan.GateArcCm[Gate - 1]);
+			}
+			for (int32 Index = 0; Index < Points.Num(); ++Index)
+			{
+				if ((Points[Index].Flags & Hazard) != 0 && FMath::Abs(PathArc[Index] - PathArc[Nearest]) < TNKart::GateAwayFromHazardCm - 450.0)
+				{
+					AddError(FString::Printf(TEXT("Puerta %d a %.0f m de agua, cascada o géiser (%s)"), Gate,
+						FMath::Abs(PathArc[Index] - PathArc[Nearest]) / 100.0, *Where));
+					break;
+				}
+			}
+		}
+		// La meta, en la playa final.
+		int32 FinishSample = 0;
+		double FinishBest = TNumericLimits<double>::Max();
+		for (int32 Index = 0; Index < Points.Num(); ++Index)
+		{
+			const double D = FVector::Dist2D(Points[Index].Location, Plan.Gates.Last().Location);
+			if (D < FinishBest) { FinishBest = D; FinishSample = Index; }
+		}
+		TestTrue(*FString::Printf(TEXT("La meta va en la playa (%s)"), *Where), (Points[FinishSample].Flags & PathFlags::Shore) != 0);
+		AddInfo(FString::Printf(TEXT("Karts, %s: %.2f km, %d puertas."), *Where, Plan.LengthCm / 100000.0, Plan.Gates.Num()));
 	}
 	return true;
 }

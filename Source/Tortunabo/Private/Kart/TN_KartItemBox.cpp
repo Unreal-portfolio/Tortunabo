@@ -6,6 +6,7 @@
 #include "Engine/World.h"
 #include "Kart/TN_KartItemComponent.h"
 #include "Net/UnrealNetwork.h"
+#include "Rally/TN_RallyLogic.h"
 #include "TimerManager.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Vehicles/TN_Buggy.h"
@@ -137,6 +138,7 @@ bool ATN_KartItemBox::TryCollect(ATN_Buggy* Kart, int32 Place, int32 NumKarts)
 
 void ATN_KartItemBox::Reactivate()
 {
+	UE_LOG(LogTNRally, Verbose, TEXT("[KartItems] La caja %s vuelve."), *GetName());
 	bAvailable = true;
 	OnRep_Available();
 	ForceNetUpdate();
