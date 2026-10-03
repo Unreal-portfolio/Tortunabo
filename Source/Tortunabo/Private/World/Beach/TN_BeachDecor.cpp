@@ -1,6 +1,10 @@
 #include "World/Beach/TN_BeachDecor.h"
+#include "Core/TN_ProjectMaterials.h"
 #include "TN_BeachDecorKit.h"
+#include "World/Beach/TN_BeachLayout.h"
 #include "../ProcMap/TN_ProcMapRuntimeMesh.h"
+#include "Art/TN_Art.h"
+#include "Art/TN_ArtMeshComponent.h"
 #include "Core/TN_Log.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/InstancedStaticMeshComponent.h"
@@ -37,15 +41,13 @@ namespace TNBeachDecorDetail
 		bool bBuilt = false;
 	};
 
-	/** M_CosmeticVertexColor (color de vértice; el alfa es el brillo) o, si falta, el material de color de vértice del motor. */
+	/** M_CosmeticVertexColor (color de vértice; el alfa es el brillo); TNMaterials::VertexColor. */
 	UMaterialInterface* DecorMaterial()
 	{
 		static TWeakObjectPtr<UMaterialInterface> Cached;
 		if (!Cached.IsValid())
 		{
-			UMaterialInterface* Mat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Cosmetics/Materials/M_CosmeticVertexColor.M_CosmeticVertexColor"));
-			if (!Mat) { Mat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial")); }
-			Cached = Mat;
+			Cached = TNMaterials::VertexColor();
 		}
 		return Cached.Get();
 	}
@@ -222,6 +224,26 @@ FTransform TNBeachDecorKit::BodyPlacement(const TNBeachProp::FPropInfo& Info, in
 	return FTransform(Tilt * TNBeachProp::YawQ(Yaw), FVector(0.0, 0.0, -Sink), FVector(static_cast<double>(Size)));
 }
 
+FTransform TNBeachDecorKit::ItemPlacement(const TNBeachLayout::FRoundLayout& Layout, const TNBeachLayout::FItem& Item)
+{
+	const FQuat Yaw = FRotator(0.0, Item.Yaw, 0.0).Quaternion();
+	if (!TNBeachLayout::IsLitter(Item))
+	{
+		return FTransform(Yaw, FVector(Item.Pos.X, Item.Pos.Y, TNBeachLayout::PlacementZ(Item)));
+	}
+	FVector Normal = FVector::UpVector;
+	const double Z = TNBeachLayout::MeshSandZ(Layout, Item.Pos.X, Item.Pos.Y, &Normal);
+	// Sigue la cuesta, con tope: girar la vertical hacia la normal como mucho LitterMaxTilt.
+	const double Angle = FMath::Acos(FMath::Clamp(Normal.Z, -1.0, 1.0));
+	const FVector Axis = FVector::CrossProduct(FVector::UpVector, Normal);
+	FQuat Tilt = FQuat::Identity;
+	if (Axis.SizeSquared() > UE_DOUBLE_KINDA_SMALL_NUMBER)
+	{
+		Tilt = FQuat(Axis.GetSafeNormal(), FMath::Min(Angle, FMath::DegreesToRadians(LitterMaxTilt)));
+	}
+	return FTransform(Tilt * Yaw, FVector(Item.Pos.X, Item.Pos.Y, Z));
+}
+
 void TNBeachDecorKit::TilePlacements(ETNBeachElement Element, int32 Seed, float Size, float Extent, TMap<int32, TArray<FTransform>>& OutByPiece)
 {
 	OutByPiece.Reset();
@@ -315,6 +337,90 @@ void TNBeachDecorKit::SetupCollision(UPrimitiveComponent* Comp, bool bCollision,
 	}
 	Comp->SetCollisionProfileName(UCollisionProfile::BlockAll_ProfileName);
 	Comp->SetCollisionResponseToChannel(ECC_Camera, bBlocksCamera ? ECR_Block : ECR_Ignore);
+}
+
+FName TNBeachDecorKit::BodySlot(ETNBeachElement Element)
+{
+	switch (Element)
+	{
+	case ETNBeachElement::Coconut:           return TN_ART("Beach.Decor.Coconut");
+	case ETNBeachElement::StrandedJellyfish: return TN_ART("Beach.Decor.Jellyfish");
+	case ETNBeachElement::SixPackRings:      return TN_ART("Beach.Decor.SixPackRings");
+	case ETNBeachElement::RedBra:            return TN_ART("Beach.Decor.RedBra");
+	case ETNBeachElement::Clam:              return TN_ART("Beach.Decor.Clam");
+	case ETNBeachElement::DecorShell:        return TN_ART("Beach.Decor.Shell");
+	case ETNBeachElement::Starfish:          return TN_ART("Beach.Decor.Starfish");
+	case ETNBeachElement::Rock:              return TN_ART("Beach.Decor.Rock");
+	case ETNBeachElement::RockCluster:       return TN_ART("Beach.Decor.RockCluster");
+	case ETNBeachElement::ShipSailWreck:     return TN_ART("Beach.Decor.ShipSailWreck");
+	case ETNBeachElement::MossyLog:          return TN_ART("Beach.Decor.MossyLog");
+	case ETNBeachElement::OldPlanks:         return TN_ART("Beach.Decor.OldPlanks");
+	case ETNBeachElement::FishingNet:        return TN_ART("Beach.Decor.FishingNet");
+	case ETNBeachElement::PlasticCup:        return TN_ART("Beach.Decor.PlasticCup");
+	case ETNBeachElement::Bottle:            return TN_ART("Beach.Decor.Bottle");
+	case ETNBeachElement::Lollipop:          return TN_ART("Beach.Decor.Lollipop");
+	case ETNBeachElement::WatermelonRind:    return TN_ART("Beach.Decor.WatermelonRind");
+	case ETNBeachElement::Straw:             return TN_ART("Beach.Decor.Straw");
+	case ETNBeachElement::PlantedUmbrella:   return TN_ART("Beach.Decor.Umbrella");
+	case ETNBeachElement::BeachChair:        return TN_ART("Beach.Decor.BeachChair");
+	case ETNBeachElement::SandCastleSmall:   return TN_ART("Beach.Decor.SandCastleSmall");
+	case ETNBeachElement::SandCastleHuge:    return TN_ART("Beach.Decor.SandCastleHuge");
+	case ETNBeachElement::Driftwood:         return TN_ART("Beach.Decor.Driftwood");
+	case ETNBeachElement::SodaCan:           return TN_ART("Beach.Decor.SodaCan");
+	case ETNBeachElement::BottleCaps:        return TN_ART("Beach.Decor.BottleCaps");
+	case ETNBeachElement::FlipFlop:          return TN_ART("Beach.Decor.FlipFlop");
+	case ETNBeachElement::JuiceBox:          return TN_ART("Beach.Decor.JuiceBox");
+	case ETNBeachElement::Buoy:              return TN_ART("Beach.Decor.Buoy");
+	case ETNBeachElement::BeachTowel:        return TN_ART("Beach.Decor.BeachTowel");
+	case ETNBeachElement::SunscreenBottle:   return TN_ART("Beach.Decor.Sunscreen");
+	case ETNBeachElement::PopsicleSticks:    return TN_ART("Beach.Decor.PopsicleSticks");
+	case ETNBeachElement::SnackShells:       return TN_ART("Beach.Decor.SnackShells");
+	case ETNBeachElement::RopePiece:         return TN_ART("Beach.Decor.RopePiece");
+	case ETNBeachElement::Sunglasses:        return TN_ART("Beach.Decor.Sunglasses");
+	case ETNBeachElement::ToyBucket:         return TN_ART("Beach.Decor.ToyBucket");
+	case ETNBeachElement::BeachBall:         return TN_ART("Beach.Decor.BeachBall");
+	case ETNBeachElement::Frisbee:           return TN_ART("Beach.Decor.Frisbee");
+	case ETNBeachElement::Cuttlebone:        return TN_ART("Beach.Decor.Cuttlebone");
+	case ETNBeachElement::RubberDuck:        return TN_ART("Beach.Decor.RubberDuck");
+	case ETNBeachElement::GullFeather:       return TN_ART("Beach.Decor.GullFeather");
+	case ETNBeachElement::Sandbags:          return TN_ART("Beach.Decor.Sandbags");
+	case ETNBeachElement::AmmoCrate:         return TN_ART("Beach.Decor.AmmoCrate");
+	case ETNBeachElement::TankTrap:          return TN_ART("Beach.Decor.TankTrap");
+	case ETNBeachElement::MilitaryHelmet:    return TN_ART("Beach.Decor.MilitaryHelmet");
+	case ETNBeachElement::CamoNet:           return TN_ART("Beach.Decor.CamoNet");
+	case ETNBeachElement::Jerrycan:          return TN_ART("Beach.Decor.Jerrycan");
+	case ETNBeachElement::ToySoldiers:       return TN_ART("Beach.Decor.ToySoldiers");
+	default:                                 return NAME_None;
+	}
+}
+
+FName TNBeachDecorKit::MovingSlot(ETNBeachElement Element)
+{
+	switch (Element)
+	{
+	case ETNBeachElement::StrandedJellyfish: return TN_ART("Beach.Decor.JellyfishBell");
+	case ETNBeachElement::Clam:              return TN_ART("Beach.Decor.ClamTop");
+	case ETNBeachElement::FishingNet:        return TN_ART("Beach.Decor.FishingNetFlap");
+	case ETNBeachElement::ShipSailWreck:     return TN_ART("Beach.Decor.SailRag");
+	case ETNBeachElement::SandCastleSmall:   return TN_ART("Beach.Decor.SandCastleSmallFlag");
+	case ETNBeachElement::SandCastleHuge:    return TN_ART("Beach.Decor.SandCastleHugeFlag");
+	case ETNBeachElement::Sandbags:          return TN_ART("Beach.Decor.SandbagsFlag");
+	case ETNBeachElement::CamoNet:           return TN_ART("Beach.Decor.CamoNetSheet");
+	default:                                 return NAME_None;
+	}
+}
+
+FName TNBeachDecorKit::PieceSlot(ETNBeachElement Element, int32 PieceIndex)
+{
+	if (Element == ETNBeachElement::Boardwalk)
+	{
+		return PieceIndex == TNBeachProp::BoardwalkKit::RampKind ? TN_ART("Beach.Decor.BoardwalkRamp") : TN_ART("Beach.Decor.BoardwalkModule");
+	}
+	if (Element == ETNBeachElement::WoodenPostPath)
+	{
+		return PieceIndex >= TNBeachProp::PostPathKit::RopeBase ? TN_ART("Beach.Decor.PathRope") : TN_ART("Beach.Decor.PathPost");
+	}
+	return NAME_None;
 }
 
 float TNBeachDecorKit::AnimPhaseOf(int32 Seed)
@@ -524,8 +630,9 @@ void ATN_BeachDecor::ApplySpec()
 	if (TNBeach::CategoryOf(Element) != ETNBeachCategory::Decor)
 	{
 		UE_LOG(LogTortunabo, Warning, TEXT("[Playa] ATN_BeachDecor con %s, que no es decorado: no se construye."), *UEnum::GetValueAsString(Element));
-		BodyMesh->SetStaticMesh(nullptr);
-		AnimMesh->SetStaticMesh(nullptr);
+		// Sin malla: sin pieza de arte (se quita la de una construcción anterior).
+		TNArt::SetMesh(BodyMesh, nullptr, NAME_None);
+		TNArt::SetMesh(AnimMesh, nullptr, NAME_None);
 		return;
 	}
 	// El tamaño va en la malla (el actor no se escala); fuera de 0,5-1,6 los escalones dejarían de poder subirse.
@@ -554,6 +661,8 @@ void ATN_BeachDecor::BuildSingle(ETNBeachElement Element, float Size)
 	BodyMesh->SetCastShadow(Info.bCastShadow);
 	BodyMesh->SetCullDistance(Cull);
 	TNBeachDecorKit::SetupCollision(BodyMesh.Get(), Prop.bCollision, Info.bBlocksCamera);
+	// Pieza de arte (Docs/Arte_Assets.md), con la sombra y la colisión ya puestas: las conserva el generado si no hay sustituto.
+	TNArt::ApplyToComponent(BodyMesh.Get(), TNBeachDecorKit::BodySlot(Element));
 
 	UStaticMesh* MovingAsset = Prop.Moving;
 	AnimMesh->SetStaticMesh(MovingAsset);
@@ -561,6 +670,7 @@ void ATN_BeachDecor::BuildSingle(ETNBeachElement Element, float Size)
 	AnimMesh->SetRelativeTransform(FTransform(FQuat::Identity, Info.AnimPivot, FVector::OneVector));
 	AnimMesh->SetCastShadow(Info.bCastShadow);
 	AnimMesh->SetCullDistance(Cull);
+	TNArt::ApplyToComponent(AnimMesh.Get(), TNBeachDecorKit::MovingSlot(Element));
 	if (MovingAsset && Info.Anim != TNBeachProp::EAnim::None)
 	{
 		StartAnimation(static_cast<uint8>(Info.Anim), Info.AnimAxis, Info.AnimAmp, Info.AnimRate, TNBeachDecorKit::AnimRangeFor(Element, Size));
@@ -569,9 +679,9 @@ void ATN_BeachDecor::BuildSingle(ETNBeachElement Element, float Size)
 
 void ATN_BeachDecor::BuildTiles(ETNBeachElement Element, float Size)
 {
-	BodyMesh->SetStaticMesh(nullptr);
+	TNArt::SetMesh(BodyMesh, nullptr, NAME_None);
 	BodyMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	AnimMesh->SetStaticMesh(nullptr);
+	TNArt::SetMesh(AnimMesh, nullptr, NAME_None);
 	AnimMesh->SetVisibility(false);
 	TMap<int32, TArray<FTransform>> ByPiece;
 	TNBeachDecorKit::TilePlacements(Element, Spec.Seed, Size, Spec.Extent, ByPiece);
@@ -591,6 +701,7 @@ void ATN_BeachDecor::BuildTiles(ETNBeachElement Element, float Size)
 		TNBeachDecorKit::SetupCollision(Ism, Prop.bCollision, false);
 		Ism->RegisterComponent();
 		Ism->AddInstances(Entry.Value, false, false);
+		TNArt::ApplyToInstances(Ism, TNBeachDecorKit::PieceSlot(Element, Entry.Key));
 		Tiles.Add(Ism);
 	}
 }
@@ -600,6 +711,14 @@ void ATN_BeachDecor::ClearTiles()
 	for (UInstancedStaticMeshComponent* Ism : Tiles)
 	{
 		if (Ism) { Ism->DestroyComponent(); }
+	}
+	// Y los gemelos de colisión que deja TNArt::ApplyToInstances con un sustituto de arte (los ISM que no son de Tiles ni
+	// mallas de arte): sin sustitutos no hay ninguno.
+	TInlineComponentArray<UInstancedStaticMeshComponent*> Others;
+	GetComponents(Others);
+	for (UInstancedStaticMeshComponent* Ism : Others)
+	{
+		if (IsValid(Ism) && !Tiles.Contains(Ism) && !Ism->IsA<UTN_ArtMeshComponent>()) { Ism->DestroyComponent(); }
 	}
 	Tiles.Reset();
 }

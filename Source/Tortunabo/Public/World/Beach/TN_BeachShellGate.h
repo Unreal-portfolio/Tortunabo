@@ -64,6 +64,12 @@ public:
 
 	bool IsOpen() const { return GateState.bOpen; }
 
+	/** Tick por distancia (#59): lo que ocupa (con el ancho de una puerta desnuda) más TNBeachTickWake::ReachMargin. */
+	virtual float GetTickWakeDistance() const override;
+
+	/** Abierta, cerrándose o con las chispas de abrirse en el aire: sigue despierta hasta quedarse cerrada. */
+	virtual bool IsTickBusy() const override;
+
 	/** Segundos empujando para abrirla. */
 	UPROPERTY(EditAnywhere, Category = "Puerta", meta = (ClampMin = "0.1"))
 	float PushSeconds = 0.6f;

@@ -310,6 +310,11 @@ void UTN_RaceItemComponent::ServerStarContacts(float DeltaTime)
 		return;
 	}
 	StarScanClock = StarScanPeriod;
+	// Con la carrera parada («¡TIEMPO!», recuento, título del sprint, podio) lo que toca no cae ni se marea (#72).
+	if (!ATN_BeachEnemy::IsRaceLive(this))
+	{
+		return;
+	}
 	ATortugaCharacter* Self = Cast<ATortugaCharacter>(GetOwner());
 	UWorld* World = GetWorld();
 	if (!Self || !World || Self->IsDead())

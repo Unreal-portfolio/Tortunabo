@@ -6,6 +6,7 @@
 #include "TN_BeachCritterKit.h"
 #include "TN_BeachCritterMeshes.h"
 #include "TN_BeachEnemyKit.h"
+#include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/World.h"
@@ -706,6 +707,24 @@ void ATN_BeachHermitCrab::MulticastStrike_Implementation(ATortugaCharacter* Vict
 // Visual
 // ─────────────────────────────────────────────────────────────────────────────
 
+void ATN_BeachHermitCrab::PlaceBlock(const FVector& Base, float Yaw, bool bRolling)
+{
+	if (!Block)
+	{
+		return;
+	}
+	// Mientras rueda no bloquea: la bola derriba a quien pilla (CheckRollHits) y no se para contra nadie.
+	const ECollisionEnabled::Type Wanted = bRolling ? ECollisionEnabled::NoCollision : ECollisionEnabled::QueryAndPhysics;
+	if (Block->GetCollisionEnabled() != Wanted)
+	{
+		Block->SetCollisionEnabled(Wanted);
+	}
+	if (!bRolling)
+	{
+		Block->SetWorldLocationAndRotation(Base + FVector(0.0, 0.0, BallRadius * 0.9f), FRotator(0.f, Yaw, 0.f));
+	}
+}
+
 void ATN_BeachHermitCrab::BuildCrab()
 {
 	if (!bHasScreen || BodyRoot)
@@ -723,7 +742,23 @@ void ATN_BeachHermitCrab::BuildCrab()
 	{
 		TNBeachCritterMeshes::BuildHermitShell(M, Look, static_cast<uint32>(Pal) * 13u + 5u);
 	});
-	ShellMesh = TNBeachCritterKit::AddPart(this, BodyRoot, ShellM, FVector::ZeroVector);
+	ShellMesh = TNBeachCritterKit::AddPart(this, BodyRoot, ShellM, FVector::ZeroVector, true, TN_ART("Beach.HermitCrab.Shell"));
+
+	// Cuerpo sólido (como el del tanque): sin él, la caracola quieta o andando se atravesaba.
+	Block = NewObject<UBoxComponent>(this, NAME_None, RF_Transient | RF_DuplicateTransient);
+	Block->SetupAttachment(GetRootComponent());
+	Block->SetAbsolute(true, true, true);
+	Block->SetBoxExtent(FVector(BallRadius * 0.85f, BallRadius * 0.85f, BallRadius * 0.9f), false);
+	Block->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	Block->SetCollisionObjectType(ECC_Pawn);
+	Block->SetCollisionResponseToAllChannels(ECR_Ignore);
+	Block->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+	Block->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block);
+	Block->SetCanEverAffectNavigation(false);
+	Block->SetGenerateOverlapEvents(false);
+	Block->RegisterComponent();
+	Block->SetWorldLocationAndRotation(GetActorLocation() + FVector(0.0, 0.0, BallRadius * 0.9f), FRotator::ZeroRotator);
+	RegisterSolidBlock(Block);
 
 	CrabRoot = TNBeachCritterKit::AddPivot(this, BodyRoot, TNBeachCritterMeshes::HermitAperture());
 	UStaticMesh* HeadM = TNBeachKit::CachedMesh(Key + TEXT("Head"), [&Look](FTNProcMeshBuffers& M) { TNBeachCritterMeshes::BuildHermitHead(M, Look); });
@@ -733,20 +768,21 @@ void ATN_BeachHermitCrab::BuildCrab()
 	UStaticMesh* SmallM = TNBeachKit::CachedMesh(Key + TEXT("SmallClaw"), [&Look](FTNProcMeshBuffers& M) { TNBeachCritterMeshes::BuildHermitClaw(M, Look, 0.62); });
 	UStaticMesh* LegLM = TNBeachKit::CachedMesh(Key + TEXT("LegL"), [&Look](FTNProcMeshBuffers& M) { TNBeachCritterMeshes::BuildHermitLeg(M, Look, -1.0); });
 	UStaticMesh* LegRM = TNBeachKit::CachedMesh(Key + TEXT("LegR"), [&Look](FTNProcMeshBuffers& M) { TNBeachCritterMeshes::BuildHermitLeg(M, Look, 1.0); });
-	Head = TNBeachCritterKit::AddPart(this, CrabRoot, HeadM, FVector::ZeroVector);
-	Antennae = TNBeachCritterKit::AddPart(this, CrabRoot, AntM, FVector(R * 0.2, 0.0, R * 0.06), false);
+	Head = TNBeachCritterKit::AddPart(this, CrabRoot, HeadM, FVector::ZeroVector, true, TN_ART("Beach.HermitCrab.Head"));
+	Antennae = TNBeachCritterKit::AddPart(this, CrabRoot, AntM, FVector(R * 0.2, 0.0, R * 0.06), false, TN_ART("Beach.HermitCrab.Antennae"));
 	for (const double Side : { -1.0, 1.0 })
 	{
-		Eyes.Add(TNBeachCritterKit::AddPart(this, CrabRoot, EyeM, FVector(R * 0.2, Side * R * 0.08, R * 0.1), false));
+		Eyes.Add(TNBeachCritterKit::AddPart(this, CrabRoot, EyeM, FVector(R * 0.2, Side * R * 0.08, R * 0.1), false, TN_ART("Beach.HermitCrab.Eye")));
 	}
-	BigClaw = TNBeachCritterKit::AddPart(this, CrabRoot, BigM, FVector(R * 0.12, -R * 0.2, -R * 0.1));
-	SmallClaw = TNBeachCritterKit::AddPart(this, CrabRoot, SmallM, FVector(R * 0.12, R * 0.2, -R * 0.1), false);
+	BigClaw = TNBeachCritterKit::AddPart(this, CrabRoot, BigM, FVector(R * 0.12, -R * 0.2, -R * 0.1), true, TN_ART("Beach.HermitCrab.BigClaw"));
+	SmallClaw = TNBeachCritterKit::AddPart(this, CrabRoot, SmallM, FVector(R * 0.12, R * 0.2, -R * 0.1), false, TN_ART("Beach.HermitCrab.SmallClaw"));
 	// Patas: 0 y 1 a la izquierda (delante y detrás), 2 y 3 a la derecha.
 	const FVector LegPivots[4] = { FVector(R * 0.02, -R * 0.16, -R * 0.14), FVector(-R * 0.07, -R * 0.14, -R * 0.18),
 		FVector(R * 0.02, R * 0.16, -R * 0.14), FVector(-R * 0.07, R * 0.14, -R * 0.18) };
 	for (int32 k = 0; k < 4; ++k)
 	{
-		Legs.Add(TNBeachCritterKit::AddPart(this, CrabRoot, k < 2 ? LegLM : LegRM, LegPivots[k], false));
+		Legs.Add(TNBeachCritterKit::AddPart(this, CrabRoot, k < 2 ? LegLM : LegRM, LegPivots[k], false,
+			k < 2 ? TN_ART("Beach.HermitCrab.LegLeft") : TN_ART("Beach.HermitCrab.LegRight")));
 	}
 	Shadow = TNBeachKit::AddShadow(this, 0.4f);
 
@@ -1004,6 +1040,7 @@ void ATN_BeachHermitCrab::VisualTick(float DeltaSeconds)
 	ShownLoc = Base;
 	ShownYaw = static_cast<float>(Rot.Rotator().Yaw);
 	PrevAge = Age;
+	PlaceBlock(Base, DownYaw, bRolling);
 
 	if (Sound)
 	{

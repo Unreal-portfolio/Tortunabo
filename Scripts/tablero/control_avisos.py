@@ -55,7 +55,8 @@ def prs_sin_validar(proyecto: dict, desde: datetime) -> list[str]:
     for pr in sorted(prs, key=lambda p: p["mergedAt"]):
         if avisos.fecha(pr["mergedAt"]) < desde:
             continue
-        if linea := avisos.pr_sin_validar({**pr, "refs": issues_de_pr(pr)}, proyecto["items"], RUTAS_ORGANIZACION, lotes_):
+        refs = issues_de_pr(pr) | (issues_de_pr(pr, menciones=True) & lotes_)  # su lote va con «Refs #lote»
+        if linea := avisos.pr_sin_validar({**pr, "refs": refs}, proyecto["items"], RUTAS_ORGANIZACION, lotes_):
             lineas.append(linea)
     return lineas
 

@@ -252,7 +252,7 @@ namespace TNShellLogic
 		float SpinSustainSeconds = 0.4f;
 		/** cm de la parte de abajo de la caja bajo el terreno de verdad (tocar la arena no es estar dentro). */
 		float SunkDepth = 25.f;
-		/** cm/s de cambio de velocidad en un paso. */
+		/** cm/s de cambio de velocidad en un paso que no se explica por frenar un choque (UnexplainedVelocityChange). */
 		float VelocityJump = 900.f;
 		/** Segundos desde el nacimiento o el último InitBody en los que un salto de velocidad es el propio lanzamiento. */
 		float LaunchGraceSeconds = 0.15f;
@@ -264,13 +264,37 @@ namespace TNShellLogic
 		float DeltaSeconds = 0.f;
 		/** |ω| en rad/s. */
 		float AngularSpeed = 0.f;
-		/** |v - v del paso anterior| en cm/s. */
+		/** Cambio de velocidad del paso que no se explica por frenar un choque (UnexplainedVelocityChange), en cm/s. */
 		float VelocityChange = 0.f;
 		/** cm de la parte de abajo de la caja bajo el terreno (negativo si está encima). */
 		float BottomDepthUnderTerrain = 0.f;
 		/** Segundos desde el nacimiento o el último InitBody de la caja. */
 		float AgeSeconds = 0.f;
 	};
+
+	/**
+	 * @brief Parte del cambio de velocidad de un paso que no se explica por un choque que frena la caja.
+	 *
+	 * Un contacto pasivo (aterrizar, chocar con una pared) quita la velocidad con la que la caja iba contra él y, como mucho,
+	 * la hace rebotar un poco (rebote 0,2). Lo que queda del cambio, la velocidad con la que sale en la dirección del empujón,
+	 * es lo que no explica ningún choque: la depenetración que la escupe o un empujón del juego sin registrar. Una bola lanzada
+	 * que aterriza a 11 m/s y 9 m/s hacia abajo cambia 10-14 m/s en un paso y aquí da menos de 1,5 m/s (#54, monkey del 2026-10-03).
+	 *
+	 * @param PrevVelocity Velocidad al acabar el paso anterior.
+	 * @param Velocity     Velocidad al acabar este paso.
+	 * @return cm/s; 0 si el paso solo la frena.
+	 */
+	inline float UnexplainedVelocityChange(const FVector& PrevVelocity, const FVector& Velocity)
+	{
+		const FVector Change = Velocity - PrevVelocity;
+		const double ChangeSize = Change.Size();
+		if (ChangeSize <= UE_KINDA_SMALL_NUMBER)
+		{
+			return 0.f;
+		}
+		const double Incoming = FMath::Max(0.0, -FVector::DotProduct(PrevVelocity, Change / ChangeSize));
+		return static_cast<float>(FMath::Max(0.0, ChangeSize - Incoming));
+	}
 
 	/**
 	 * @brief Clasifica una muestra del movimiento de la caja. Prioridad: hundida, salto de velocidad, torbellino.

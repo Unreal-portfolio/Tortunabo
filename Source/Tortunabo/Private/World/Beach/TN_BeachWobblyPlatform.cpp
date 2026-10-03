@@ -451,14 +451,14 @@ void ATN_BeachWobblyPlatform::ApplySpec()
 	TNBeachTrapKit::FBuffers Crater;
 	TNBeachTrapKit::FHulls Hulls;
 	BuildCrater(Crater, Hulls, D, Seed);
-	TNBeachTrapKit::SetMesh(CraterMesh, this, Crater);
+	TNBeachTrapKit::SetMesh(CraterMesh, this, Crater, TN_ART("Beach.WobblyPlatform.Crater"));
 	CraterCollision->SetCollisionConvexMeshes(Hulls);
 
 	// Tabla entera en su bisagra central.
 	BoardPivot->SetRelativeLocationAndRotation(FVector(0.0, 0.0, RimHeight), FRotator::ZeroRotator);
 	TNBeachTrapKit::FBuffers Board;
 	BuildBoard(Board, FTransform::Identity, BoardHalfL, BoardHalfW, BoardThick, bLid, Seed, -BoardHalfL, BoardHalfL, false);
-	TNBeachTrapKit::SetMesh(BoardMesh, this, Board);
+	TNBeachTrapKit::SetMesh(BoardMesh, this, Board, TN_ART("Beach.WobblyPlatform.Board"));
 	BoardBox->SetBoxExtent(FVector(BoardHalfL, BoardHalfW, BoardThick * 0.5), false);
 	BoardBox->SetRelativeLocation(FVector(0.0, 0.0, BoardThick * 0.5));
 
@@ -467,10 +467,10 @@ void ATN_BeachWobblyPlatform::ApplySpec()
 	HalfPivotB->SetRelativeLocationAndRotation(FVector(PitRadius, 0.0, RimHeight), FRotator(0.0, 180.0, 0.0));
 	TNBeachTrapKit::FBuffers HalfA;
 	BuildBoard(HalfA, FTransform(FVector(BoardHalfL, 0.0, 0.0)), BoardHalfL, BoardHalfW, BoardThick, bLid, Seed, -BoardHalfL, 0.0, true);
-	TNBeachTrapKit::SetMesh(HalfMeshA, this, HalfA);
+	TNBeachTrapKit::SetMesh(HalfMeshA, this, HalfA, TN_ART("Beach.WobblyPlatform.BoardHalf"));
 	TNBeachTrapKit::FBuffers HalfB;
 	BuildBoard(HalfB, FTransform(FRotator(0.0, 180.0, 0.0), FVector(BoardHalfL, 0.0, 0.0)), BoardHalfL, BoardHalfW, BoardThick, bLid, Seed, 0.0, BoardHalfL, true);
-	TNBeachTrapKit::SetMesh(HalfMeshB, this, HalfB);
+	TNBeachTrapKit::SetMesh(HalfMeshB, this, HalfB, TN_ART("Beach.WobblyPlatform.BoardHalf"));
 	for (UBoxComponent* Half : { HalfBoxA.Get(), HalfBoxB.Get() })
 	{
 		Half->SetBoxExtent(FVector(BoardHalfL * 0.5, BoardHalfW, BoardThick * 0.5), false);

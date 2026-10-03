@@ -7,6 +7,7 @@
 
 #include "Lobby/TN_LobbyValley.h"
 #include "Lobby/TN_SandCastleLobby.h"
+#include "Art/TN_Art.h"
 #include "Core/TN_Log.h"
 #include "CoreGlobals.h"
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
@@ -21,6 +22,7 @@
 #include "ProceduralMeshComponent.h"
 #include "World/ProcMap/TN_ProcMapTypes.h"
 #include "TN_LobbyValleyTerrain.h"
+#include "../Art/TN_ArtPieces.h"
 #include "../World/ProcMap/TN_ProcMapAmbientFX.h"
 #include "../World/ProcMap/TN_ProcMapFloraMeshes.h"
 #include "../World/ProcMap/TN_ProcMapFormationMeshes.h"
@@ -41,6 +43,13 @@ namespace TNValleyBuild
 	{
 		static const FName Tag(TEXT("TNValleyGen"));
 		return Tag;
+	}
+
+	/** Grupo de las mallas de arte de las formaciones, agujas y casitas (TNArt::FPieceLog del terreno). */
+	FName ArtGroup()
+	{
+		static const FName Group(TEXT("Valley"));
+		return Group;
 	}
 
 	/** Versión de la construcción: al cambiarla, los valles ya construidos en el editor se rehacen. */
@@ -118,6 +127,136 @@ namespace TNValleyBuild
 		{ 4.64, 12900.0, TNRockMesh::ESpireStyle::LavaDome, 700.0, 900.0, 4, false },
 	};
 
+	// ── Piezas de arte (Docs/Arte_Assets.md): formaciones, agujas, casitas y vegetación se pueden sustituir ──
+
+	/** Pieza de arte de cada formación de Landmarks. */
+	FName LandmarkSlot(TNProcMap::EFormation Kind)
+	{
+		using EF = TNProcMap::EFormation;
+		switch (Kind)
+		{
+			case EF::StiltHut:       return TN_ART("Lobby.Valley.Landmark.StiltHut");
+			case EF::Lighthouse:     return TN_ART("Lobby.Valley.Landmark.Lighthouse");
+			case EF::GiantShell:     return TN_ART("Lobby.Valley.Landmark.GiantShell");
+			case EF::Shipwreck:      return TN_ART("Lobby.Valley.Landmark.Shipwreck");
+			case EF::ColossalTurtle: return TN_ART("Lobby.Valley.Landmark.ColossalTurtle");
+			case EF::Obelisk:        return TN_ART("Lobby.Valley.Landmark.Obelisk");
+			case EF::FossilSkull:    return TN_ART("Lobby.Valley.Landmark.FossilSkull");
+			case EF::Hoodoo:         return TN_ART("Lobby.Valley.Landmark.Hoodoo");
+			case EF::BalancedRock:   return TN_ART("Lobby.Valley.Landmark.BalancedRock");
+			case EF::Mesa:           return TN_ART("Lobby.Valley.Landmark.Mesa");
+			case EF::ObsidianSpires: return TN_ART("Lobby.Valley.Landmark.ObsidianSpires");
+			case EF::BasaltColumns:  return TN_ART("Lobby.Valley.Landmark.BasaltColumns");
+			case EF::Fumarole:       return TN_ART("Lobby.Valley.Landmark.Fumarole");
+			case EF::CastleRuin:     return TN_ART("Lobby.Valley.Landmark.CastleRuin");
+			case EF::StoneCircle:    return TN_ART("Lobby.Valley.Landmark.StoneCircle");
+			case EF::Windmill:       return TN_ART("Lobby.Valley.Landmark.Windmill");
+			case EF::WaterTower:     return TN_ART("Lobby.Valley.Landmark.WaterTower");
+			case EF::Pyramid:        return TN_ART("Lobby.Valley.Landmark.Pyramid");
+			case EF::StoneHead:      return TN_ART("Lobby.Valley.Landmark.StoneHead");
+			default:                 return NAME_None;
+		}
+	}
+
+	/**
+	 * Pivote de Landmarks[Index]: su centro en el suelo, +X hacia el castillo. Escala 1 = la primera de su tipo en la tabla;
+	 * las demás se estiran a su radio y su alto.
+	 */
+	FTransform LandmarkPivot(int32 Index, const FVector2D& C, double OriginZ, const FVector2D& Dx)
+	{
+		const FLandmark& Lm = Landmarks[Index];
+		const FLandmark* Ref = &Lm;
+		for (const FLandmark& Other : Landmarks)
+		{
+			if (Other.Kind == Lm.Kind)
+			{
+				Ref = &Other;
+				break;
+			}
+		}
+		const double S = Lm.Radius / Ref->Radius;
+		return FTransform(FRotator(0.0, FMath::RadiansToDegrees(FMath::Atan2(Dx.Y, Dx.X)), 0.0), FVector(C, OriginZ), FVector(S, S, Lm.Height / Ref->Height));
+	}
+
+	/** Pieza de arte de cada estilo de aguja o peñasco de Spires. */
+	FName SpireSlot(TNRockMesh::ESpireStyle Style)
+	{
+		using ESS = TNRockMesh::ESpireStyle;
+		switch (Style)
+		{
+			case ESS::Twin:     return TN_ART("Lobby.Valley.Rock.TwinSpire");
+			case ESS::Leaning:  return TN_ART("Lobby.Valley.Rock.LeaningSpire");
+			case ESS::Spire:    return TN_ART("Lobby.Valley.Rock.Spire");
+			case ESS::Tor:      return TN_ART("Lobby.Valley.Rock.Tor");
+			case ESS::Karst:    return TN_ART("Lobby.Valley.Rock.KarstPillar");
+			case ESS::LavaDome: return TN_ART("Lobby.Valley.Rock.LavaDome");
+			default:            return NAME_None;
+		}
+	}
+
+	/**
+	 * Pivote de Spires[Index]: centro de la base (lo más bajo de su pie), ejes del valle. Escala 1 = la primera de su estilo en
+	 * la tabla; las demás se estiran a su radio y su alto.
+	 */
+	FTransform SpirePivot(int32 Index, const FVector2D& C, double BaseZ)
+	{
+		const FSpireDef& Sd = Spires[Index];
+		const FSpireDef* Ref = &Sd;
+		for (const FSpireDef& Other : Spires)
+		{
+			if (Other.Style == Sd.Style)
+			{
+				Ref = &Other;
+				break;
+			}
+		}
+		const double S = Sd.Radius / Ref->Radius;
+		return FTransform(FRotator::ZeroRotator, FVector(C, BaseZ), FVector(S, S, Sd.Height / Ref->Height));
+	}
+
+	/** Pieza de arte de cada especie de la vegetación del valle (sus variantes y biomas comparten la malla de arte). */
+	FName FloraSlot(TNProcMap::EFloraShape Shape, TNProcMap::EPropKind Prop)
+	{
+		using ES = TNProcMap::EFloraShape;
+		switch (Shape)
+		{
+			case ES::Willow:       return TN_ART("Lobby.Valley.Flora.Willow");
+			case ES::BroadTree:    return TN_ART("Lobby.Valley.Flora.BroadTree");
+			case ES::Birch:        return TN_ART("Lobby.Valley.Flora.Birch");
+			case ES::Palm:         return TN_ART("Lobby.Valley.Flora.Palm");
+			case ES::Reeds:        return TN_ART("Lobby.Valley.Flora.Reeds");
+			case ES::Cypress:      return TN_ART("Lobby.Valley.Flora.Cypress");
+			case ES::Bush:         return TN_ART("Lobby.Valley.Flora.Bush");
+			case ES::Rock:         return TN_ART("Lobby.Valley.Flora.Rock");
+			case ES::Casuarina:    return TN_ART("Lobby.Valley.Flora.Casuarina");
+			case ES::SeaGrape:     return TN_ART("Lobby.Valley.Flora.SeaGrape");
+			case ES::FanPalm:      return TN_ART("Lobby.Valley.Flora.FanPalm");
+			case ES::Pandanus:     return TN_ART("Lobby.Valley.Flora.Pandanus");
+			case ES::Saguaro:      return TN_ART("Lobby.Valley.Flora.Saguaro");
+			case ES::JoshuaTree:   return TN_ART("Lobby.Valley.Flora.JoshuaTree");
+			case ES::Barrel:       return TN_ART("Lobby.Valley.Flora.BarrelCactus");
+			case ES::DryBush:      return TN_ART("Lobby.Valley.Flora.DryBush");
+			case ES::DeadTree:     return TN_ART("Lobby.Valley.Flora.DeadTree");
+			case ES::Acacia:       return TN_ART("Lobby.Valley.Flora.Acacia");
+			case ES::CharredTree:  return TN_ART("Lobby.Valley.Flora.CharredTree");
+			case ES::AshBush:      return TN_ART("Lobby.Valley.Flora.AshBush");
+			case ES::Pine:         return TN_ART("Lobby.Valley.Flora.Pine");
+			case ES::Fir:          return TN_ART("Lobby.Valley.Flora.Fir");
+			case ES::Fern:         return TN_ART("Lobby.Valley.Flora.Fern");
+			case ES::Ornamental:   return TN_ART("Lobby.Valley.Flora.Ornamental");
+			case ES::Hedge:        return TN_ART("Lobby.Valley.Flora.Hedge");
+			case ES::Ceiba:        return TN_ART("Lobby.Valley.Flora.Ceiba");
+			case ES::TreeFern:     return TN_ART("Lobby.Valley.Flora.TreeFern");
+			case ES::Bamboo:       return TN_ART("Lobby.Valley.Flora.Bamboo");
+			case ES::BananaPlant:  return TN_ART("Lobby.Valley.Flora.BananaPlant");
+			case ES::MangroveTree: return TN_ART("Lobby.Valley.Flora.MangroveTree");
+			case ES::Prop:
+				if (Prop == TNProcMap::EPropKind::HayBale) { return TN_ART("Lobby.Valley.Flora.HayBale"); }
+				return NAME_None;
+			default:               return NAME_None;
+		}
+	}
+
 	/** Colores del mapa procedural de un bioma (suelo y roca), para las formaciones y la vegetación. */
 	void BiomeColors(ETNProcBiome Biome, FLinearColor& OutGround, FLinearColor& OutRock)
 	{
@@ -134,22 +273,20 @@ namespace TNValleyBuild
 		return false;
 	}
 
-	/** Sube unos buffers como sección de una malla procedural sin colisión. */
-	void UploadSection(UProceduralMeshComponent* Comp, int32 Section, const FTNProcMeshBuffers& B, UMaterialInterface* Mat)
+	/** Sube unos buffers como sección de una malla procedural sin colisión (sin las piezas de Log que tienen sustituto de arte). */
+	void UploadSection(UProceduralMeshComponent* Comp, int32 Section, const FTNProcMeshBuffers& B, UMaterialInterface* Mat, const TNArt::FPieceLog* Log = nullptr)
 	{
 		if (!Comp || B.IsEmpty()) { return; }
-		const TArray<FProcMeshTangent> NoTangents;
-		Comp->CreateMeshSection_LinearColor(Section, B.Verts, B.Tris, B.Normals, B.UVs, B.Colors, NoTangents, false);
-		if (Mat) { Comp->SetMaterial(Section, Mat); }
+		TNArt::UploadSection(Comp, Section, B, false, Mat, Log);
 	}
 
 	/**
 	 * Casita de caras planas (o granero): paredes encaladas de colores sobre un zócalo de piedra, tejado a dos aguas con
 	 * alero, hastiales, puerta, ventanas y chimenea (su boca va a OutChimneys, si se pide). Se asienta en lo más alto de su
-	 * planta y el zócalo baja hasta lo más bajo.
+	 * planta y el zócalo baja hasta lo más bajo. Con Log, la casa entera es una pieza de arte.
 	 */
 	void AddCottage(FTNProcMeshBuffers& M, const FTNLobbyValleyGrid& G, const FVector2D& C, double Yaw, double Scale, uint32 HouseSeed, bool bBarn,
-		TArray<FVector>* OutChimneys)
+		TArray<FVector>* OutChimneys, TNArt::FPieceLog* Log)
 	{
 		const FVector2D Dx(FMath::Cos(Yaw), FMath::Sin(Yaw));
 		const FVector2D Dy(-Dx.Y, Dx.X);
@@ -171,6 +308,9 @@ namespace TNValleyBuild
 		}
 		const double FloorZ = High + 8.0;
 		const double FootZ = Low - 60.0;
+		// Pieza de arte: centro de la planta a la altura del suelo de la casa, +X hacia la puerta; escala 1 = la de tamaño 1.
+		TNArt::FPieceScope Piece(Log, bBarn ? TN_ART("Lobby.Valley.Barn") : TN_ART("Lobby.Valley.Cottage"),
+			FTransform(FRotator(0.0, FMath::RadiansToDegrees(Yaw), 0.0), FVector(C, FloorZ), FVector(Scale)), { &M });
 		auto L = [&C, &Dx, &Dy](double X, double Y, double Z) { return FVector(C + Dx * X + Dy * Y, Z); };
 		const FVector Ax(Dx.X, Dx.Y, 0.0);
 		const FVector Ay(Dy.X, Dy.Y, 0.0);
@@ -229,9 +369,9 @@ namespace TNValleyBuild
 		}
 	}
 
-	/** Formaciones del mapa procedural, agujas de roca y casitas en sus sectores (sección 1 del terreno). */
+	/** Formaciones del mapa procedural, agujas de roca y casitas en sus sectores (sección 1 del terreno), cada una pieza de arte. */
 	void BuildLandmarks(FTNProcMeshBuffers& Painted, const FTNLobbyValleyGrid& G, uint32 InSeed, TArray<FVector>& KeepOut, TArray<FVector>& Lookouts,
-		TArray<FVector>& Chimneys)
+		TArray<FVector>& Chimneys, TNArt::FPieceLog& Log)
 	{
 		for (int32 i = 0; i < static_cast<int32>(UE_ARRAY_COUNT(Landmarks)); ++i)
 		{
@@ -253,7 +393,10 @@ namespace TNValleyBuild
 			Params.WaterZ = WaterZ - OriginZ;
 			FTNProcMeshBuffers Local;
 			TNFormMesh::TNFormBuild(Local, Lm.Kind, Params, TNFormMesh::TNFormColorsFor(Biome, RockC), Ground);
-			TNFormMesh::TNFormAppend(Painted, Local, FVector(C, OriginZ), Dx);
+			{
+				TNArt::FPieceScope Piece(Log, TNValleyBuild::LandmarkSlot(Lm.Kind), TNValleyBuild::LandmarkPivot(i, C, OriginZ, Dx), { &Painted });
+				TNFormMesh::TNFormAppend(Painted, Local, FVector(C, OriginZ), Dx);
+			}
 			KeepOut.Add(FVector(C.X, C.Y, Lm.Radius * 1.35 + 250.0));
 		}
 
@@ -273,7 +416,10 @@ namespace TNValleyBuild
 			}
 			FTNProcMeshBuffers Local;
 			TNRockMesh::TNRockBuildSpire(Local, Sd.Style, Sd.Radius, Sd.Height, TNProcMap::HashCell(InSeed ^ 0x5A1Eu, i, 3), TNRockMesh::TNRockColorsFor(Biome, RockC, GroundC));
-			TNFormMesh::TNFormAppend(Painted, Local, FVector(C, BaseZ), FVector2D(1.0, 0.0));
+			{
+				TNArt::FPieceScope Piece(Log, TNValleyBuild::SpireSlot(Sd.Style), TNValleyBuild::SpirePivot(i, C, BaseZ), { &Painted });
+				TNFormMesh::TNFormAppend(Painted, Local, FVector(C, BaseZ), FVector2D(1.0, 0.0));
+			}
 			KeepOut.Add(FVector(C.X, C.Y, Sd.Radius * 1.5 + 200.0));
 			if (Sd.bLookout)
 			{
@@ -291,7 +437,7 @@ namespace TNValleyBuild
 			const double HouseScale = Rng.Range(0.9, 1.15);
 			if (InKeepOut(KeepOut, C, 380.0 * HouseScale) || G.NormalAt(C).Z < 0.9) { continue; }
 			const double Yaw = FMath::Atan2(-C.Y, -C.X) + Rng.Range(-0.6, 0.6);
-			AddCottage(Painted, G, C, Yaw, HouseScale, static_cast<uint32>(Rng.RangeInt(0, 1 << 20)), false, Placed < 2 ? &Chimneys : nullptr);
+			AddCottage(Painted, G, C, Yaw, HouseScale, static_cast<uint32>(Rng.RangeInt(0, 1 << 20)), false, Placed < 2 ? &Chimneys : nullptr, &Log);
 			KeepOut.Add(FVector(C.X, C.Y, 380.0 * HouseScale));
 			++Placed;
 		}
@@ -308,7 +454,7 @@ namespace TNValleyBuild
 		{
 			const FCabin& Cb = Cabins[i];
 			const FVector2D C = ValleyClockPoint(Cb.Hour, Cb.Dist);
-			AddCottage(Painted, G, C, FMath::Atan2(-C.Y, -C.X), Cb.CabinScale, TNProcMap::HashCell(InSeed ^ 0xCAB1u, i, 1), Cb.bBarn, nullptr);
+			AddCottage(Painted, G, C, FMath::Atan2(-C.Y, -C.X), Cb.CabinScale, TNProcMap::HashCell(InSeed ^ 0xCAB1u, i, 1), Cb.bBarn, nullptr, &Log);
 			KeepOut.Add(FVector(C.X, C.Y, (Cb.bBarn ? 560.0 : 380.0) * Cb.CabinScale));
 		}
 	}
@@ -608,7 +754,9 @@ void ATN_LobbyValley::BuildAll()
 {
 	// Nada que ver en un servidor dedicado ni al cocinar; en el editor y en cada cliente, igual con la misma semilla.
 	if (IsTemplate() || !GetWorld() || IsRunningCommandlet() || IsRunningDedicatedServer()) { return; }
-	const uint32 Key = HashCombine(HashCombine(GetTypeHash(Seed), GetTypeHash(FloraDensity)), HashCombine(GetTypeHash(MaxAnimals), TNValleyBuild::BuildVersion));
+	// Con la versión de los catálogos de arte: al cambiar uno, el valle del editor se rehace con los sustitutos nuevos.
+	const uint32 Key = HashCombine(HashCombine(HashCombine(GetTypeHash(Seed), GetTypeHash(FloraDensity)), HashCombine(GetTypeHash(MaxAnimals), TNValleyBuild::BuildVersion)),
+		TNArt::GetCatalogVersion());
 	// Hecho y con todo en su sitio (si el editor quitara los componentes creados, se rehacen).
 	bool bAlive = bBuilt && Key == BuiltKey && TerrainMesh && TerrainMesh->GetNumSections() > 0;
 	for (int32 i = 0; bAlive && i < GeneratedComps.Num(); ++i)
@@ -664,6 +812,7 @@ void ATN_LobbyValley::ClearGenerated()
 		if (Comp && Comp->ComponentHasTag(TNValleyBuild::GeneratedTag())) { Comp->DestroyComponent(); }
 	}
 	GeneratedMeshes.Reset();
+	TNArt::ClearPieceArt(this, TNValleyBuild::ArtGroup());
 	if (TerrainMesh) { TerrainMesh->ClearAllMeshSections(); }
 	if (WaterMesh) { WaterMesh->ClearAllMeshSections(); }
 	Animals.Reset();
@@ -742,10 +891,14 @@ void ATN_LobbyValley::BuildTerrain()
 	FTNProcMeshBuffers Ground;
 	Grid->EmitMesh(Ground, ValleyShape);
 	FTNProcMeshBuffers Painted;
-	BuildLandmarks(Painted, *Grid, SeedU(), KeepOut, Lookouts, Chimneys);
+	// Piezas que Arte puede sustituir (Docs/Arte_Assets.md): las formaciones, agujas y casitas; el terreno no.
+	TNArt::FPieceLog Log(ArtGroup());
+	BuildLandmarks(Painted, *Grid, SeedU(), KeepOut, Lookouts, Chimneys, Log);
 	UMaterialInterface* Mat = ValleyTerrainMaterial();
 	UploadSection(TerrainMesh, 0, Ground, Mat);
-	UploadSection(TerrainMesh, 1, Painted, Mat);
+	UploadSection(TerrainMesh, 1, Painted, Mat, &Log);
+	// La malla de arte de cada pieza con sustituto, en su sitio (hija del terreno: mismos ejes que los buffers).
+	TNArt::SpawnPieceArt(TerrainMesh, Log);
 }
 
 void ATN_LobbyValley::BuildWaterAndLava()
@@ -897,6 +1050,7 @@ void ATN_LobbyValley::BuildFlora()
 		if (UInstancedStaticMeshComponent* Comp = MakeInstanced(Mesh, true, bShadow, WpoDistance))
 		{
 			Comp->AddInstances(Entry.Value, false, false);
+			TNArt::ApplyToInstances(Comp, TNValleyBuild::FloraSlot(FloraShape, Prop));
 		}
 	}
 }

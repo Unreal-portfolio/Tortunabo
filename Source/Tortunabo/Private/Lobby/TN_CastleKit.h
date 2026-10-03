@@ -1,9 +1,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Core/TN_ProjectMaterials.h"
 #include "Materials/MaterialInterface.h"
 #include "ProceduralMeshComponent.h"
 #include "UObject/UObjectGlobals.h"
+#include "../Art/TN_ArtPieces.h"
 #include "../World/ProcMap/TN_ProcMapRuntimeMesh.h"
 
 /**
@@ -36,8 +38,7 @@ namespace TNCastleKit
 
 	inline UMaterialInterface* VertexColorMaterial()
 	{
-		UMaterialInterface* Mat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Cosmetics/Materials/M_CosmeticVertexColor.M_CosmeticVertexColor"));
-		return Mat ? Mat : LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
+		return TNMaterials::VertexColor();
 	}
 
 	inline float SmoothStep01(float X)
@@ -46,15 +47,16 @@ namespace TNCastleKit
 		return T * T * (3.f - 2.f * T);
 	}
 
-	/** Sube los buffers como sección 0 del componente (lo vacía antes), con o sin colisión. */
-	inline void UploadSection(UProceduralMeshComponent* Comp, const FBuffers& B, bool bCollision, UMaterialInterface* Mat)
+	/**
+	 * Sube los buffers como sección 0 del componente (lo vacía antes), con o sin colisión. Con Log, sin las piezas que
+	 * tienen sustituto de arte (TNArt::UploadSection; la colisión no cambia).
+	 */
+	inline void UploadSection(UProceduralMeshComponent* Comp, const FBuffers& B, bool bCollision, UMaterialInterface* Mat, const TNArt::FPieceLog* Log = nullptr)
 	{
 		if (!Comp) { return; }
 		Comp->ClearAllMeshSections();
 		if (B.IsEmpty()) { return; }
-		const TArray<FProcMeshTangent> NoTangents;
-		Comp->CreateMeshSection_LinearColor(0, B.Verts, B.Tris, B.Normals, B.UVs, B.Colors, NoTangents, bCollision);
-		if (Mat) { Comp->SetMaterial(0, Mat); }
+		TNArt::UploadSection(Comp, 0, B, bCollision, Mat, Log);
 	}
 
 	/** Caja cerrada entre dos esquinas (ejes del mundo). */
@@ -160,6 +162,35 @@ namespace TNCastleKit
 		TNProcMesh::TNProcAddCylinder(Decor, Tip - Up * 4.0, Tip + Up * 12.0, 9.0, 13.0, 8, Col(0x3B3F4A));
 		TNProcMesh::TNProcAddCylinder(Decor, Tip + Up * 10.0, Tip + Up * 40.0, 11.0, 2.0, 7, Col(0xFF8A2A));
 		TNProcMesh::TNProcAddCylinder(Decor, Tip + Up * 12.0, Tip + Up * 30.0, 6.0, 1.0, 6, Col(0xFFE27A));
+	}
+
+	// ── Pivotes de las piezas de arte (TNArt::FPieceScope, Docs/Arte_Assets.md) ──
+
+	/** Estrella de mar: centro en el suelo, +X hacia la primera punta, escala 1 = puntas a 30 cm del centro. */
+	inline FTransform StarfishPivot(const FVector& C, double Size, double Spin)
+	{
+		return FTransform(FRotator(0.0, FMath::RadiansToDegrees(Spin), 0.0), C, FVector(Size / 30.0));
+	}
+
+	/** Concha de vieira: centro de la concha, +X hacia donde mira su cara, +Z hacia el borde del abanico; escala 1 = 30 cm. */
+	inline FTransform ScallopPivot(const FVector& C, const FVector& Normal, const FVector& UpDir, double Size)
+	{
+		return FTransform(FRotationMatrix::MakeFromXZ(Normal, UpDir).ToQuat(), C, FVector(Size / 30.0));
+	}
+
+	/** Antorcha de pared: punto del muro donde se clava, +X hacia fuera del muro. */
+	inline FTransform TorchPivot(const FVector& WallPoint, const FVector& Out)
+	{
+		return FTransform(FRotator(0.0, FMath::RadiansToDegrees(FMath::Atan2(Out.Y, Out.X)), 0.0), WallPoint);
+	}
+
+	/**
+	 * Torre de cubo (AddTower): centro de la base, +X hacia YawDeg. Escala 1 = radio 250 cm y 1000 cm hasta el adarve (las
+	 * almenas, el cono y el mástil van por encima): cada copia se estira a su radio y su alto.
+	 */
+	inline FTransform TowerPivot(const FVector2D& C, double BaseZ, double Radius, double Height, double YawDeg)
+	{
+		return FTransform(FRotator(0.0, YawDeg, 0.0), FVector(C.X, C.Y, BaseZ), FVector(Radius / 250.0, Radius / 250.0, Height / 1000.0));
 	}
 
 	/**

@@ -1,4 +1,5 @@
 #include "World/Beach/TN_BeachShellGate.h"
+#include "World/Beach/TN_BeachTickWakeSubsystem.h"
 #include "World/Beach/TN_BeachTrapSynthComponent.h"
 #include "Core/TN_Log.h"
 #include "Components/BoxComponent.h"
@@ -31,6 +32,8 @@ namespace TNBeachShellGateDetail
 	constexpr double WallHeight = 440.0;
 	constexpr double OpenTime = 0.45;
 	constexpr double CloseTime = 0.7;
+	/** Tras cerrarse, segundos que sigue despierta (chispas y golpe de las hojas) antes de poder dormirse de lejos. */
+	constexpr double SettleTail = 1.0;
 
 	FLinearColor Driftwood(int32 Index)
 	{
@@ -307,12 +310,12 @@ void ATN_BeachShellGate::ApplySpec()
 	const double SwitchSide = bBare ? -1.0 : ((TNPlaygroundKit::Hash01(1, 2, Seed) > 0.5) ? 1.0 : -1.0);
 	SwitchLocal = FVector(-380.0, SwitchSide * (DoorWidth * 0.5 + 170.0), 0.0);
 	BuildSwitchPad(Frame, SwitchLocal, SwitchRadius, DoorWidth);
-	TNBeachTrapKit::SetMesh(FrameMesh, this, Frame);
+	TNBeachTrapKit::SetMesh(FrameMesh, this, Frame, TN_ART("Beach.ShellGate.Frame"));
 	FrameCollision->SetCollisionConvexMeshes(Hulls);
 
 	TNBeachTrapKit::FBuffers Shell;
 	BuildSwitchShell(Shell, SwitchRadius * 0.62, Seed);
-	TNBeachTrapKit::SetMesh(SwitchMesh, this, Shell);
+	TNBeachTrapKit::SetMesh(SwitchMesh, this, Shell, TN_ART("Beach.ShellGate.Switch"));
 	SwitchMesh->SetRelativeLocation(SwitchLocal);
 
 	// Hojas: la de -Y crece hacia +Y desde su bisagra; la de +Y, girada 180°, igual.
@@ -322,10 +325,10 @@ void ATN_BeachShellGate::ApplySpec()
 	HingeRight->SetRelativeLocation(FVector(0.0, DoorWidth * 0.5, 0.0));
 	TNBeachTrapKit::FBuffers LeafA;
 	BuildLeaf(LeafA, LeafW, LeafH, Seed);
-	TNBeachTrapKit::SetMesh(LeafMeshLeft, this, LeafA);
+	TNBeachTrapKit::SetMesh(LeafMeshLeft, this, LeafA, TN_ART("Beach.ShellGate.Leaf"));
 	TNBeachTrapKit::FBuffers LeafB;
 	BuildLeaf(LeafB, LeafW, LeafH, Seed + 17u);
-	TNBeachTrapKit::SetMesh(LeafMeshRight, this, LeafB);
+	TNBeachTrapKit::SetMesh(LeafMeshRight, this, LeafB, TN_ART("Beach.ShellGate.Leaf"));
 	for (UBoxComponent* Leaf : { LeafBoxLeft.Get(), LeafBoxRight.Get() })
 	{
 		Leaf->SetBoxExtent(FVector(LeafThick * 0.5, LeafW * 0.5, LeafH * 0.5), false);
@@ -472,7 +475,23 @@ void ATN_BeachShellGate::ServerUpdate(float DeltaSeconds, double ServerTime)
 
 void ATN_BeachShellGate::OnRep_GateState()
 {
+	// Dormida por distancia (UTN_BeachTickWakeSubsystem): se abre o se cierra ya, sin esperar a la siguiente mirada.
+	if (!IsActorTickEnabled())
+	{
+		SetActorTickEnabled(true);
+	}
 	HandleStateChanged();
+}
+
+float ATN_BeachShellGate::GetTickWakeDistance() const
+{
+	return GetFootprintRadius() + 0.5f * FMath::Max(0.f, Spec.Extent) + TNBeachTickWake::ReachMargin;
+}
+
+bool ATN_BeachShellGate::IsTickBusy() const
+{
+	const double SinceChange = TNBeachTrapKit::ServerNow(GetWorld()) - static_cast<double>(GateState.ChangedAt);
+	return GateState.bOpen || SinceChange < TNBeachShellGateDetail::CloseTime + TNBeachShellGateDetail::SettleTail;
 }
 
 void ATN_BeachShellGate::HandleStateChanged()

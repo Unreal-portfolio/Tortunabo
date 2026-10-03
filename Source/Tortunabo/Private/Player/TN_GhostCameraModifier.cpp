@@ -7,8 +7,10 @@
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
+#include "GameFramework/Character.h"
 #include "GameFramework/SpectatorPawn.h"
 #include "VR/TN_VRMode.h"
+#include "World/Beach/TN_BeachSandWorm.h"
 
 namespace TNGhostCameraDetail
 {
@@ -29,6 +31,8 @@ namespace TNGhostCameraDetail
 	constexpr float BlendSeconds = 0.45f;
 	/** Cada paso de rueda acerca o aleja este factor. */
 	constexpr float ZoomStepFactor = 0.88f;
+	/** Segundos de la mezcla hacia la vista lejana del gusano (la de la cámara de la tortuga comida) y de vuelta. */
+	constexpr float WormBlendSeconds = 0.6f;
 
 	/** Cámara libre (true) o fija de cada jugador local, para la próxima vez que sea fantasma (todos los modos y mapas). */
 	TMap<TWeakObjectPtr<const UObject>, bool>& FreePreference()
@@ -65,6 +69,7 @@ void UTN_GhostCameraModifier::SetGhost(ATN_SpectatorGhost* InGhost)
 	bFocusReady = false;
 	bHasLastView = false;
 	bReviveViewReady = false;
+	WormBlend = 0.f;
 }
 
 void UTN_GhostCameraModifier::AddOrbitInput(float YawDegrees, float PitchDegrees)
@@ -244,6 +249,29 @@ bool UTN_GhostCameraModifier::ModifyCamera(float DeltaTime, FMinimalViewInfo& In
 		Result.Location = FMath::Lerp(FixedView.Location, CameraPoint, BlendAlpha);
 		Result.Rotation = FQuat::Slerp(FixedView.Rotation.Quaternion(), OrbitRotation.Quaternion(), BlendAlpha).Rotator();
 		Result.FOV = FMath::Lerp(FixedView.FOV, TNGhostCameraDetail::FreeFOV, BlendAlpha);
+		InOutPOV = Result;
+		FrameView = Result;
+		bOverrodeThisFrame = true;
+	}
+
+	// ── Un gusano de arena se come a la seguida: la vista lejana de la escena (la que ve ella), con el gusano entero ──
+	// Con la fija, la cámara de la tortuga se queda dentro de la boca; con la libre, la órbita (9 m como mucho) no lo abarca.
+	ATN_BeachSandWorm* Worm = Followed ? ATN_BeachSandWorm::FindEating(Cast<ACharacter>(Followed)) : nullptr;
+	FVector WormAt = FVector::ZeroVector;
+	FRotator WormAim = FRotator::ZeroRotator;
+	const bool bWormView = Worm && Worm->GetSpectatorView(bHasLastView ? LastView.Location : InOutPOV.Location, WormAt, WormAim);
+	if (bWormView)
+	{
+		WormLocation = WormAt;
+		WormRotation = WormAim;
+	}
+	WormBlend = FMath::FInterpConstantTo(WormBlend, bWormView ? 1.f : 0.f, DeltaTime, 1.f / TNGhostCameraDetail::WormBlendSeconds);
+	if (WormBlend > 0.f)
+	{
+		const float BlendAlpha = FMath::SmoothStep(0.f, 1.f, WormBlend);
+		FMinimalViewInfo Result = InOutPOV;
+		Result.Location = FMath::Lerp(InOutPOV.Location, WormLocation, BlendAlpha);
+		Result.Rotation = FQuat::Slerp(InOutPOV.Rotation.Quaternion(), WormRotation.Quaternion(), BlendAlpha).Rotator();
 		InOutPOV = Result;
 		FrameView = Result;
 		bOverrodeThisFrame = true;

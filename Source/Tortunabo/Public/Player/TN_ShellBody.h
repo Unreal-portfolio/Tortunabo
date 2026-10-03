@@ -52,6 +52,16 @@ public:
 	/** La destruye el componente de caparazón (no hay que avisarle en EndPlay). */
 	void MarkReleased() { bReleased = true; }
 
+	/**
+	 * Servidor: la caja atraviesa todo (no choca con nada, sigue cayendo con la gravedad) o vuelve a chocar como siempre. Se
+	 * replica: en cada máquina la caja deja de chocar a la vez, así la réplica de la física no la pelea contra una pared que
+	 * en el servidor ha cruzado. Mientras atraviesa, el servidor no la saca del agua ni de debajo del terreno. Lo usa la
+	 * patada de la tormenta cuando no hay arco libre hasta su sitio (ATN_BeachStorm).
+	 */
+	void SetPassThrough(bool bOn);
+
+	bool IsPassThrough() const { return bPassThrough; }
+
 	/** Semiejes de la caja (cm). */
 	static FVector BoxHalfExtent() { return FVector(27.5, 23.0, 21.0); }
 
@@ -82,6 +92,16 @@ private:
 	/** Material físico resbaladizo propio (se crea en BeginPlay en cada máquina). */
 	UPROPERTY(Transient)
 	TObjectPtr<UPhysicalMaterial> Slippery;
+
+	/** Atraviesa todo (SetPassThrough). */
+	UPROPERTY(ReplicatedUsing = OnRep_PassThrough)
+	bool bPassThrough = false;
+
+	UFUNCTION()
+	void OnRep_PassThrough();
+
+	/** Pone en la caja de esta máquina la colisión que toca: ninguna mientras atraviesa, la de siempre después. */
+	void ApplyPassThrough();
 
 	/** Servidor: parada (si toca salir al pararse), agua y límite de tiempo. */
 	void ServerChecks(float DeltaSeconds, bool bFreshDepth);

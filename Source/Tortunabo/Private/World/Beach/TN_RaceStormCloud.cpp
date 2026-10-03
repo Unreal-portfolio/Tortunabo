@@ -461,6 +461,9 @@ void ATN_RaceStormCloud::ServerStrike()
 {
 	using namespace TNRaceStormCloudDetail;
 	bStruck = true;
+	// Decisión (#72): una nube ya anunciada cae igualmente, como el picotazo de la gaviota (ATN_RaceGullStrike::ServerImpact),
+	// pero con la carrera parada («¡TIEMPO!», recuento, título del sprint, podio) no marea a nadie.
+	const bool bLive = ATN_BeachEnemy::IsRaceLive(this);
 	TArray<ATortugaCharacter*> Racers;
 	TNRaceItems::GatherRacers(this, Racers);
 	int32 Stunned = 0;
@@ -468,7 +471,7 @@ void ATN_RaceStormCloud::ServerStrike()
 	{
 		ATortugaCharacter* Victim = Victims[Index].Get();
 		// Solo a las que siguen en carrera y siguen pudiendo ser golpeadas (el protector solar o el pelícano las salvan).
-		if (!Victim || !Racers.Contains(Victim) || !TNRaceItems::CanBeHurt(Victim) || !ATN_BeachEnemy::CanBeHit(Victim) || ATN_BeachEnemy::IsTurtleHeld(Victim))
+		if (!bLive || !Victim || !Racers.Contains(Victim) || !TNRaceItems::CanBeHurt(Victim) || !ATN_BeachEnemy::CanBeHit(Victim) || ATN_BeachEnemy::IsTurtleHeld(Victim))
 		{
 			continue;
 		}
@@ -478,7 +481,8 @@ void ATN_RaceStormCloud::ServerStrike()
 	ForceNetUpdate();
 	// El servidor no recibe OnRep: lo aplica aquí.
 	OnRep_Struck();
-	UE_LOG(LogTortunabo, Log, TEXT("[Carrera] La nube de tormenta de %s marea a %d de %d tortugas."), *GetNameSafe(GetOwnerTurtle()), Stunned, Victims.Num());
+	UE_LOG(LogTortunabo, Log, TEXT("[Carrera] La nube de tormenta de %s marea a %d de %d tortugas%s."), *GetNameSafe(GetOwnerTurtle()), Stunned, Victims.Num(),
+		bLive ? TEXT("") : TEXT(" (con la carrera parada no marea a nadie)"));
 }
 
 void ATN_RaceStormCloud::OnRep_Struck()

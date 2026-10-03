@@ -10,7 +10,8 @@
  * Marca común de «aquí hay algo que coger» (Docs/Botin_Decorados.md, «Brillo de lo que se coge»): un anillo dorado de
  * guiones en el suelo que gira despacio, una columna de luz tenue y chispitas doradas que suben. La llevan los objetos
  * del suelo (UTN_PickupGlowComponent, en todos los modos) y la usan los decorados que se rebuscan (ATN_ProcSearchSpot:
- * sus chispitas y el anillo que marca dónde rebuscar), para que se lea igual en el cooperativo, la carrera y el lobby.
+ * sus chispitas y el anillo fijo que abarca su huella), para que se lea igual en el cooperativo, la carrera y el lobby.
+ * El giro y la respiración del anillo (RingPose) son los mismos para unos y otros.
  *
  * Mallas construidas en ejecución una sola vez y compartidas por todos (fuera del recolector), con los materiales del
  * mapa procedural: M_ProcGlow (opaco, emisivo = color del vértice x 2: el anillo florece) y M_ProcFXSoft (translúcido
@@ -27,6 +28,29 @@ namespace TNLootGlow
 	constexpr float RingUnitRadius = 100.f;
 	constexpr float BeamUnitRadius = 50.f;
 	constexpr float BeamUnitHeight = 100.f;
+
+	/** Radio (cm) con escala 1 en el que empiezan por dentro los guiones del anillo (la corona de fuera, 87-99; RingMesh). */
+	constexpr float RingDashInnerRadius = 87.f;
+
+	/** Giro del anillo (grados por segundo, al revés que el objeto), ritmo y hondura (fracción del radio) de su respiración. */
+	constexpr float RingDegreesPerSecond = -24.f;
+	constexpr float RingBreathRate = 2.4f;
+	constexpr float RingBreathDepth = 0.045f;
+	/** Lo que se levanta (cm) sobre el suelo, para que no parpadee contra él. */
+	constexpr float RingLift = 2.5f;
+
+	/**
+	 * Pose del anillo, la misma en los objetos del suelo y en los rebuscables: a ras del suelo (GroundPoint, inclinado con él
+	 * por GroundTilt), de radio Radius (cm) por Grow (0-1: crece al aparecer), girando despacio según Clock (s) y respirando
+	 * (Breath, fracción del radio: RingBreathDepth * sin(Clock * RingBreathRate) de serie; los rebuscables lo cambian por
+	 * un latido mientras alguien rebusca).
+	 */
+	inline FTransform RingPose(const FVector& GroundPoint, const FQuat& GroundTilt, float Radius, float Clock, float Grow, float Breath)
+	{
+		const FQuat Spin(FVector::UpVector, FMath::DegreesToRadians(Clock * RingDegreesPerSecond));
+		return FTransform(GroundTilt * Spin, GroundPoint + GroundTilt.GetUpVector() * RingLift,
+			FVector(Radius / RingUnitRadius * Grow * (1.f + Breath)));
+	}
 
 	/** M_ProcGlow (lo que brilla en las cuevas y las conchas de puntos). */
 	inline UMaterialInterface* GlowMaterial()

@@ -141,9 +141,23 @@ def test_trivial_mueve_la_tarjeta_y_rellena_el_campo_evidente():
     assert not accion["etiquetar"] and not accion["reabrir"]
 
 
-def test_validada_fuera_de_un_lote_vuelve_a_in_review():
+def test_validada_suelta_aprobada_y_probada_sin_fusionar_no_se_mueve():
+    """#282: una issue suelta también espera en Validada a la fusión."""
     issue = _issue("Validada", con_pr=True, valores={"Revisor": "Mokius", "Revisión IA": "Aprobada", "Editor": "Funciona"})
-    assert auditoria.problemas(issue, AHORA)[0]["valor"] == "In review"
+    assert auditoria.columna_correcta(issue) is None
+    assert auditoria.problemas(issue, AHORA) == []
+
+
+@pytest.mark.parametrize("lotes_, valores", [([], {"Revisión IA": "Pendiente", "Editor": "Funciona"}),
+                                             ([131], {"Revisión IA": "Aprobada", "Editor": "Sin probar"})])
+def test_validada_sin_las_dos_validaciones_vuelve_a_in_review(lotes_, valores):
+    issue = _issue("Validada", con_pr=True, lotes=lotes_, valores={"Revisor": "Mokius", **valores})
+    assert auditoria.columna_correcta(issue) == "In review"
+
+
+def test_validada_con_cambios_pedidos_va_a_revisiones():
+    issue = _issue("Validada", con_pr=True, valores={"Revisor": "Mokius", "Revisión IA": "Cambios pedidos"})
+    assert auditoria.columna_correcta(issue) == "Revisiones"
 
 
 def test_grave_lote_fusionado_sin_validar_va_a_revisiones_con_p0():
@@ -360,3 +374,44 @@ def test_las_notas_de_la_rutina_no_son_conversacion():
     nota = ("SkiTemplar", "**Rutina:** paso la tarjeta a Ready; estaba en In review sin PR.")
     assert not auditoria.conversacion_pendiente(_charla(nota))
     assert auditoria.conversacion_pendiente(_charla(nota, ("SkiTemplar", "Falta reproducirlo con 4 jugadores.")))
+
+
+def test_solo_cuentan_los_pares_con_conflicto_real():
+    ficheros = {9: {"a.cpp", "b.h"}, 12: {"a.cpp", "b.h"}, 15: {"a.cpp"}}
+    conflicto = {(9, 12): ["b.h"], (9, 15): [], (12, 15): None}
+    assert colisiones.pares(ficheros, lambda a, b: conflicto[(a, b)]) == [(9, 12, ["b.h"]), (12, 15, ["a.cpp"])]
+
+
+def test_con_git_se_comprueban_tambien_los_pares_sin_ficheros_en_comun():
+    # gh corta la lista en 100 ficheros: una PR grande puede chocar fuera de lo que se ve.
+    ficheros = {240: {"a.cpp"}, 320: {"b.cpp"}, 330: {"c.cpp"}}
+    conflicto = {(240, 320): ["Voz.cpp"], (240, 330): [], (320, 330): None}
+    assert colisiones.pares(ficheros, lambda a, b: conflicto[(a, b)]) == [(240, 320, ["Voz.cpp"])]
+
+
+def test_par_de_titulo():
+    assert colisiones.par_de_titulo(colisiones.titulo(12, 9)) == (9, 12)
+    assert colisiones.par_de_titulo("Otra cosa") is None
+
+
+def test_resueltas_por_pr_cerrada_o_sin_conflicto():
+    abiertas = [{"number": 100, "title": colisiones.titulo(9, 12)},
+                {"number": 101, "title": colisiones.titulo(9, 15)},
+                {"number": 102, "title": colisiones.titulo(12, 15)},
+                {"number": 103, "title": "Mezclar a mano"}]
+    resultado = colisiones.resueltas(abiertas, prs={9, 12, 15, 20}, vigentes={(9, 12)})
+    assert [n for n, _ in resultado] == [101, 102]
+    resultado = colisiones.resueltas(abiertas, prs={9, 15}, vigentes={(9, 15)})
+    assert resultado[0] == (100, "la PR #12 ya no está abierta")
+    assert [n for n, _ in resultado] == [100, 102]
+
+
+def test_localizacion_se_regenera_en_vez_de_mezclar():
+    antigua, reciente = {"number": 9, "headRefName": "feat/9-a"}, {"number": 12, "headRefName": "fix/12-b"}
+    solo = ["Content/Localization/Game/Game.manifest", "Content/Localization/Game/es-ES/Game.po"]
+    assert colisiones.solo_localizacion(solo)
+    assert not colisiones.solo_localizacion(solo + ["Source/X.cpp"])
+    assert not colisiones.solo_localizacion([])
+    mixto = colisiones.cuerpo(antigua, reciente, solo + ["Source/X.cpp"], "dev")
+    assert "Además, 2 ficheros de localización: se regeneran." in mixto and "Game.po" not in mixto
+    assert "Además" not in colisiones.cuerpo(antigua, reciente, ["Source/X.cpp"], "dev")

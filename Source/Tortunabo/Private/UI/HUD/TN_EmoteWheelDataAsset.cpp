@@ -43,14 +43,14 @@ EDataValidationResult UTN_EmoteWheelDataAsset::IsDataValid(FDataValidationContex
 
 		if (UsedIds.Contains(Entry.EmoteID))
 		{
-			Context.AddError(FText::FromString(FString::Printf(TEXT("EmoteID duplicado: %d (index %d)"), Entry.EmoteID, Index)));
+			Context.AddError(FText::AsCultureInvariant(FString::Printf(TEXT("EmoteID duplicado: %d (index %d)"), Entry.EmoteID, Index)));
 			bHasErrors = true;
 		}
 		UsedIds.Add(Entry.EmoteID);
 
 		if (Entry.Name.IsEmpty())
 		{
-			Context.AddWarning(FText::FromString(FString::Printf(TEXT("EmoteID %d no tiene Name"), Entry.EmoteID)));
+			Context.AddWarning(FText::AsCultureInvariant(FString::Printf(TEXT("EmoteID %d no tiene Name"), Entry.EmoteID)));
 		}
 	}
 

@@ -50,7 +50,7 @@ struct FTNProcKeepOut
 	void AddLayout(const TNProcMap::FLayout& Layout)
 	{
 		using namespace TNProcMap;
-		Init(Layout.WorldSize);
+		Init(Layout.MaxExtent());
 		for (const FFeature& F : Layout.Features)
 		{
 			const FVector2D C(F.Location.X, F.Location.Y);

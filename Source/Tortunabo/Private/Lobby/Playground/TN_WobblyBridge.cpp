@@ -1,5 +1,6 @@
 #include "Lobby/Playground/TN_WobblyBridge.h"
 #include "Lobby/Playground/TN_PlaygroundSynthComponent.h"
+#include "Art/TN_Art.h"
 #include "Core/TN_Log.h"
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -270,6 +271,22 @@ namespace TNWobblyBridgeDetail
 				TNPlaygroundKit::AddRod(B, Low, High, 1.5, 4, RopeB, FVector::ForwardVector);
 			}
 		}
+	}
+
+	// ── Arte (Docs/Arte_Assets.md) ───────────────────────────────────────────
+	// La pieza de arte del marco se modela con las medidas por defecto de ATN_WobblyBridge y se estira a las de cada copia.
+	constexpr double RefSpanLength = 900.0;
+	constexpr double RefDeckWidth = 110.0;
+	constexpr double RefDeckHeight = 220.0;
+
+	/** Pieza de arte del marco según los extremos: con torres y escaleras, con torres sin escaleras o solo postes. */
+	FName FrameArtSlot(const FBridgeDims& D)
+	{
+		if (!D.bTowers)
+		{
+			return TN_ART("Lobby.Playground.Bridge.FramePosts");
+		}
+		return D.bSteps ? TN_ART("Lobby.Playground.Bridge.Frame") : TN_ART("Lobby.Playground.Bridge.FrameNoStairs");
 	}
 
 	/** Pitch de los tablones (profundidad) para el largo y el número de tablones. */
@@ -544,7 +561,9 @@ void ATN_WobblyBridge::BuildAll(bool bForce)
 	FBuffers Frame;
 	TArray<TArray<FVector>> Hulls;
 	BuildFrame(Frame, Hulls, Dims);
-	FrameMesh->SetStaticMesh(TNPlaygroundKit::BuildMesh(this, Frame, Mat));
+	// Marco: pieza de arte. El tablero con las cuerdas se deforma en cada fotograma y se queda como está.
+	TNArt::SetMesh(FrameMesh, TNPlaygroundKit::BuildMesh(this, Frame, Mat), FrameArtSlot(Dims));
+	TNPlaygroundKit::ScaleArt(FrameMesh, FVector(SpanLength / RefSpanLength, DeckWidth / RefDeckWidth, DeckHeight / RefDeckHeight));
 	FrameCollision->SetCollisionConvexMeshes(Hulls);
 
 	// Pose de reposo, cajas de los tablones (medidas y sitio) y velocidades a cero.

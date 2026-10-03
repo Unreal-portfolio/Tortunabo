@@ -71,7 +71,7 @@ namespace
 
 	FAutoConsoleCommandWithWorldAndArgs MPGameInstance_FakeRoomErrorCommand(
 		TEXT("TN.Rooms.FakeError"),
-		TEXT("Simula un fallo al entrar en una sala: TN.Rooms.FakeError <locked|full|kicked|other|joinfull|gone|noaddress>."),
+		TEXT("Simula un fallo al entrar en una sala: TN.Rooms.FakeError <locked|full|kicked|other|checksum|joinfull|gone|noaddress>."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&MPGameInstance_HandleFakeRoomError));
 #endif
 }
@@ -550,7 +550,7 @@ void UMP_GameInstance::HostSession()
 		Sessions->AddOnDestroySessionCompleteDelegate_Handle(
 			FOnDestroySessionCompleteDelegate::CreateUObject(this, &UMP_GameInstance::OnDestroySessionComplete));
 		Sessions->DestroySession(NAME_GameSession);
-		UpdateStatus(TEXT("Destroying old session first..."));
+		UE_LOG(LogTortunabo, Log, TEXT("[MP] Destroying old session first..."));
 		return;
 	}
 
@@ -910,7 +910,7 @@ void UMP_GameInstance::OnSessionUserInviteAccepted(const bool bWasSuccessful, co
 		Sessions->AddOnDestroySessionCompleteDelegate_Handle(
 			FOnDestroySessionCompleteDelegate::CreateUObject(this, &UMP_GameInstance::OnDestroySessionComplete));
 		Sessions->DestroySession(NAME_GameSession);
-		UpdateStatus(TEXT("Destroying current session to join invite..."));
+		UE_LOG(LogTortunabo, Log, TEXT("[MP] Destroying current session to join invite..."));
 		return;
 	}
 
@@ -935,7 +935,8 @@ void UMP_GameInstance::DestroyCurrentSession()
 		Sessions->AddOnDestroySessionCompleteDelegate_Handle(
 			FOnDestroySessionCompleteDelegate::CreateUObject(this, &UMP_GameInstance::OnDestroySessionComplete));
 		Sessions->DestroySession(NAME_GameSession);
-		UpdateStatus(TEXT("Destroying session..."));
+		// Solo al log: el aviso del motivo (checksum, host perdido…) se escribe antes y debe seguir siendo el último.
+		UE_LOG(LogTortunabo, Log, TEXT("[MP] Destroying session..."));
 	}
 }
 
@@ -947,7 +948,8 @@ void UMP_GameInstance::OnDestroySessionComplete(FName SessionName, bool bWasSucc
 		Sessions->ClearOnDestroySessionCompleteDelegates(this);
 	}
 
-	UpdateStatus(FString::Printf(TEXT("Session '%s' destroyed (ok=%d)"), *SessionName.ToString(), bWasSuccessful));
+	// Solo al log: el menú enseña el último estado y esto taparía el motivo por el que se cerró la sesión.
+	UE_LOG(LogTortunabo, Log, TEXT("[MP] Session '%s' destroyed (ok=%d)"), *SessionName.ToString(), bWasSuccessful);
 
 	if (bPendingHostAfterDestroy)
 	{
@@ -1394,7 +1396,8 @@ void UMP_GameInstance::LoadTutorialProfile()
 		}
 	}
 
-	// Para probar (Docs/Tutorial.md): con Saved/ResetTutorial.txt, cada vez que arranca el juego (o cada PIE) el tutorial vuelve
+#if !UE_BUILD_SHIPPING
+	// Solo para probar, nunca en Shipping (Docs/Tutorial.md): con Saved/ResetTutorial.txt, cada vez que arranca el juego (o cada PIE) el tutorial vuelve
 	// a estar por hacer. Vacío = todas las ventanas; con números, solo esas (0 = la primera ventana o el juego suelto,
 	// 1 = «Cliente 1», 2 = «Cliente 2»...). Se deja el archivo: para volver a lo normal, se borra.
 	const FString ResetFile = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("ResetTutorial.txt"));
@@ -1428,6 +1431,7 @@ void UMP_GameInstance::LoadTutorialProfile()
 			UE_LOG(LogTortunabo, Log, TEXT("[Tutorial] %s no nombra la ventana %d: su tutorial no se toca."), *ResetFile, Window);
 		}
 	}
+#endif
 	UE_LOG(LogTortunabo, Log, TEXT("[Tutorial] Guardado %s: %s."), *Slot,
 		TutorialProfile && TutorialProfile->bHasCompletedTutorial ? TEXT("tutorial hecho") : TEXT("tutorial por hacer"));
 }
@@ -1572,7 +1576,8 @@ void UMP_GameInstance::HandleDriverFailure(const FString& FailureTypeStr, const 
 void UMP_GameInstance::HandleChecksumMismatch(const FString& ErrorString)
 {
 	HideLoadingScreen();
-	UpdateStatus(TEXT("ERROR: Versiones incompatibles con el servidor.\nAsegúrate de que ambos jugadores tienen el mismo build compilado (sin Live Coding activo)."));
+	// Una sola línea: el menú enseña lo que va tras el último salto de línea del estado (#280); la pista de Live Coding va al registro.
+	UpdateStatus(TEXT("ERROR: Versiones incompatibles con el servidor."));
 	// Destruir la sesión huérfana del lado cliente para poder reintentar.
 	DestroyCurrentSession();
 	UE_LOG(LogTortunabo, Error,
@@ -2327,13 +2332,21 @@ void UMP_GameInstance::DebugFakeRoomError(const FString& Kind)
 		return;
 	}
 
+	if (K == TEXT("checksum"))
+	{
+		UE_LOG(LogTortunabo, Display, TEXT("[Salas] Prueba: versiones distintas con el host."));
+		HandleChecksumMismatch(TEXT("Prueba"));
+		OnDestroySessionComplete(NAME_GameSession, true);
+		return;
+	}
+
 	EOnJoinSessionCompleteResult::Type Result;
 	if (K == TEXT("joinfull")) { Result = EOnJoinSessionCompleteResult::SessionIsFull; }
 	else if (K == TEXT("gone")) { Result = EOnJoinSessionCompleteResult::SessionDoesNotExist; }
 	else if (K == TEXT("noaddress")) { Result = EOnJoinSessionCompleteResult::CouldNotRetrieveAddress; }
 	else
 	{
-		UE_LOG(LogTortunabo, Display, TEXT("[Salas] TN.Rooms.FakeError <locked|full|kicked|other|joinfull|gone|noaddress>"));
+		UE_LOG(LogTortunabo, Display, TEXT("[Salas] TN.Rooms.FakeError <locked|full|kicked|other|checksum|joinfull|gone|noaddress>"));
 		return;
 	}
 	UE_LOG(LogTortunabo, Display, TEXT("[Salas] Prueba: JoinSession falla con «%s»."), *K);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Core/TN_ProjectMaterials.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -14,6 +15,7 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
 #include "UObject/Package.h"
+#include "Art/TN_Art.h"
 #include "World/ProcMap/TN_ProcMapAmbientFX.h"
 #include "World/ProcMap/TN_ProcMapMeshKit.h"
 #include "World/ProcMap/TN_ProcMapRuntimeMesh.h"
@@ -27,7 +29,7 @@ namespace TNBeachKit
 {
 	using TNProcMesh::FTNProcMeshBuffers;
 
-	/** Material opaco de color de vértice (el de la vegetación y la fauna; si no está, el de los cosméticos o el del motor). */
+	/** Material opaco de color de vértice (el de la vegetación y la fauna; si no está, el de los cosméticos). */
 	inline UMaterialInterface* SolidMaterial()
 	{
 		static TWeakObjectPtr<UMaterialInterface> Cached;
@@ -36,11 +38,7 @@ namespace TNBeachKit
 			UMaterialInterface* Mat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/ProcMap/Materials/M_ProcFoliage.M_ProcFoliage"), nullptr, LOAD_NoWarn);
 			if (!Mat)
 			{
-				Mat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Cosmetics/Materials/M_CosmeticVertexColor.M_CosmeticVertexColor"), nullptr, LOAD_NoWarn);
-			}
-			if (!Mat)
-			{
-				Mat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
+				Mat = TNMaterials::VertexColor();
 			}
 			Cached = Mat;
 		}
@@ -108,6 +106,17 @@ namespace TNBeachKit
 		Comp->SetupAttachment(Parent);
 		Comp->SetRelativeLocation(RelLoc);
 		Comp->RegisterComponent();
+		return Comp;
+	}
+
+	/**
+	 * Lo mismo, como pieza de arte Slot (Docs/Arte_Assets.md, TNArt::ApplyToComponent): con sustituto, la malla de arte va
+	 * de hija de la pieza y se mueve, se esconde y se enseña con ella. Pivote: el origen de la pieza (su articulación).
+	 */
+	inline UStaticMeshComponent* AddPart(AActor* Owner, USceneComponent* Parent, UStaticMesh* Mesh, const FVector& RelLoc, bool bShadow, FName Slot)
+	{
+		UStaticMeshComponent* Comp = AddPart(Owner, Parent, Mesh, RelLoc, bShadow);
+		TNArt::ApplyToComponent(Comp, Slot);
 		return Comp;
 	}
 

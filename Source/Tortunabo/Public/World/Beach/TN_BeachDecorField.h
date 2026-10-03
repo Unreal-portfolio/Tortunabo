@@ -234,6 +234,8 @@ private:
 	/** El reparto que se monta (copia de sus piezas de decorado: el del generador puede cambiar mientras). */
 	TArray<TNBeachLayout::FItem> PendingItems;
 	TArray<int32> PendingLayoutIndex;
+	/** Dónde va cada una (ItemPlacement, con la ronda a mano). */
+	TArray<FTransform> PendingXf;
 	int32 NextPending = 0;
 	int32 NextBatch = 0;
 	int32 PendingRound = 0;
@@ -249,7 +251,7 @@ private:
 	void SetupBatchComps(int32 BatchIndex);
 	/** Vuelve a poner las instancias de un lote sin las piezas quitadas. */
 	void RefillBatch(int32 BatchIndex);
-	void AddItem(const TNBeachLayout::FItem& Item, int32 LayoutIndex);
+	void AddItem(const TNBeachLayout::FItem& Item, int32 LayoutIndex, const FTransform& ItemXf);
 	int32 BatchFor(uint32 Key, ETNBeachElement Element, UStaticMesh* Mesh, bool bMoving, bool bCollision, bool bBlocksCamera, bool bCastShadow);
 	void FinishBuild();
 

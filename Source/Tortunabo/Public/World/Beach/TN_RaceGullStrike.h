@@ -76,6 +76,16 @@ private:
 	UPROPERTY(Replicated)
 	FVector_NetQuantize10 AimPoint = FVector_NetQuantize10(0.0, 0.0, 0.0);
 
+	/**
+	 * Tortugas con el pegote en el caparazón (el servidor lo pone al caer la cagada). Es estado, no un efecto: quien entra o
+	 * reconecta mientras la gaviota sigue ahí, o se pierde la multicast (no fiable), lo ve igual (F_gaps_steam N-C).
+	 */
+	UPROPERTY(ReplicatedUsing = OnRep_Stained)
+	TArray<TObjectPtr<ATortugaCharacter>> Stained;
+
+	UFUNCTION()
+	void OnRep_Stained();
+
 	// ── Servidor ─────────────────────────────────────────────────────────────
 
 	/** El punto de impacto sigue al objetivo por la arena (TNBeachGullTuning::StepAim con StrikePlan). */
@@ -137,6 +147,9 @@ private:
 
 	TArray<FMark> Marks;
 	float MarkClock = 0.f;
+
+	/** Tortugas que ya llevan el pegote en esta máquina: lo pone la multicast o OnRep_Stained, lo que llegue antes. */
+	TSet<TWeakObjectPtr<ATortugaCharacter>> ShellSplatShown;
 
 	/** Raíz de la gaviota (absoluta: se coloca en el mundo) y sus piezas. */
 	UPROPERTY(Transient)
@@ -205,6 +218,11 @@ private:
 	float TrailTimer = 0.f;
 	float DropNormalTimer = 0.f;
 	FVector DropNormal = FVector::UpVector;
+	/**
+	 * Dónde cae de verdad la cagada: cuánto queda por encima de la arena del blanco lo primero firme desde arriba (un castillo,
+	 * una fortaleza; 0 en la arena), con la traza del impacto del servidor. Ahí van la sombra y la cagada que cae.
+	 */
+	float DropLift = 0.f;
 
 	/** Dónde soltó la cagada (bajo la cola de la gaviota). */
 	FVector DropStart = FVector::ZeroVector;

@@ -157,6 +157,15 @@ public:
 	static bool TraceGround(const UObject* WorldContext, const FVector& Where, float& OutZ, FVector* OutNormal = nullptr,
 		float Up = 3000.f, float Down = 8000.f);
 
+	/**
+	 * Donde cae lo que se suelta desde arriba (la cagada de una gaviota) en la vertical de Where: lo primero que se ve desde
+	 * Up cm por encima hasta Down por debajo. Cuentan la arena, el decorado, los castillos, las fortalezas (colisión
+	 * dinámica) y las plataformas; no los muros invisibles ni los volúmenes (canal de visibilidad), ni las tortugas y sus
+	 * bolas, ni Ignore (quien suelta). false si no hay nada (o la traza empieza dentro de algo).
+	 */
+	static bool TraceDropSurface(const UObject* WorldContext, const FVector& Where, float& OutZ, FVector* OutNormal = nullptr,
+		const AActor* Ignore = nullptr, float Up = 3000.f, float Down = 3000.f);
+
 	/** Distancia (cm) de Where a la cámara local más cercana; enorme si no hay (servidor dedicado). */
 	static float LocalViewDistance(const UObject* WorldContext, const FVector& Where);
 
