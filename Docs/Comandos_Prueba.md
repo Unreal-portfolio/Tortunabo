@@ -281,6 +281,12 @@ cada 250 m, salida en el claro y meta en la playa (más en `Docs/Karts.md`). Al 
 | `...?Bots=3` / `TN.Kart.Bots 3` | Bots de la parrilla; sin ninguno de los dos se completa hasta 4 karts (`TN.Kart.Bots -1`). |
 | `...?Seats=1` / `TN.Kart.Seats 1` | Un kart por tortuga (sin artillera); `2` (por defecto) empareja a la segunda de artillera. |
 | `TN.Rally.Status` | Fase, puestos, ocupantes y cajas en el log (`LogTNRally`). |
+| `TN.Kart.GiveItem Coco` | Da un objeto al kart propio sin ruleta (`Coco`, `TripleCoco`, `Concha`, `ConchaGuiada`, `Alga`, `Tinta`, `Estrella`; servidor o partida sola). |
+| `TN.Kart.ProbeArc 790` | Con `LogTNRally Verbose`, perfil del suelo a lo ancho del camino alrededor de ese arco (m) al empezar (atascos). |
+| `log LogTNRally Verbose` | Objetos que salen y se usan (`[KartItems]`), géiseres, obstáculos y puertas de la pista y los karts del primer tramo. |
+
+Mapas útiles para probar (`?ProcSeed=`): fácil `11` (un géiser y una cascada, 1,5 km); normal `777` (10,8 km con cinco
+géiseres, ocho cascadas y canales de agua).
 
 Sin editor (carreras solo de la IA, una línea `[RallyStats]` por carrera con terminados, atascos y vuelcos):
 `UnrealEditor-Win64-DebugGame-Cmd <uproject> "/Game/Maps/Run/LVL_ProcMap?game=Karts?Bots=4?AutoStart?Races=1?RaceTimeout=420?ProcDifficulty=Easy?ProcSeed=4242" -server -nullrhi -NoSteam`.

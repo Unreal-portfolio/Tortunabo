@@ -86,6 +86,8 @@ void ATN_KartGameMode::InitGame(const FString& MapName, const FString& Options, 
 	}
 	else
 	{
+		// Lo que eligió el anfitrión con el general; TN.Kart.Seats manda para probar.
+		KartSeats = GI ? FMath::Clamp(GI->SelectedKartSeats, 1, 2) : KartSeats;
 		const int32 Forced = TNKartMode::CVarKartSeats.GetValueOnGameThread();
 		KartSeats = Forced == 1 || Forced == 2 ? Forced : KartSeats;
 		KartOptions += FString::Printf(TEXT("?Seats=%d"), KartSeats);

@@ -398,6 +398,10 @@ public:
 	UPROPERTY(BlueprintReadWrite, Category = "Multiplayer|ProcMap")
 	ETNProcDifficulty SelectedProcDifficulty = ETNProcDifficulty::Normal;
 
+	/** Karts: tortugas por kart que eligió el anfitrión con el general (1 = cada una el suyo; 2 = por parejas). */
+	UPROPERTY(BlueprintReadWrite, Category = "Multiplayer|ProcMap")
+	int32 SelectedKartSeats = 2;
+
 	/**
 	 * Cómo se pusieron listos en el lobby (sala de la puerta doble o huevos): así empieza la partida en el mapa
 	 * procedural. Lo guarda ATN_HQGameMode antes de viajar y lo lee ATN_ProcMapGameMode.
