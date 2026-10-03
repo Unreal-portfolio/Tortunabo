@@ -96,8 +96,10 @@ void ATN_StormVolume::BeginPlay()
 {
 	Super::BeginPlay();
 
-	TriggerBox->OnComponentBeginOverlap.AddDynamic(this, &ATN_StormVolume::OnBoxBeginOverlap);
-	TriggerBox->OnComponentEndOverlap.AddDynamic(this, &ATN_StormVolume::OnBoxEndOverlap);
+	// AddUnique: BP_StormVolume y la instancia de LVL_Run traen el enlace serializado de cuando se hacía en el
+	// constructor; un AddDynamic lo duplicaba (ensure de ScriptDelegates.h y cada overlap contado dos veces).
+	TriggerBox->OnComponentBeginOverlap.AddUniqueDynamic(this, &ATN_StormVolume::OnBoxBeginOverlap);
+	TriggerBox->OnComponentEndOverlap.AddUniqueDynamic(this, &ATN_StormVolume::OnBoxEndOverlap);
 
 	NormalizedGrowthDir = GrowthDirection.GetSafeNormal();
 	if (NormalizedGrowthDir.IsNearlyZero())
@@ -111,6 +113,18 @@ void ATN_StormVolume::BeginPlay()
 	}
 
 	SyncVisualToBox();
+}
+
+void ATN_StormVolume::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (TriggerBox)
+	{
+		TriggerBox->OnComponentBeginOverlap.RemoveDynamic(this, &ATN_StormVolume::OnBoxBeginOverlap);
+		TriggerBox->OnComponentEndOverlap.RemoveDynamic(this, &ATN_StormVolume::OnBoxEndOverlap);
+	}
+	GetWorldTimerManager().ClearTimer(SharedCountdownTimerHandle);
+
+	Super::EndPlay(EndPlayReason);
 }
 
 void ATN_StormVolume::Tick(float DeltaTime)
