@@ -67,6 +67,13 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Karts|Bots")
 	FVector BotSpecialFireChance = FVector(0.15f, 0.3f, 0.45f);
 
+	/** Segundos entre disparos de la torreta de los bots y su alcance (cm), por dificultad: menos tiroteo que en el Rally. */
+	UPROPERTY(EditDefaultsOnly, Category = "Karts|Bots")
+	FVector BotFireIntervalSeconds = FVector(2.5f, 1.6f, 1.0f);
+
+	UPROPERTY(EditDefaultsOnly, Category = "Karts|Bots")
+	FVector BotFireRangeCm = FVector(2500.f, 3000.f, 3500.f);
+
 	/** Plazas por kart por defecto (1 = cada tortuga conduce el suyo; 2 = la segunda va de artillera). */
 	UPROPERTY(EditDefaultsOnly, Category = "Karts", meta = (ClampMin = "1", ClampMax = "2"))
 	int32 DefaultSeats = 2;
@@ -94,6 +101,8 @@ private:
 	bool AreAllPlayersReady() const;
 	/** Sienta a las que esperaban (ATN_RallyGameMode::HandleStartingNewPlayer) y deja entrar a las siguientes sin espera. */
 	void ReleaseWaitingPlayers(const TCHAR* Why);
+	/** Servidor, en carrera: los karts que pasan por una caja de objetos la abren (paso desde el fotograma anterior). */
+	void CheckItemBoxes();
 
 	UPROPERTY(Transient)
 	TObjectPtr<ATN_ProcMapGenerator> Generator;
@@ -115,4 +124,11 @@ private:
 
 	/** Última generación del mapa con la pista y el suelo listos en cada máquina cliente. */
 	TMap<TWeakObjectPtr<APlayerController>, int32> ClientTrackGeneration;
+
+	/** Diagnóstico (LogTNRally Verbose): sitio, velocidad y arco de cada kart cada segundo en los primeros 20 s. */
+	void LogStartDiagnostics();
+	double NextStartLogTime = 0.0;
+
+	/** Dónde estaba cada kart el fotograma anterior (paso por las cajas). */
+	TMap<TWeakObjectPtr<APawn>, FVector> PreviousKartLocations;
 };

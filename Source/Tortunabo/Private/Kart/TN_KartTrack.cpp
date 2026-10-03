@@ -1,7 +1,11 @@
 #include "Kart/TN_KartTrack.h"
 
 #include "Algo/BinarySearch.h"
+#include "Components/HierarchicalInstancedStaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
 #include "Engine/World.h"
+#include "Rally/TN_RallyGate.h"
+#include "Kart/TN_KartItemBox.h"
 #include "World/ProcMap/TN_ProcMapGenerator.h"
 #include "World/ProcMap/TN_ProcMapLayout.h"
 
@@ -11,8 +15,8 @@ namespace TNKart
 	{
 		/** La meta, como poco esto por encima del mar (cm): en la arena seca, no en la orilla. */
 		constexpr double FinishAboveSeaCm = 40.0;
-		/** Sin línea desplazada antes de esto pasada la salida (cm): la parrilla queda en el eje. */
-		constexpr double StraightStartCm = 2000.0;
+		/** Altura de las cajas sobre el suelo (cm). */
+		constexpr double ItemBoxLiftCm = 90.0;
 	}
 
 	FRoutePlanParams MakePlanParams(double SeaLevelZ)
@@ -66,8 +70,27 @@ ATN_KartTrack::ATN_KartTrack()
 {
 	// Un punto de la spline por muestra del camino (4 m): no recorta las curvas cerradas ni las cuevas.
 	RoadSampleStepCm = 400.f;
-	// Sin cajas de munición del Rally.
+	// Sin cajas de munición del Rally: las de objetos las pone esta pista.
 	AmmoBoxesPerRow = 0;
+	ItemBoxClass = ATN_KartItemBox::StaticClass();
+}
+
+void ATN_KartTrack::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	ClearItemBoxes();
+	Super::EndPlay(EndPlayReason);
+}
+
+void ATN_KartTrack::ClearItemBoxes()
+{
+	for (ATN_KartItemBox* Box : ItemBoxes)
+	{
+		if (IsValid(Box))
+		{
+			Box->Destroy();
+		}
+	}
+	ItemBoxes.Reset();
 }
 
 double ATN_KartTrack::GetRoadHalfWidthAtArc(double Arc) const
@@ -86,6 +109,7 @@ double ATN_KartTrack::GetRoadHalfWidthAtArc(double Arc) const
 
 bool ATN_KartTrack::BuildFromMap(ATN_ProcMapGenerator& Generator)
 {
+	ClearItemBoxes();
 	MapGeneration = 0;
 	if (!Generator.IsMapReady())
 	{
@@ -113,7 +137,7 @@ bool ATN_KartTrack::BuildFromMap(ATN_ProcMapGenerator& Generator)
 		return false;
 	}
 
-	// Línea del piloto IA: alrededor de los obstáculos, centrada en las puertas y recta en la parrilla.
+	// Línea del piloto IA: alrededor de los obstáculos y centrada en las puertas (la parrilla va sobre ella).
 	TArray<TNKart::FLineObstacle> LineObstacles = Obstacles;
 	for (const TNRally::FGateDef& Gate : Plan.Gates)
 	{
@@ -125,12 +149,7 @@ bool ATN_KartTrack::BuildFromMap(ATN_ProcMapGenerator& Generator)
 	{
 		HalfWidths.Add(0.5 * Width);
 	}
-	TArray<double> Offsets = TNKart::PlanRacingLineOffsets(Plan.Road, HalfWidths, LineObstacles, LineClearanceCm, LineRampCm);
-	const double StraightUntil = Plan.GateArcCm.Num() > 0 ? Plan.GateArcCm[0] + TNKart::StraightStartCm : 0.0;
-	for (int32 Index = 0; Index < Offsets.Num() && Plan.RoadArcCm[Index] <= StraightUntil; ++Index)
-	{
-		Offsets[Index] = 0.0;
-	}
+	const TArray<double> Offsets = TNKart::PlanRacingLineOffsets(Plan.Road, HalfWidths, LineObstacles, LineClearanceCm, LineRampCm);
 	const TArray<FVector> Line = TNKart::OffsetRoad(Plan.Road, Offsets);
 
 	if (!BuildFromGates(Plan.Gates, false, Line, 0.0))
@@ -139,7 +158,14 @@ bool ATN_KartTrack::BuildFromMap(ATN_ProcMapGenerator& Generator)
 	}
 	RoadArcs = Plan.RoadArcCm;
 	RoadHalfWidths = HalfWidths;
+	BuildGateWings(Plan, Generator);
 	MapGeneration = Generator.GetBuiltGeneration();
+
+	// Las cajas se replican: solo las crea el servidor (la pista no se replica, así que HasAuthority no sirve aquí).
+	if (GetNetMode() != NM_Client)
+	{
+		SpawnItemRows(Plan, Plan.GateArcCm.Num() > 0 ? Plan.GateArcCm[0] : 0.0, Generator);
+	}
 
 	// Validación del camino para el kart (en el log): las rampas más empinadas y el paso más estrecho.
 	double MaxSlope = 0.0;
@@ -153,8 +179,84 @@ bool ATN_KartTrack::BuildFromMap(ATN_ProcMapGenerator& Generator)
 		if (Slope > MaxSlope) { MaxSlope = Slope; MaxSlopeArc = Plan.RoadArcCm[Index]; }
 		if (Plan.RoadWidthCm[Index] < MinWidth) { MinWidth = Plan.RoadWidthCm[Index]; MinWidthArc = Plan.RoadArcCm[Index]; }
 	}
-	UE_LOG(LogTNRally, Log, TEXT("[KartTrack] Mapa %d: %.2f km, %d puertas, %d obstáculos rodeados; pendiente máxima %.0f %% en %.0f m, paso más estrecho %.1f m en %.0f m."),
-		MapGeneration, GetTrackLengthCm() / 100000.0, GetGateCount(), Obstacles.Num(), 100.0 * MaxSlope,
+	UE_LOG(LogTNRally, Log, TEXT("[KartTrack] Mapa %d: %.2f km, %d puertas, %d cajas, %d obstáculos rodeados; pendiente máxima %.0f %% en %.0f m, paso más estrecho %.1f m en %.0f m."),
+		MapGeneration, GetTrackLengthCm() / 100000.0, GetGateCount(), ItemBoxes.Num(), Obstacles.Num(), 100.0 * MaxSlope,
 		MaxSlopeArc / 100.0, MinWidth / 100.0, MinWidthArc / 100.0);
 	return true;
+}
+
+void ATN_KartTrack::SpawnItemRows(const TNKart::FRoutePlan& Plan, double LineStartArc, const ATN_ProcMapGenerator& Generator)
+{
+	UWorld* World = GetWorld();
+	UClass* Class = ItemBoxClass ? ItemBoxClass.Get() : ATN_KartItemBox::StaticClass();
+	if (!World || Plan.Road.Num() < 2)
+	{
+		return;
+	}
+	const TArray<double> Rows = TNKart::PlanItemRowArcs(LineStartArc, Plan.FinishArcCm - ItemRowMinFromGateCm, Plan.GateArcCm,
+		ItemRowSpacingCm, ItemRowMinFromGateCm);
+	for (const double RowArc : Rows)
+	{
+		const int32 Upper = FMath::Clamp(Algo::UpperBound(Plan.RoadArcCm, RowArc), 1, Plan.Road.Num() - 1);
+		const double Span = FMath::Max(1.0, Plan.RoadArcCm[Upper] - Plan.RoadArcCm[Upper - 1]);
+		const double T = FMath::Clamp((RowArc - Plan.RoadArcCm[Upper - 1]) / Span, 0.0, 1.0);
+		const FVector Center = FMath::Lerp(Plan.Road[Upper - 1], Plan.Road[Upper], T);
+		const double Width = FMath::Lerp(Plan.RoadWidthCm[Upper - 1], Plan.RoadWidthCm[Upper], T);
+		const FVector Direction = (Plan.Road[Upper] - Plan.Road[Upper - 1]).GetSafeNormal2D();
+		const FVector Right(-Direction.Y, Direction.X, 0.0);
+		const int32 Boxes = TNKart::ItemBoxesForWidth(Width);
+		const double Spacing = TNKart::ItemLateralSpacingCm(Width, Boxes);
+		for (int32 Slot = 0; Slot < Boxes; ++Slot)
+		{
+			const FVector OnRow = Center + Right * ((Slot - 0.5 * (Boxes - 1)) * Spacing);
+			FActorSpawnParameters Params;
+			Params.Owner = this;
+			Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+			// Suelo sin trazas (la colisión del terreno puede estar aún cocinándose); sobre el agua, a flor de agua.
+			const double GroundZ = FMath::Max(static_cast<double>(Generator.GetTerrainHeightAt(OnRow)), static_cast<double>(Generator.GetSeaLevelWorldZ()));
+			const FVector Ground(OnRow.X, OnRow.Y, GroundZ);
+			if (ATN_KartItemBox* Box = World->SpawnActor<ATN_KartItemBox>(Class, Ground + FVector(0.0, 0.0, TNKart::ItemBoxLiftCm),
+				FRotator(0.0, Direction.Rotation().Yaw, 0.0), Params))
+			{
+				ItemBoxes.Add(Box);
+			}
+		}
+	}
+}
+
+void ATN_KartTrack::BuildGateWings(const TNKart::FRoutePlan& Plan, const ATN_ProcMapGenerator& Generator)
+{
+	if (!Borders || !BorderMesh)
+	{
+		return;
+	}
+	Borders->SetStaticMesh(BorderMesh);
+	const FBoxSphereBounds Bounds = BorderMesh->GetBounds();
+	const FVector Extent = Bounds.BoxExtent.ComponentMax(FVector(1.0));
+	const FVector Scale(BorderSizeCm.X / (2.0 * Extent.X), BorderSizeCm.Y / (2.0 * Extent.Y), BorderSizeCm.Z / (2.0 * Extent.Z));
+	const double GateHalf = 0.5 * ATN_RallyGate::WidthCm;
+	const double Step = FMath::Max(60.0, static_cast<double>(GateWingSpacingCm));
+	TArray<FTransform> Rocks;
+	for (int32 Index = 0; Index < Plan.Gates.Num() && Index < Plan.GateArcCm.Num(); ++Index)
+	{
+		const FVector Center = Plan.Gates[Index].Location;
+		const FVector Direction = FRotator(0.0, Plan.Gates[Index].YawDeg, 0.0).Vector();
+		const FVector Right(-Direction.Y, Direction.X, 0.0);
+		// Ancho del camino en la puerta (en el eje del plan).
+		const int32 Upper = FMath::Clamp(Algo::UpperBound(Plan.RoadArcCm, Plan.GateArcCm[Index]), 1, Plan.Road.Num() - 1);
+		const double HalfRoad = 0.5 * FMath::Max(Plan.RoadWidthCm[Upper - 1], Plan.RoadWidthCm[Upper]);
+		const double Wing = FMath::Clamp(HalfRoad + 400.0 - GateHalf, static_cast<double>(GateWingMinCm), static_cast<double>(GateWingMaxCm));
+		for (const double Side : { -1.0, 1.0 })
+		{
+			for (double Lateral = GateHalf + 0.5 * BorderSizeCm.Y; Lateral <= GateHalf + Wing; Lateral += Step)
+			{
+				const FVector At = Center + Right * (Side * Lateral);
+				// Suelo sin trazas (la colisión del terreno puede estar aún cocinándose); algo hundida.
+				const FVector Ground(At.X, At.Y, Generator.GetTerrainHeightAt(At) + 0.35 * BorderSizeCm.Z);
+				const FRotator Turn(0.0, Plan.Gates[Index].YawDeg + 37.0 * Lateral, 0.0);
+				Rocks.Add(FTransform(Turn, Ground - Turn.RotateVector(Bounds.Origin * Scale), Scale));
+			}
+		}
+	}
+	Borders->AddInstances(Rocks, false, true);
 }

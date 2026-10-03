@@ -174,14 +174,26 @@ namespace TNKart
 		Plan.LengthCm = Plan.RoadArcCm.Last();
 
 		// Puertas sobre el camino original (sus arcos casi coinciden con los del eje remuestreado).
-		const TArray<double> GateArcs = PlanGateArcs(StartArc, FinishArc, Params, [&SampleAt](double S)
+		auto IsForbidden = [&SampleAt](double S)
 		{
 			FVector Location;
 			double Width = 0.0;
 			bool bNoGate = false;
 			SampleAt(S, Location, Width, bNoGate);
 			return bNoGate;
-		});
+		};
+		// La salida también va donde puede ir una puerta (no junto a una roca ni donde el camino es más ancho que el arco):
+		// se adelanta lo que haga falta, sin pasar de la mitad del camino.
+		double GateStart = StartArc;
+		for (double Probe = StartArc; Probe < 0.5 * (StartArc + FinishArc); Probe += RouteGateSearchStepCm)
+		{
+			if (!IsForbidden(Probe))
+			{
+				GateStart = Probe;
+				break;
+			}
+		}
+		const TArray<double> GateArcs = PlanGateArcs(GateStart, FinishArc, Params, IsForbidden);
 		for (const double GateArc : GateArcs)
 		{
 			FVector Location;

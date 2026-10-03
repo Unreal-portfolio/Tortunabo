@@ -6,6 +6,9 @@
 #include "GameFramework/PlayerController.h"
 #include "HAL/IConsoleManager.h"
 #include "Kart/TN_KartAIController.h"
+#include "Kart/TN_KartBuggy.h"
+#include "Kart/TN_KartItemBox.h"
+#include "Kart/TN_KartItemComponent.h"
 #include "Kart/TN_KartGameState.h"
 #include "Kart/TN_KartPlayerController.h"
 #include "Kart/TN_KartTrack.h"
@@ -40,10 +43,14 @@ ATN_KartGameMode::ATN_KartGameMode()
 	GameStateClass = ATN_KartGameState::StaticClass();
 	PlayerControllerClass = ATN_KartPlayerController::StaticClass();
 	AIControllerClass = ATN_KartAIController::StaticClass();
+	// El buggy de SkiTemplar con los objetos, la artillera que se inclina y la torreta que sigue a la cámara.
+	VehicleClass = TSoftClassPtr<APawn>(ATN_KartBuggy::StaticClass());
 	// Sin variante del manifest: la pista sale del mapa generado (ATN_KartGameState::PrepareTrack).
 	DefaultVariant = NAME_None;
 	// Del lobby se llega y al lobby se vuelve sin cortar la conexión.
 	bUseSeamlessTravel = true;
+	// Pistas de varios kilómetros con cajas y conchas: más margen para llegar tras la primera que en el Rally.
+	FinishGraceSeconds = 45.f;
 	MapSettings = TSoftObjectPtr<UTN_ProcMapSettings>(FSoftObjectPath(TNKartMode::DefaultSettingsPath));
 }
 
@@ -145,6 +152,8 @@ void ATN_KartGameMode::ConfigureBot(ATN_RallyAIController& Pilot)
 	const float Spread = static_cast<float>((NextBotOrdinal++ % 3) - 1) * 4.f;
 	Pilot.MaxSpeedKmh = static_cast<float>(BotMaxSpeedKmh[Index]) + Spread;
 	Pilot.SpecialFireChance = FMath::Clamp(static_cast<float>(BotSpecialFireChance[Index]), 0.f, 1.f);
+	Pilot.FireIntervalSeconds = FMath::Max(0.2f, static_cast<float>(BotFireIntervalSeconds[Index]));
+	Pilot.FireRangeCm = FMath::Max(500.f, static_cast<float>(BotFireRangeCm[Index]));
 }
 
 void ATN_KartGameMode::HandleStartingNewPlayer_Implementation(APlayerController* NewPlayer)
@@ -239,6 +248,82 @@ void ATN_KartGameMode::Tick(float DeltaSeconds)
 	if (!bReturning)
 	{
 		Super::Tick(DeltaSeconds);
+		CheckItemBoxes();
+		if (UE_LOG_ACTIVE(LogTNRally, Verbose))
+		{
+			LogStartDiagnostics();
+		}
+	}
+}
+
+void ATN_KartGameMode::LogStartDiagnostics()
+{
+	const ATN_KartGameState* KartState = GetKartState();
+	const ATN_KartTrack* KartTrack = KartState ? KartState->GetKartTrack() : nullptr;
+	if (!KartTrack || KartState->Phase != ETNRallyPhase::Racing)
+	{
+		return;
+	}
+	const double Now = KartState->GetServerWorldTimeSeconds();
+	if (Now - KartState->StartServerTime > 20.0 || Now < NextStartLogTime)
+	{
+		return;
+	}
+	NextStartLogTime = Now + 1.0;
+	for (const FTNRallyStanding& Entry : KartState->Standings)
+	{
+		if (const APawn* Kart = Entry.Vehicle)
+		{
+			const FVector At = Kart->GetActorLocation();
+			// Lo que tiene delante a media altura (qué lo para).
+			FHitResult Hit;
+			FCollisionQueryParams Params(SCENE_QUERY_STAT(TNKartDiag), false, Kart);
+			const FVector Ahead = Kart->GetActorForwardVector().GetSafeNormal2D();
+			const bool bHit = GetWorld()->LineTraceSingleByChannel(Hit, At + FVector(0.0, 0.0, 15.0), At + FVector(0.0, 0.0, 15.0) + Ahead * 600.0,
+				ECC_Visibility, Params);
+			UE_LOG(LogTNRally, Verbose, TEXT("[Karts] %.0f s: equipo %d en (%.0f, %.0f, %.0f) a %.0f km/h, arco %.0f m, %.1f m de la línea, arriba.Z %.2f; delante: %s/%s a %.1f m."),
+				Now - KartState->StartServerTime, Entry.TeamIndex, At.X, At.Y, At.Z, Kart->GetVelocity().Size() * 0.036,
+				KartTrack->FindArcGlobal(At) / 100.0, FVector::Dist2D(At, KartTrack->GetLocationAtArc(KartTrack->FindArcGlobal(At))) / 100.0,
+				Kart->GetActorUpVector().Z, bHit ? *GetNameSafe(Hit.GetActor()) : TEXT("-"), bHit ? *GetNameSafe(Hit.GetComponent()) : TEXT("-"),
+				bHit ? Hit.Distance / 100.0 : 0.0);
+		}
+	}
+}
+
+void ATN_KartGameMode::CheckItemBoxes()
+{
+	const ATN_KartGameState* KartState = GetKartState();
+	const ATN_KartTrack* KartTrack = KartState ? KartState->GetKartTrack() : nullptr;
+	const bool bRacing = KartState && (KartState->Phase == ETNRallyPhase::Racing || KartState->Phase == ETNRallyPhase::Finishing);
+	if (!bRacing || !KartTrack)
+	{
+		PreviousKartLocations.Reset();
+		return;
+	}
+	int32 Active = 0;
+	for (const FTNRallyStanding& Entry : KartState->Standings)
+	{
+		Active += Entry.bRetired ? 0 : 1;
+	}
+	for (const FTNRallyStanding& Entry : KartState->Standings)
+	{
+		ATN_Buggy* Kart = Cast<ATN_Buggy>(Entry.Vehicle);
+		if (!Kart || Entry.bRetired || Entry.bFinished)
+		{
+			continue;
+		}
+		const FVector Current = Kart->GetActorLocation();
+		const FVector* Previous = PreviousKartLocations.Find(Kart);
+		const FVector From = Previous && FVector::DistSquared(*Previous, Current) < FMath::Square(3000.0) ? *Previous : Current;
+		PreviousKartLocations.Add(Kart, Current);
+		for (ATN_KartItemBox* Box : KartTrack->GetItemBoxes())
+		{
+			if (IsValid(Box) && Box->IsAvailable()
+				&& FMath::PointDistToSegment(Box->GetActorLocation(), From, Current) <= Box->PickupRadiusCm)
+			{
+				Box->TryCollect(Kart, FMath::Max(1, Entry.Place), FMath::Max(1, Active));
+			}
+		}
 	}
 }
 
@@ -278,3 +363,29 @@ void ATN_KartGameMode::ReturnToLobbyNow()
 	UE_LOG(LogTNRally, Log, TEXT("[Karts] Vuelta al lobby: %s"), *TravelURL);
 	World->ServerTravel(TravelURL);
 }
+
+#if !UE_BUILD_SHIPPING
+static FAutoConsoleCommandWithWorldAndArgs GTNKartGiveItemCommand(
+	TEXT("TN.Kart.GiveItem"),
+	TEXT("Karts (servidor o partida sola): da un objeto al kart del jugador local, sin ruleta. TN.Kart.GiveItem Coco|TripleCoco|Concha|ConchaGuiada|Alga|Tinta|Estrella."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+	{
+		const APlayerController* Player = World ? World->GetFirstPlayerController() : nullptr;
+		const ATN_RallyGameState* RallyState = World ? World->GetGameState<ATN_RallyGameState>() : nullptr;
+		const FTNRallyStanding* Mine = RallyState && Player ? RallyState->FindStandingForPlayer(Player->PlayerState) : nullptr;
+		UTN_KartItemComponent* Items = Mine && Mine->Vehicle ? Mine->Vehicle->FindComponentByClass<UTN_KartItemComponent>() : nullptr;
+		if (!Items || !Items->GetOwner()->HasAuthority() || Args.Num() < 1)
+		{
+			UE_LOG(LogTNRally, Display, TEXT("TN.Kart.GiveItem: hace falta un kart propio en el servidor y el nombre del objeto."));
+			return;
+		}
+		const int64 Value = StaticEnum<ETNKartItem>()->GetValueByNameString(Args[0]);
+		if (Value == INDEX_NONE || Value <= 0 || Value >= static_cast<int64>(ETNKartItem::Count))
+		{
+			UE_LOG(LogTNRally, Display, TEXT("TN.Kart.GiveItem: no existe el objeto '%s'."), *Args[0]);
+			return;
+		}
+		Items->GiveItem(static_cast<ETNKartItem>(Value), true);
+		UE_LOG(LogTNRally, Display, TEXT("TN.Kart.GiveItem: %s."), *Args[0]);
+	}));
+#endif
