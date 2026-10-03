@@ -9,6 +9,7 @@
 //   TN.Rally.StatusLater <espera> [veces] [intervalo]  TN.Rally.Status diferido (en un cliente, lo replicado)
 //   TN.Rally.DebugSwapSeats [espera]          (servidor) en cada buggy biplaza, la artillera pasa a conducir y viceversa
 //   TN.Rally.DebugPhotos <espera> <carpeta> [quieto] [veces] [intervalo]  fotos del buggy sin interfaz (lámina o persecución)
+//   TN.Rally.ViewShot <espera> <fichero> <x> <y> <z> <pitch> <yaw> [fov]  captura sin interfaz desde una cámara fija
 // LocalFire, StatusLater y DebugQuitAfter esperan con el ticker del motor, no con el del mundo: en un cliente, -ExecCmds
 // corre antes de conectarse y el mundo de entonces se destruye al viajar al mapa del servidor.
 
@@ -516,6 +517,39 @@ namespace TNBuggyDebug
 			AfterGlobal(FloatArg(Args, 0, 1.5f), [Folder, bStill, Count, Interval](UWorld* Alive)
 			{
 				TakePhotos(Alive, Folder, bStill, Count, Interval);
+			});
+		}));
+
+	FAutoConsoleCommandWithWorldAndArgs CmdViewShot(TEXT("TN.Rally.ViewShot"),
+		TEXT("Rally: TN.Rally.ViewShot <espera> <fichero.png> <x> <y> <z> <pitch> <yaw> [fov = 60]: captura sin interfaz desde una cámara fija (uu y grados)."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+		{
+			if (Args.Num() < 7)
+			{
+				UE_LOG(LogTNBuggy, Warning, TEXT("[Fotos] uso: TN.Rally.ViewShot <espera> <fichero.png> <x> <y> <z> <pitch> <yaw> [fov]"));
+				return;
+			}
+			const FString File = Args[1];
+			const FVector Eye(FloatArg(Args, 2, 0.f), FloatArg(Args, 3, 0.f), FloatArg(Args, 4, 0.f));
+			const FRotator Look(FloatArg(Args, 5, -90.f), FloatArg(Args, 6, 0.f), 0.f);
+			const float Fov = FMath::Clamp(FloatArg(Args, 7, 60.f), 5.f, 170.f);
+			AfterGlobal(FloatArg(Args, 0, 3.f), [File, Eye, Look, Fov](UWorld* Alive)
+			{
+				APlayerController* PC = Alive->GetFirstPlayerController();
+				ACameraActor* Camera = PC ? Alive->SpawnActor<ACameraActor>(Eye, Look) : nullptr;
+				if (!Camera)
+				{
+					UE_LOG(LogTNBuggy, Warning, TEXT("[Fotos] sin jugadora local para la cámara fija"));
+					return;
+				}
+				Camera->GetCameraComponent()->SetFieldOfView(Fov);
+				PC->SetViewTargetWithBlend(Camera, 0.f);
+				// La captura, un segundo después: el suavizado temporal y la exposición se asientan con la cámara quieta.
+				After(Alive, 1.f, [File](UWorld*)
+				{
+					FScreenshotRequest::RequestScreenshot(File, false, false);
+					UE_LOG(LogTNBuggy, Log, TEXT("[Fotos] %s"), *File);
+				});
 			});
 		}));
 
