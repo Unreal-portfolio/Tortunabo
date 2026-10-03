@@ -1,6 +1,6 @@
 // Manos VR (VR/TN_VRHandMath.h, VR/TN_VRGrabComponent.h, ATN_VRRig::BlockHandLocation; Docs/Modo_VR.md): velocidad de la
 // mano para lanzar, agarres enganchados que se sueltan, viñeta de confort, sitio para el HUD, manos que no atraviesan el
-// escenario y objetos que no se quitan de la mano a otro jugador. Se pueden correr sin gafas.
+// escenario ni cogen a través de él y objetos que no se quitan de la mano a otro jugador. Se pueden correr sin gafas.
 //   UnrealEditor-Cmd <uproject> -ExecCmds="Automation RunTests Tortunabo.VR; Quit" -nullrhi -unattended
 
 #include "Misc/AutomationTest.h"
@@ -299,6 +299,48 @@ bool FTNVRComfortVignetteTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNVRComfortVignetteLayerTest,
+	"Tortunabo.VR.ComfortVignetteLayer",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNVRComfortVignetteLayerTest::RunTest(const FString& Parameters)
+{
+	using namespace TNVRHands;
+	constexpr float MinVisible = 0.01f;
+	FVignetteLayer Layer;
+	// La tortuga pone cada fotograma la del caparazón (fuera de él: sin viñeta) y el rig la de confort encima.
+	bool bOverride = false;
+	float Value = 0.f;
+	Layer.Apply(bOverride, Value, 0.8f, MinVisible);
+	TestTrue(TEXT("Corriendo: la de confort"), bOverride && FMath::IsNearlyEqual(Value, 0.8f));
+
+	// En pausa la tortuga no la vuelve a poner: la de confort baja igual (antes se tomaba su propio valor como base y se
+	// quedaba en 0,8).
+	Layer.Apply(bOverride, Value, 0.4f, MinVisible);
+	TestTrue(TEXT("Sin nadie que la reponga: baja"), FMath::IsNearlyEqual(Value, 0.4f));
+	Layer.Apply(bOverride, Value, 0.f, MinVisible);
+	TestFalse(TEXT("Quitada: la cámara como estaba (sin viñeta)"), bOverride);
+	TestFalse(TEXT("Quitada: no ha escrito nada"), Layer.HasWritten());
+
+	// Dentro del caparazón (0,9) no la pisa una de confort más suave, y al quitarse queda la del caparazón.
+	bOverride = true;
+	Value = 0.9f;
+	Layer.Apply(bOverride, Value, 0.5f, MinVisible);
+	TestTrue(TEXT("Caparazón más oscuro: se queda"), FMath::IsNearlyEqual(Value, 0.9f));
+	Layer.Apply(bOverride, Value, 0.f, MinVisible);
+	TestTrue(TEXT("Quitada: vuelve la del caparazón"), bOverride && FMath::IsNearlyEqual(Value, 0.9f));
+
+	// La tortuga la cambia entre dos fotogramas (sale del caparazón): esa es la nueva base.
+	Layer.Apply(bOverride, Value, 1.f, MinVisible);
+	bOverride = true;
+	Value = 0.2f;
+	Layer.Apply(bOverride, Value, 0.6f, MinVisible);
+	TestTrue(TEXT("Base nueva de la tortuga: la de confort encima"), FMath::IsNearlyEqual(Value, 0.6f));
+	Layer.Restore(bOverride, Value);
+	TestTrue(TEXT("Restaurada: la base nueva"), bOverride && FMath::IsNearlyEqual(Value, 0.2f));
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNVRHudProbeTest,
 	"Tortunabo.VR.HudProbe",
 	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
@@ -389,6 +431,41 @@ bool FTNVRGrabHolderTest::RunTest(const FString& Parameters)
 	TestNull(TEXT("Soltada con las dos: libre"), UTN_VRGrabComponent::FindHolder(Mesh));
 	TestTrue(TEXT("Ahora la segunda la coge"), Second->TryGrab(1, RightOfBox));
 	Second->Release(1, FVector::ZeroVector);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNVRGrabThroughWallTest,
+	"Tortunabo.VR.GrabThroughWall",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNVRGrabThroughWallTest::RunTest(const FString& Parameters)
+{
+	TNVRHandsTest::FTestWorld Test;
+	// Una caja con física de 20 cm (caras en X = ±10) y, delante, una pared de 2 cm (X de -21 a -19). Los ojos de la
+	// «tortuga» están en X = -60; su mano, parada a 4 cm de la pared (X = -25), queda a 15 cm de la caja: dentro de GrabRadius
+	// (22 cm) aunque la caja esté al otro lado.
+	AStaticMeshActor* Box = Test.SpawnBox(FVector(0.0, 0.0, 200.0), FVector(0.2), true);
+	AStaticMeshActor* Wall = Test.SpawnBox(FVector(-20.0, 0.0, 200.0), FVector(0.02, 3.0, 3.0), false);
+	UTN_VRGrabComponent* Grabber = Test.SpawnGrabber(FVector(-60.0, 0.0, 200.0));
+	if (!TestNotNull(TEXT("Caja"), Box) || !TestNotNull(TEXT("Pared"), Wall) || !TestNotNull(TEXT("Tortuga"), Grabber))
+	{
+		return false;
+	}
+	const FCollisionQueryParams Params(SCENE_QUERY_STAT(TNVRGrabThroughWallTest), false);
+	const FVector Eyes(-60.0, 0.0, 200.0);
+	TestFalse(TEXT("Detrás de la pared: tapado"), UTN_VRGrabComponent::HasClearReach(Test.World, Eyes, FVector(-10.0, 0.0, 200.0), Params));
+	TestTrue(TEXT("Delante de la pared: despejado"), UTN_VRGrabComponent::HasClearReach(Test.World, Eyes, FVector(-30.0, 0.0, 200.0), Params));
+	TestTrue(TEXT("A 1 cm dentro de la pared (tolerancia): despejado"),
+		UTN_VRGrabComponent::HasClearReach(Test.World, Eyes, FVector(-20.0, 0.0, 200.0), Params));
+
+	// Antes la cogía a través de la pared.
+	TestFalse(TEXT("Con la mano parada en la pared: no la coge"), Grabber->TryGrab(1, FTransform(FVector(-25.0, 0.0, 200.0))));
+	TestFalse(TEXT("No coge nada"), Grabber->IsGrabbing(1));
+
+	// Sin la pared en medio, la misma mano sí la coge.
+	Wall->Destroy();
+	TestTrue(TEXT("Sin la pared: la coge"), Grabber->TryGrab(1, FTransform(FVector(-25.0, 0.0, 200.0))));
+	Grabber->Release(1, FVector::ZeroVector);
 	return true;
 }
 

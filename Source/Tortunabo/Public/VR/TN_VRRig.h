@@ -232,6 +232,8 @@ private:
 	void StopHaptics(APlayerController* PC);
 	/** Viñeta de confort sobre la cámara de la tortuga al moverse o girar suave (con gafas). */
 	void UpdateComfortVignette(APlayerController* PC, ATortugaCharacter* Turtle, float DeltaSeconds);
+	/** Pone la viñeta de confort Intensity en Camera encima de la que ya tenga (0: la quita y la deja como estaba). */
+	void ApplyComfortVignette(UCameraComponent* Camera, float Intensity);
 	/** Punto de agarre de la aleta (cerca de la punta) en el mundo. */
 	FTransform GetGrabPoint(bool bRight) const;
 	/** La velocidad de las manos vuelve a medirse desde cero (tras un giro de golpe, al recentrar o al cambiar de tortuga). */
@@ -270,6 +272,9 @@ private:
 	/** Giro suave de este fotograma (grados/s) y viñeta de confort que se está aplicando. */
 	float SmoothTurnRate = 0.f;
 	float ComfortVignetteNow = 0.f;
+	/** La viñeta de confort sobre la del caparazón, y la cámara en la que está puesta. */
+	TNVRHands::FVignetteLayer ComfortVignetteLayer;
+	TWeakObjectPtr<UCameraComponent> ComfortVignetteCamera;
 
 	/** Giros de golpe de la tortuga ya vistos (ATortugaCharacter::GetVRTurnSerial). */
 	uint32 LastTurnSerial = 0;

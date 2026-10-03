@@ -7,6 +7,8 @@
 
 class UPhysicsHandleComponent;
 class UPrimitiveComponent;
+class UWorld;
+struct FCollisionQueryParams;
 
 /**
  * Coger objetos con física con las aletas en VR (Docs/Modo_VR.md): el agarre de cada mando coge el objeto con física más
@@ -76,6 +78,24 @@ public:
 	 */
 	static bool IsGrabbableFromClient(UPrimitiveComponent* Component, const AActor* ByActor, float MaxMassKg);
 
+	/**
+	 * ¿Nada del escenario (canal ECC_Camera, el mismo que para las manos) entre los ojos y Point? Lo que se corta a menos de
+	 * ReachTolerance de Point cuenta como despejado (el suelo bajo lo que se toca por abajo); con los ojos ya dentro de algo
+	 * también, como las manos (ATN_VRRig::BlockHandLocation). Params dice qué no cuenta (la tortuga, el propio objetivo).
+	 */
+	static bool HasClearReach(const UWorld* World, const FVector& Eyes, const FVector& Point, const FCollisionQueryParams& Params);
+
+	/**
+	 * ¿Llega la mano al punto Point de Target sin atravesar el escenario? Los ojos (la cámara VR de la tortuga, o el punto de
+	 * vista del actor) ven Point sin una pared en medio: la mano se para en la pared (TN_VRRigHands.cpp) y lo que se busca
+	 * alrededor de su punta (GrabRadius, VRHandReach) no puede quedar al otro lado. No cuentan la tortuga, lo que lleva
+	 * encima o en las manos ni Target.
+	 */
+	bool CanReach(const AActor* Target, const FVector& Point) const;
+
+	/** Tolerancia (cm) de HasClearReach al final del trazo. */
+	static constexpr float ReachTolerance = 3.f;
+
 	/** Radio (cm) alrededor de la punta de la aleta en el que se busca qué coger. */
 	UPROPERTY(EditAnywhere, Category = "VR|Grab", meta = (ClampMin = "5.0"))
 	float GrabRadius = 22.f;
@@ -108,6 +128,8 @@ private:
 	UPrimitiveComponent* FindGrabbable(const FVector& At) const;
 	/** IsGrabbable o, si lo mueve el servidor y esta máquina no lo es, IsGrabbableFromClient. */
 	bool IsGrabbableHere(UPrimitiveComponent* Component) const;
+	/** Desde dónde mira la tortuga (su cámara VR) o, sin ella, el punto de vista del actor. */
+	FVector GetReachEyes() const;
 	/** Servidor de un actor replicado: despierto en red mientras lo lleve esta mano (ReleaseHere lo deja volver a dormirse). */
 	void KeepAwakeWhileHeld(int32 Hand, AActor* Target);
 	/** Coge en esta máquina (servidor, o local si el actor no se replica). */

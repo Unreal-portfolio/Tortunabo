@@ -630,6 +630,9 @@ void ATN_VRRig::UpdateHands(ATortugaCharacter* Turtle, bool bTurtleView, float D
 
 void ATN_VRRig::UpdateInput(APlayerController* PC, ATortugaCharacter* Turtle, float DeltaSeconds)
 {
+	// Sin giro suave mientras no se gira este fotograma (menú o rueda abiertos, sin gafas): si no, la viñeta de confort se
+	// quedaría con el último giro.
+	SmoothTurnRate = 0.f;
 	if (Mode != ETNVRMode::Headset)
 	{
 		return;
@@ -653,7 +656,6 @@ void ATN_VRRig::UpdateInput(APlayerController* PC, ATortugaCharacter* Turtle, fl
 		bSnapLatched = true;
 		return;
 	}
-	SmoothTurnRate = 0.f;
 	const float TurnAxis = PC->GetInputAnalogKeyState(FTNVRKeys::RightStickX);
 	AActor* ViewTarget = PC->GetViewTarget();
 	if (Turtle && ViewTarget == Turtle)

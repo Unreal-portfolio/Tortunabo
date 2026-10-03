@@ -240,6 +240,54 @@ namespace TNVRHands
 		return VignetteMaxIntensity * Strength * FMath::Max(FromSpeed, FromTurn);
 	}
 
+	/**
+	 * La viñeta de confort encima de la que pone otro en la misma cámara (la del caparazón, ATortugaCharacter::
+	 * ApplyShellDarkness): se pinta la más oscura de las dos sin pisar la otra. Si lo que tiene la cámara es lo que escribió
+	 * esta capa el fotograma anterior (nadie lo ha vuelto a poner: juego en pausa, la tortuga no ha hecho Tick), la base es la
+	 * que guardó, no su propio valor (antes se tomaba como base y la viñeta no bajaba nunca); al quitarse deja la cámara como
+	 * estaba.
+	 */
+	struct FVignetteLayer
+	{
+		/** bOverride y Value: los de la cámara (bOverride_VignetteIntensity, VignetteIntensity); los cambia. */
+		void Apply(bool& bOverride, float& Value, float Comfort, float MinVisible)
+		{
+			const bool bStillOurs = Written >= 0.f && bOverride && Value == Written;
+			if (!bStillOurs)
+			{
+				bBaseOverride = bOverride;
+				Base = bOverride ? Value : 0.f;
+			}
+			if (Comfort <= MinVisible)
+			{
+				Restore(bOverride, Value);
+				return;
+			}
+			bOverride = true;
+			Value = FMath::Max(Base, Comfort);
+			Written = Value;
+		}
+
+		/** Deja la cámara con lo que tenía antes de esta capa (si escribió algo). */
+		void Restore(bool& bOverride, float& Value)
+		{
+			if (Written >= 0.f)
+			{
+				bOverride = bBaseOverride;
+				Value = bBaseOverride ? Base : 0.f;
+			}
+			Written = -1.f;
+		}
+
+		bool HasWritten() const { return Written >= 0.f; }
+
+	private:
+		bool bBaseOverride = false;
+		float Base = 0.f;
+		/** Lo que escribió el último fotograma; negativo si nada. */
+		float Written = -1.f;
+	};
+
 	// ── HUD: dónde cabe sin que lo tape el escenario ─────────────────────────
 
 	/**

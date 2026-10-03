@@ -456,16 +456,30 @@ void ATN_VRRig::UpdateComfortVignette(APlayerController* PC, ATortugaCharacter* 
 		? TNVRHands::ComfortVignette(static_cast<float>(Turtle->GetVelocity().Size()), SmoothTurnRate, CVarTNVRComfortVignette.GetValueOnGameThread())
 		: 0.f;
 	ComfortVignetteNow = FMath::FInterpTo(ComfortVignetteNow, Wanted, DeltaSeconds, Wanted > ComfortVignetteNow ? VignetteInSpeed : VignetteOutSpeed);
-	if (!Camera || ComfortVignetteNow <= VignetteMinVisible)
+	// Otra cámara (otra tortuga, sin gafas): la de antes se queda como la tenía.
+	if (ComfortVignetteCamera.Get() != Camera)
 	{
+		ApplyComfortVignette(ComfortVignetteCamera.Get(), 0.f);
+		ComfortVignetteCamera = Camera;
+	}
+	ApplyComfortVignette(Camera, ComfortVignetteNow);
+}
+
+void ATN_VRRig::ApplyComfortVignette(UCameraComponent* Camera, float Intensity)
+{
+	if (!Camera)
+	{
+		ComfortVignetteLayer = TNVRHands::FVignetteLayer();
 		return;
 	}
-	// La tortuga pone cada fotograma la viñeta del caparazón (ATortugaCharacter::ApplyShellDarkness, antes que el rig): se
-	// queda la más oscura de las dos.
+	// La tortuga pone la viñeta del caparazón (ATortugaCharacter::ApplyShellDarkness, en su Tick, antes que el rig): se queda
+	// la más oscura de las dos, y la capa sabe qué puso ella aunque la tortuga no vuelva a ponerla (en pausa).
 	FPostProcessSettings& Post = Camera->PostProcessSettings;
-	const float Base = Post.bOverride_VignetteIntensity ? Post.VignetteIntensity : 0.f;
-	Post.bOverride_VignetteIntensity = true;
-	Post.VignetteIntensity = FMath::Max(Base, ComfortVignetteNow);
+	bool bOverride = Post.bOverride_VignetteIntensity != 0;
+	float Value = Post.VignetteIntensity;
+	ComfortVignetteLayer.Apply(bOverride, Value, Intensity, TNVRRigHandsDetail::VignetteMinVisible);
+	Post.bOverride_VignetteIntensity = bOverride;
+	Post.VignetteIntensity = Value;
 }
 
 FString ATN_VRRig::DescribeHands() const

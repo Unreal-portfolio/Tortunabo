@@ -195,10 +195,11 @@ ajuste). Con un menú o una rueda a la vista no cambia. Es la misma cámara que 
    distancia y escala del panel (`PanelPlacement`), botones de los mandos en los menús (`MenuKeys`), panel curvo
    (`CurvedPanel`), gatillos y agarres analógicos (`AnalogButton`), umbral del gatillo en el juego y gatillo apretado al
    abrir un menú (`TriggerThreshold`), velocidad de la mano respecto del cuerpo (`HandVelocity`), arco del menú sin gafas
-   (`SimulatedMenuArc`) y tecla de cambiar de cámara (`CameraKey`). Y ocho de las manos (`TN_VRHandsTest.cpp`): media de la
-   velocidad para lanzar (`HandVelocityWindow`), agarre enganchado (`GrabStrain`), viñeta de confort (`ComfortVignette`),
-   sitio del HUD (`HudProbe`), botones con la punta (`Poke`), gatillo entre el menú y el juego (`TriggerMenuLatch`) y, con
-   un mundo de prueba, mano contra una pared (`HandBlock`) y objeto que lleva otro (`GrabHolder`). Sin ventana:
+   (`SimulatedMenuArc`) y tecla de cambiar de cámara (`CameraKey`). Y diez de las manos (`TN_VRHandsTest.cpp`): media de la
+   velocidad para lanzar (`HandVelocityWindow`), agarre enganchado (`GrabStrain`), viñeta de confort (`ComfortVignette`) sin
+   pisar la del caparazón ni quedarse puesta en pausa (`ComfortVignetteLayer`), sitio del HUD (`HudProbe`), botones con la punta (`Poke`), gatillo entre el menú y el juego (`TriggerMenuLatch`) y, con
+   un mundo de prueba, mano contra una pared (`HandBlock`), objeto que lleva otro (`GrabHolder`) y nada que coger al otro lado de una
+   pared fina (`GrabThroughWall`). Sin ventana:
    `UnrealEditor-Cmd Tortunabo.uproject -ExecCmds="Automation RunTests Tortunabo.VR; Quit" -nullrhi -unattended`.
 2. **Modo simulado** en PIE (1 o 2 jugadores): consola `TN.VR 2` en la ventana que quieras probar. Lista de pruebas abajo.
 3. **Meta XR Simulator** (opcional, para probar el modo gafas de verdad sin gafas): el simulador de Meta hace de gafas y

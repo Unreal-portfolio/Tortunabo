@@ -7,6 +7,7 @@
 #include "Player/TN_CarryComponent.h"
 #include "Player/TN_InventoryComponent.h"
 #include "World/TN_InteractableBase.h"
+#include "VR/TN_VRGrabComponent.h"
 #include "VR/TN_VRMath.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -333,17 +334,20 @@ ATN_InteractableBase* ATortugaCharacter::FindInteractableNearHand(const FVector&
 			continue;
 		}
 		// Lo que cuenta es lo cerca que está la mano de lo que toca (su colisión) o de su punto de interacción.
-		float Distance = static_cast<float>(FVector::Dist(HandLocation, Interactable->GetInteractionPointFor(this)));
+		FVector Point = Interactable->GetInteractionPointFor(this);
+		float Distance = static_cast<float>(FVector::Dist(HandLocation, Point));
 		if (const UPrimitiveComponent* Touched = Overlap.GetComponent())
 		{
 			FVector Closest;
 			const float ToCollision = Touched->GetClosestPointOnCollision(HandLocation, Closest);
-			if (ToCollision >= 0.f)
+			if (ToCollision >= 0.f && ToCollision < Distance)
 			{
-				Distance = FMath::Min(Distance, ToCollision);
+				Distance = ToCollision;
+				Point = Closest;
 			}
 		}
-		if (Distance <= VRHandReach && Distance < BestDistance)
+		// La mano se para en la pared, pero VRHandReach la pasa: lo que queda al otro lado no se toca.
+		if (Distance <= VRHandReach && Distance < BestDistance && (!VRGrabComponent || VRGrabComponent->CanReach(Interactable, Point)))
 		{
 			BestDistance = Distance;
 			Best = Interactable;

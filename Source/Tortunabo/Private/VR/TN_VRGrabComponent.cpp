@@ -6,8 +6,11 @@
 #include "Player/TN_ShellBody.h"
 #include "Player/TortugaCharacter.h"
 #include "World/TN_PhysicsObjectActor.h"
+#include "Camera/CameraComponent.h"
 #include "Components/PrimitiveComponent.h"
+#include "CollisionQueryParams.h"
 #include "Engine/EngineTypes.h"
+#include "Engine/HitResult.h"
 #include "Engine/OverlapResult.h"
 #include "Engine/World.h"
 #include "GameFramework/Pawn.h"
@@ -232,6 +235,67 @@ bool UTN_VRGrabComponent::IsGrabbableHere(UPrimitiveComponent* Component) const
 	return IsGrabbable(Component, GetOwner(), MaxMass);
 }
 
+bool UTN_VRGrabComponent::HasClearReach(const UWorld* World, const FVector& Eyes, const FVector& Point, const FCollisionQueryParams& Params)
+{
+	const double Length = FVector::Dist(Eyes, Point);
+	if (!World || Length <= ReachTolerance)
+	{
+		return true;
+	}
+	FHitResult Hit;
+	if (!World->LineTraceSingleByChannel(Hit, Eyes, Point, ECC_Camera, Params))
+	{
+		return true;
+	}
+	return Hit.bStartPenetrating || Hit.Distance >= Length - ReachTolerance;
+}
+
+FVector UTN_VRGrabComponent::GetReachEyes() const
+{
+	const AActor* Owner = GetOwner();
+	if (!Owner)
+	{
+		return FVector::ZeroVector;
+	}
+	if (const ATortugaCharacter* Turtle = Cast<ATortugaCharacter>(Owner))
+	{
+		if (const UCameraComponent* Eyes = Turtle->GetVRCamera())
+		{
+			return Eyes->GetComponentLocation();
+		}
+	}
+	FVector Location;
+	FRotator Rotation;
+	Owner->GetActorEyesViewPoint(Location, Rotation);
+	return Location;
+}
+
+bool UTN_VRGrabComponent::CanReach(const AActor* Target, const FVector& Point) const
+{
+	const AActor* Owner = GetOwner();
+	if (!Owner)
+	{
+		return true;
+	}
+	// Como al parar las manos: solo el escenario, ni la tortuga ni lo que lleva encima o en las manos.
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(TNVRReach), false, Owner);
+	TArray<AActor*> Attached;
+	Owner->GetAttachedActors(Attached);
+	Params.AddIgnoredActors(Attached);
+	for (int32 Hand = 0; Hand < 2; ++Hand)
+	{
+		if (const UPrimitiveComponent* HeldNow = GetHeld(Hand))
+		{
+			Params.AddIgnoredComponent(HeldNow);
+		}
+	}
+	if (Target)
+	{
+		Params.AddIgnoredActor(Target);
+	}
+	return HasClearReach(GetWorld(), GetReachEyes(), Point, Params);
+}
+
 UPrimitiveComponent* UTN_VRGrabComponent::FindGrabbable(const FVector& At) const
 {
 	UWorld* World = GetWorld();
@@ -260,11 +324,13 @@ UPrimitiveComponent* UTN_VRGrabComponent::FindGrabbable(const FVector& At) const
 		const float Distance = Candidate->GetClosestPointOnCollision(At, Closest);
 		// Dentro del objeto (0) o sin colisión simple (-1): cuenta como tocándolo.
 		const float Score = Distance < 0.f ? static_cast<float>(FVector::Dist(At, Candidate->GetComponentLocation())) : Distance;
-		if (Score < BestDistance)
+		// La punta se para en la pared, pero el radio de búsqueda la pasa: lo que queda al otro lado no se coge.
+		if (Score >= BestDistance || !CanReach(Candidate->GetOwner(), Distance < 0.f ? Candidate->GetComponentLocation() : Closest))
 		{
-			BestDistance = Score;
-			Best = Candidate;
+			continue;
 		}
+		BestDistance = Score;
+		Best = Candidate;
 	}
 	return Best;
 }
