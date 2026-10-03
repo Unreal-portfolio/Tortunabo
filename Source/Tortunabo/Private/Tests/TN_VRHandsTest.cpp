@@ -191,8 +191,64 @@ bool FTNVRGrabStrainTest::RunTest(const FString& Parameters)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Pulsar botones con la punta de la aleta
+// ─────────────────────────────────────────────────────────────────────────────
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNVRPokeTest,
+	"Tortunabo.VR.Poke",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNVRPokeTest::RunTest(const FString& Parameters)
+{
+	using namespace TNVRHands;
+	constexpr float Dt = 1.f / 90.f;
+	// Acercar la punta al botón a 90 cm/s (1 cm por fotograma): pulsa una vez al tocarlo.
+	FPokeState Press;
+	int32 Presses = 0;
+	double Now = 0.0;
+	for (float Distance = 9.f; Distance >= 0.f; Distance -= 1.f)
+	{
+		Presses += UpdatePoke(Press, Distance, Dt, Now) ? 1 : 0;
+		Now += Dt;
+	}
+	TestEqual(TEXT("Acercar la punta: una pulsación"), Presses, 1);
+	// La mano se queda apoyada (o metida en el botón) un segundo: no vuelve a pulsar.
+	for (int32 i = 0; i < 90; ++i)
+	{
+		Presses += UpdatePoke(Press, 0.f, Dt, Now) ? 1 : 0;
+		Now += Dt;
+	}
+	TestEqual(TEXT("Mano apoyada: no repite"), Presses, 1);
+	// Se aleja más de PokeRearmDistance y vuelve: otra pulsación.
+	UpdatePoke(Press, PokeRearmDistance + 5.f, Dt, Now);
+	Now += Dt;
+	for (float Distance = 9.f; Distance >= 0.f; Distance -= 1.f)
+	{
+		Presses += UpdatePoke(Press, Distance, Dt, Now) ? 1 : 0;
+		Now += Dt;
+	}
+	TestEqual(TEXT("Alejarse y volver: segunda pulsación"), Presses, 2);
+
+	// Apoyar la mano despacio (10 cm/s): no pulsa.
+	FPokeState Slow;
+	bool bSlowPress = false;
+	for (float Distance = 5.f; Distance >= 0.f; Distance -= 0.1f)
+	{
+		bSlowPress |= UpdatePoke(Slow, Distance, 0.01f, 0.0);
+	}
+	TestFalse(TEXT("Apoyar despacio: no pulsa"), bSlowPress);
+
+	// La mano aparece ya tocándolo (la para el escenario encima, se recentra): no pulsa.
+	FPokeState Appear;
+	TestFalse(TEXT("Aparece tocándolo: no pulsa"), UpdatePoke(Appear, 1.f, Dt, 0.0));
+	TestFalse(TEXT("Sin botón cerca: no pulsa"), UpdatePoke(Appear, -1.f, Dt, 0.0));
+	return true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Viñeta de confort y sitio para el HUD
 // ─────────────────────────────────────────────────────────────────────────────
+
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNVRComfortVignetteTest,
 	"Tortunabo.VR.ComfortVignette",

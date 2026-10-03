@@ -219,6 +219,8 @@ private:
 	/** Sin poder usar las manos (menú, rueda, derribo, caparazón): suelta lo cogido con física y acaba la interacción de
 	 *  mantener, sin lanzar ni dejar caer lo que lleva en la aleta ni al compañero. */
 	void CancelGrip(int32 Hand, ATortugaCharacter* Turtle);
+	/** Botones e interruptores pulsados con la punta de la aleta (sin apretar el agarre). */
+	void UpdatePoke(int32 Hand, ATortugaCharacter* Turtle, const FVector& Tip, float DeltaSeconds);
 	/** Velocidad de la mano respecto del origen de la vista (ventana de TNVRHands::FHandVelocityWindow). */
 	void UpdateHandVelocity(int32 Hand, const FTransform& Origin, const FVector& Point, float DeltaSeconds);
 	/** Manos fuera del escenario (BlockHandLocation desde los ojos de la tortuga); vibran al empezar a tocarlo. */
@@ -254,6 +256,8 @@ private:
 	FTransform PrevGrabOrigin[2];
 	FVector HandVelocity[2] = { FVector::ZeroVector, FVector::ZeroVector };
 	TNVRHands::FHandVelocityWindow HandVelocityWindow[2];
+	TNVRHands::FPokeState PokeState[2];
+
 	bool bPrevGrabPointValid[2] = { false, false };
 	/** Mano parada por el escenario (para vibrar al empezar a tocarlo). */
 	bool bHandBlocked[2] = { false, false };

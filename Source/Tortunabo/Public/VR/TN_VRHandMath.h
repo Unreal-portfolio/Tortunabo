@@ -103,7 +103,52 @@ namespace TNVRHands
 		return Now - StrainSince >= StrainSeconds;
 	}
 
+	// ── Pulsar botones con la punta de la aleta ──────────────────────────────
+
+	/** La punta a menos de esto (cm) de la colisión del botón cuenta como tocándolo. */
+	constexpr float PokeTouchDistance = 3.f;
+	/** Tras pulsar, la punta tiene que alejarse esto (cm) para poder volver a pulsar. */
+	constexpr float PokeRearmDistance = 10.f;
+	/** Velocidad mínima (cm/s) hacia el botón: apoyar la mano o que la pare el escenario encima no pulsa. */
+	constexpr float PokeMinApproachSpeed = 40.f;
+	/** Entre dos pulsaciones de la misma mano, como poco (s). */
+	constexpr float PokeCooldownSeconds = 0.5f;
+
+	/** Estado de cada mano para pulsar botones. */
+	struct FPokeState
+	{
+		float PrevDistance = -1.f;
+		bool bArmed = true;
+		double LastPoke = -1000.0;
+	};
+
+	/**
+	 * ¿Pulsa la punta el botón este fotograma? Distance: de la punta a la colisión del botón más cercano (negativo si no hay
+	 * ninguno cerca). Pulsa al tocarlo (PokeTouchDistance) yendo hacia él (PokeMinApproachSpeed), y no vuelve a pulsar hasta
+	 * alejarse PokeRearmDistance y pasar PokeCooldownSeconds: dejar la mano apoyada no lo pulsa una y otra vez.
+	 */
+	inline bool UpdatePoke(FPokeState& State, float Distance, float DeltaSeconds, double Now)
+	{
+		if (Distance < 0.f || Distance > PokeRearmDistance)
+		{
+			State.PrevDistance = -1.f;
+			State.bArmed = true;
+			return false;
+		}
+		const float Approach = State.PrevDistance >= 0.f && DeltaSeconds > UE_KINDA_SMALL_NUMBER
+			? (State.PrevDistance - Distance) / DeltaSeconds : 0.f;
+		State.PrevDistance = Distance;
+		if (!State.bArmed || Distance > PokeTouchDistance || Approach < PokeMinApproachSpeed || Now - State.LastPoke < PokeCooldownSeconds)
+		{
+			return false;
+		}
+		State.bArmed = false;
+		State.LastPoke = Now;
+		return true;
+	}
+
 	// ── Vibración de los mandos ──────────────────────────────────────────────
+
 
 	/** Un toque de vibración: fuerza (0..1) y duración (s). */
 	struct FHapticPulse

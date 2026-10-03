@@ -8,11 +8,15 @@
 #include "VR/TN_VRMath.h"
 #include "Player/MP_GamePlayerController.h"
 #include "Player/TortugaCharacter.h"
+#include "World/TN_ButtonInteractable.h"
+#include "World/ProcMap/TN_ProcPuzzleActors.h"
 #include "Camera/CameraComponent.h"
 #include "CollisionQueryParams.h"
 #include "EnhancedInputSubsystems.h"
 #include "Engine/HitResult.h"
 #include "Engine/LocalPlayer.h"
+#include "Engine/OverlapResult.h"
+
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/IConsoleManager.h"
@@ -184,8 +188,49 @@ void ATN_VRRig::UpdateGrips(APlayerController* PC, ATortugaCharacter* Turtle, fl
 			ReleaseGrip(Hand, Turtle);
 		}
 		HoldGrip(Hand, PC, Turtle, Point);
+		if (GripUse[Hand] == EGripUse::None && !bGripHeld[Hand])
+		{
+			UpdatePoke(Hand, Turtle, Point.GetLocation(), DeltaSeconds);
+		}
 	}
 }
+
+void ATN_VRRig::UpdatePoke(int32 Hand, ATortugaCharacter* Turtle, const FVector& Tip, float DeltaSeconds)
+{
+	using EVRGrip = ATortugaCharacter::EVRGrip;
+	// El botón o el interruptor más cercano a la punta (los demás interactuables abren menús o se cogen: con el agarre).
+	TArray<FOverlapResult> Overlaps;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(TNVRPoke), false, Turtle);
+	GetWorld()->OverlapMultiByObjectType(Overlaps, Tip, FQuat::Identity, FCollisionObjectQueryParams(ECC_WorldDynamic),
+		FCollisionShape::MakeSphere(TNVRHands::PokeRearmDistance), Params);
+	float Nearest = -1.f;
+	for (const FOverlapResult& Overlap : Overlaps)
+	{
+		const ATN_InteractableBase* Button = Cast<ATN_InteractableBase>(Overlap.GetActor());
+		const UPrimitiveComponent* Shape = Overlap.GetComponent();
+		if (!Shape || !(Cast<ATN_ButtonInteractable>(Button) || Cast<ATN_ProcSwitch>(Button)) || !Button->CanInteract(Turtle))
+		{
+			continue;
+		}
+		FVector Closest;
+		const float Distance = Shape->GetClosestPointOnCollision(Tip, Closest);
+		if (Distance >= 0.f && (Nearest < 0.f || Distance < Nearest))
+		{
+			Nearest = Distance;
+		}
+	}
+	if (!TNVRHands::UpdatePoke(PokeState[Hand], Nearest, DeltaSeconds, FPlatformTime::Seconds()))
+	{
+		return;
+	}
+	// Como con el agarre: interactúa con lo que toca esa mano (el botón, que está pegado a la punta) y lo suelta al momento.
+	if (Turtle->VRGripPressed(Hand == 1, Tip, false) == EVRGrip::Touched)
+	{
+		Turtle->VRGripReleased(EVRGrip::Touched, FVector::ZeroVector);
+		PulseHaptic(Hand, TNVRHands::Haptics::Grab);
+	}
+}
+
 
 void ATN_VRRig::PressGrip(int32 Hand, ATortugaCharacter* Turtle, const FTransform& Point)
 {
