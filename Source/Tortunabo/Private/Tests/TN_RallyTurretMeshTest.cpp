@@ -168,15 +168,16 @@ bool FTNRallyTurretMeshClearanceTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("buffers coherentes"), Mesh->Normals.Num(), Mesh->Verts.Num());
 	}
 
-	// El aro va por fuera del respaldo y por dentro de las barandillas; sus tirantes llegan a ellas.
+	// El aro va por fuera del respaldo y por dentro de las barandillas, sin tocarlas; sus patas llegan al suelo.
 	TestTrue(TEXT("el aro rodea el respaldo"), RingRadius - RingTube > BackrestRadius);
 	TestTrue(TEXT("el aro cabe dentro de las barandillas"), RingRadius + RingTube < RailY - BarRadius);
-	double RingReach = 0.0;
+	double RingLowest = 0.0;
 	for (const FVector& V : Ring.Verts)
 	{
-		RingReach = FMath::Max(RingReach, FMath::Abs(V.Y));
+		RingLowest = FMath::Min(RingLowest, V.Z);
 	}
-	TestTrue(TEXT("los tirantes llegan a las barandillas"), RingReach >= RailY);
+	TestTrue(TEXT("las patas del aro llegan al suelo de la carrocería trasera"), RingLowest <= FloorZ);
+	TestTrue(TEXT("el aro no toca las barandillas"), CageClearance(Samples(Ring)) > 0.5);
 
 	// Al girar 360° con todo el cabeceo, ni el cañón ni la caña tocan un tubo de la carrocería (el travesaño del arco
 	// trasero queda 42 cm detrás del pivote: con el pivote a la altura de Muzzle_Gunner lo atravesaba apuntando atrás).

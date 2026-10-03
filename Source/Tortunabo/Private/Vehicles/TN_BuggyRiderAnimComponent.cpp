@@ -10,11 +10,21 @@
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "GameFramework/Pawn.h"
+#include "HAL/IConsoleManager.h"
 #include "ReferenceSkeleton.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Pose en el espacio de la malla
 // ─────────────────────────────────────────────────────────────────────────────
+
+#if !UE_BUILD_SHIPPING
+namespace TNRiderAnimDebug
+{
+	/** Pose del salto sin saltar, para medirla con TN.Rally.DebugTurretFit (#435). */
+	TAutoConsoleVariable<int32> CVarForceAirborne(TEXT("TN.Rally.DebugRiderAirborne"), 0,
+		TEXT("Rally (fuera de Shipping): 1 = las tortugas del buggy se ponen como en el aire (encogidas y la artillera agarrada)."));
+}
+#endif
 
 namespace TNRiderAnimPose
 {
@@ -346,6 +356,12 @@ UTN_BuggyRiderAnimComponent::FVehicleSample UTN_BuggyRiderAnimComponent::SampleV
 
 bool UTN_BuggyRiderAnimComponent::IsVehicleAirborne()
 {
+#if !UE_BUILD_SHIPPING
+	if (TNRiderAnimDebug::CVarForceAirborne.GetValueOnGameThread() != 0)
+	{
+		return true;
+	}
+#endif
 	const UChaosWheeledVehicleMovementComponent* Move = GetVehicleMovement();
 	if (!Move || !Move->HasValidPhysicsState() || Move->Wheels.Num() == 0)
 	{

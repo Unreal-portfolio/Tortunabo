@@ -87,9 +87,12 @@ struct TORTUNABO_API FTNGunnerAimTuning
 {
 	GENERATED_BODY()
 
-	/** Giro máximo del cuerpo y el cuello juntos hacia cada lado: más allá la torreta gira sola (las piernas no se mueven). */
+	/**
+	 * Giro máximo del cuerpo y el cuello juntos hacia cada lado: más allá la torreta gira sola (las piernas no se mueven).
+	 * 150: con 110, apuntando atrás la cabeza quedaba de lado y el poste de la torreta, delante de ella, la rozaba (#435).
+	 */
 	UPROPERTY(EditAnywhere, Category = "Apuntado", meta = (ClampMin = "0", ClampMax = "170"))
-	float MaxYawDeg = 110.f;
+	float MaxYawDeg = 150.f;
 
 	/** Parte del giro que hace el torso (el resto, el cuello). */
 	UPROPERTY(EditAnywhere, Category = "Apuntado", meta = (ClampMin = "0", ClampMax = "1"))
@@ -315,13 +318,16 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Ocupantes|Artillera", meta = (ClampMin = "0", ClampMax = "1"))
 	float GunnerAirCrouch = 0.75f;
 
-	/** Grados que bajan los brazos al agarrarse en el aire. */
+	/**
+	 * Grados que bajan los brazos al agarrarse en el aire. 0: bajados, los brazos atravesaban el aro y los tirantes de la
+	 * torreta (#435, TN.Rally.DebugRiderAirborne con TN.Rally.DebugTurretFit); se queda agarrada a la torreta encogida.
+	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Ocupantes|Artillera", meta = (ClampMin = "0", ClampMax = "90"))
-	float GripArmDeg = 45.f;
+	float GripArmDeg = 0.f;
 
-	/** Grados que se encorva hacia delante agarrada en el aire. */
+	/** Grados que se encorva hacia delante agarrada en el aire. 0: encorvada, la cabeza bajaba hasta el aro (#435). */
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Ocupantes|Artillera", meta = (ClampMin = "0", ClampMax = "60"))
-	float GripHunchDeg = 18.f;
+	float GripHunchDeg = 0.f;
 
 	/** Cómo sigue el apuntado de la torreta (cuerpo, cuello y cabeza). */
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Ocupantes|Artillera")
