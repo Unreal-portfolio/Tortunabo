@@ -675,6 +675,10 @@ void UProximityVoiceComponent::PlayRemoteVoice(const TArray<uint8>& CompressedDa
 
 	LastRemoteVoiceTime = GetWorld() ? GetWorld()->GetRealTimeSeconds() : 0.0;
 
+	// Defensa en el consumidor: acotar el sample rate recibido por red al rango
+	// humano antes de configurar el playback.
+	SenderSampleRate = FMath::Clamp(SenderSampleRate <= 0 ? 48000 : SenderSampleRate, 8000, 96000);
+
 	// Si quien escucha lo tiene silenciado, ni se descodifica ni se reproduce. Bajarle el volumen a 0 cada fotograma
 	// (UTN_GameSettingsSubsystem::UpdateSounds) no basta por sí solo: un componente de reproducción recién creado suena a
 	// volumen pleno hasta el siguiente fotograma, y sin PlayerState en el peón no se sabría a quién silenciar (#248).
@@ -688,10 +692,6 @@ void UProximityVoiceComponent::PlayRemoteVoice(const TArray<uint8>& CompressedDa
 		UE_LOG(LogTortunabo, Warning, TEXT("[Voice] Llega voz de %s sin saber de qué jugador es (peón sin PlayerState): no se puede aplicar su silencio."),
 			*GetNameSafe(GetOwner()));
 	}
-
-	// Defensa en el consumidor: acotar el sample rate recibido por red al rango
-	// humano antes de configurar el playback.
-	SenderSampleRate = FMath::Clamp(SenderSampleRate <= 0 ? 48000 : SenderSampleRate, 8000, 96000);
 
 	if (!ProceduralSoundWave || !PlaybackAudioComponent)
 	{
