@@ -3014,7 +3014,10 @@ coge»). A petición del usuario, a rebosar: casi todo el decorado se rebusca y 
 - El rebuscable del mapa procedural (mantener E 1,3 s, aro, «¡puf!» u «¡pof!», saltito del objeto, una vez para todas:
   la primera que llega) con las reglas de la carrera: **70 % de suerte** (55 % en el cooperativo: pararse en una carrera
   cuesta), los pesos de la carrera (abajo), polvo de arena y las pistas a la escala de la playa: chispitas desde 35 m y
-  el anillo dorado de dónde rebuscar desde 18 m (105 cm de radio).
+  el anillo dorado de los objetos del suelo, fijo y centrado en el montículo de arena de ese punto (#214; a ras de su
+  arena y algo mayor que él, 1,3-1,9 m de radio; el actor sabe el índice de su montículo, `SetMoundIndex`, y cada máquina
+  saca el sitio del que ella monta: `ATN_BeachSearchRegistry::GetMoundFoot`). Se ve desde que aparece el actor, a 50 m de
+  alguna tortuga, y no sigue a nadie. El alcance para rebuscar es el de la tortuga, 2,5 m (antes 3,5).
 - **Huella real**: la caja de la malla del decorado (su cuerpo), girada, inclinada y escalada como ese ejemplar; cápsula
   a lo largo del lado largo (tablones, troncos, toallas, botellas...) y redonda en lo demás. La sombrilla se rebusca en el
   montón de arena de su pie (la lona está a 35 m).
@@ -3161,8 +3164,8 @@ trincheras) y las fortalezas (en su cima), con `ATN_BeachElement::SpawnElement` 
   percebes, algas colgando del borde y cruzando la tapa, una estrella de mar pegada a un lado y arena amontonada al pie.
   Dentro, monedas, gemas, una copa, perlas y una vieira. Las tres mallas (caja, tesoro y tapa) se hacen una vez y las
   comparten todos los cofres. Mientras está por abrir, una **columna de luz dorada** (la de lo que se coge, de 30 m, se
-  ve a 450 m) y la luz de dentro que late por la rendija; y las chispitas y el anillo de dónde abrirlo de los
-  rebuscables, a la escala de la playa (desde 50 m y 22 m; anillo de 1,4 m).
+  ve a 450 m) y la luz de dentro que late por la rendija; y las chispitas (desde 50 m) y el anillo de los rebuscables,
+  fijo alrededor de su huella (radio 2,07 m; se ve hasta 90 m).
 - **Abrirlo**: mantener E **5,5 s** (no hace caso de `tn.Search.Seconds`), con el aro del HUD. La tapa cruje y se
   entreabre a tirones (de 12° a 48°, temblando) con la luz subiendo, y saltan monedas y chispas hacia la tortuga con el
   sonido de rebuscar agudo. Soltar antes cancela (la tapa cae con un «¡clonc!»). Mientras una tortuga lo abre, las demás
@@ -3200,8 +3203,8 @@ trincheras) y las fortalezas (en su cima), con `ATN_BeachElement::SpawnElement` 
   1. Desde la salida se ven las columnas doradas de los objetos sueltos y, más cerca, sus anillos; las filas de lado a
      lado. Cogerlos (el anillo se apaga con ellos) y usarlos: bola y tinta contra la otra tortuga, concha trampa detrás.
   2. Rebuscar en una silla, un castillo, unos tablones (por el lado largo y por la punta) y una sombrilla (en su pie):
-     el anillo de dónde rebuscar sale a 18 m del borde y sigue a la tortuga; con dos, a la otra no le sale mientras una
-     rebusca y el objeto cae en el mismo sitio para las dos.
+     el anillo dorado está fijo en el montículo de arena (no se mueve al rodearlo) y gira más deprisa mientras se rebusca;
+     con dos, a la otra no le sale el aviso mientras una rebusca y el objeto cae en el mismo sitio para las dos.
   3. Conchas: los arcos de una pala (saltar desde el mango) y de un trampolín, la reina de la sala de arriba del castillo
      con salas, la de lo alto del castillo enorme, las de tras el alambre y las rodadas de un paso de quads. Que sumen al
      contador y al recuento.
