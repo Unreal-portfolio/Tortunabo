@@ -85,7 +85,8 @@ bool FTNRallyBuggyAssetsTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Seat_Gunner = GunnerSeatLocal"), Gunner->RelativeLocation.Equals(ATN_Buggy::GunnerSeatLocal, SocketToleranceCm));
 	TestTrue(TEXT("Muzzle_Gunner = MuzzleLocal"), Muzzle->RelativeLocation.Equals(ATN_Buggy::MuzzleLocal, SocketToleranceCm));
 	const FVector MuzzleFromSeat = Muzzle->RelativeLocation - Gunner->RelativeLocation;
-	TestEqual(TEXT("pivote de la torreta a la altura de la boca"), MuzzleFromSeat.Z, static_cast<double>(UTN_BuggyTurretComponent::PivotAboveSeatCm),
+	TestEqual(TEXT("Muzzle_Gunner a la altura de MuzzleSocketAboveSeatCm"), MuzzleFromSeat.Z,
+		static_cast<double>(UTN_BuggyTurretComponent::MuzzleSocketAboveSeatCm),
 		SocketToleranceCm);
 	TestEqual(TEXT("boca de la torreta apuntando al frente en Muzzle_Gunner"), MuzzleFromSeat.X,
 		static_cast<double>(UTN_BuggyTurretComponent::MuzzleDistanceCm), SocketToleranceCm);

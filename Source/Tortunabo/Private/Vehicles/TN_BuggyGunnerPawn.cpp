@@ -52,7 +52,8 @@ ATN_BuggyGunnerPawn::ATN_BuggyGunnerPawn()
 
 	SpringArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("SpringArm"));
 	SpringArm->SetupAttachment(Root);
-	SpringArm->SetRelativeLocation(FVector(0.f, 0.f, UTN_BuggyTurretComponent::PivotAboveSeatCm));
+	// A la altura de la cabeza de la artillera (Muzzle_Gunner), no del pivote, que va 35 cm más arriba (#435).
+	SpringArm->SetRelativeLocation(FVector(0.f, 0.f, UTN_BuggyTurretComponent::MuzzleSocketAboveSeatCm));
 	SpringArm->bUsePawnControlRotation = false;
 	SpringArm->SetUsingAbsoluteRotation(true);
 

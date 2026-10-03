@@ -1,5 +1,6 @@
-// Torreta del buggy construida en ejecución (#435): boca en su sitio, sin meterse en la cabeza de la artillera, en el
-// respaldo ni en el arco de la conductora. Headless:
+// Torreta del buggy construida en ejecución (#435): boca en su sitio y, al girar 360° con todo el cabeceo, sin meterse en
+// el arco trasero, las barandillas, el arco de la conductora ni el respaldo de la artillera (cotas de build_buggy.py). La
+// holgura con la artillera sentada (malla deformada) la mide TN.Rally.DebugTurretFit en el juego. Headless:
 //   UnrealEditor-Cmd <uproject> -ExecCmds="Automation RunTests Tortunabo.Rally.Turret; Quit" -nullrhi -unattended
 
 #include "Misc/AutomationTest.h"
@@ -13,39 +14,83 @@ namespace TNTurretMeshTest
 {
 	using TNProcMesh::FTNProcMeshBuffers;
 
-	/**
-	 * Medio ancho (cm) de la cabeza de la artillera en reposo cada 5 cm por delante del pivote (desde 5 cm), entre 12 cm
-	 * por debajo y 30 cm por encima de él (Scripts/tools/data/turtle_geo.json a escala 2,5). Se toma el mayor de la
-	 * franja y la siguiente.
-	 */
-	float HeadHalfWidth(double Forward)
-	{
-		static const float Slices[] = { 22.f, 26.f, 22.f, 24.f, 20.f, 15.f, 8.f, 5.f, 5.f, 3.f, 0.f };
-		constexpr int32 Count = UE_ARRAY_COUNT(Slices);
-		const int32 Index = FMath::Clamp(FMath::FloorToInt(Forward / 5.0) - 1, 0, Count - 1);
-		const int32 Next = FMath::Min(Index + 1, Count - 1);
-		return FMath::Max(Slices[Index], Slices[Next]);
-	}
-
-	/** Vértices que caen dentro de la cabeza (con la cabeza mirando al frente, como la torreta). */
-	int32 CountInsideHead(const FTNProcMeshBuffers& Mesh)
-	{
-		int32 Inside = 0;
-		for (const FVector& V : Mesh.Verts)
-		{
-			if (V.X >= 5.0 && V.X <= 55.0 && V.Z >= -12.0 && V.Z <= 30.0 && FMath::Abs(V.Y) <= HeadHalfWidth(V.X))
-			{
-				++Inside;
-			}
-		}
-		return Inside;
-	}
+	/** Delante del pivote, el arco de la conductora (DRIVER_HOOP_X de build_buggy.py respecto a la artillera). */
+	constexpr double FrontBarX = 66.0;
+	/** Base de los montantes del arco trasero (tapa de la carrocería trasera, GUNNER_FLOOR_Z). */
+	constexpr double RearFloorZ = TNBuggyTurretMesh::SeatZ + 90.0 - 127.38;
 
 	FTNProcMeshBuffers Build(void (*Builder)(FTNProcMeshBuffers&))
 	{
 		FTNProcMeshBuffers Mesh;
 		Builder(Mesh);
 		return Mesh;
+	}
+
+	/** Puntos de la superficie de la malla, cada 2 cm como mucho (las caras grandes también cuentan, no solo sus esquinas). */
+	TArray<FVector> Samples(const FTNProcMeshBuffers& Mesh)
+	{
+		TArray<FVector> Out;
+		for (int32 Tri = 0; Tri + 2 < Mesh.Tris.Num(); Tri += 3)
+		{
+			const FVector& A = Mesh.Verts[Mesh.Tris[Tri]];
+			const FVector& B = Mesh.Verts[Mesh.Tris[Tri + 1]];
+			const FVector& C = Mesh.Verts[Mesh.Tris[Tri + 2]];
+			const int32 Steps = FMath::Clamp(FMath::CeilToInt(FMath::Max3(FVector::Dist(A, B), FVector::Dist(B, C), FVector::Dist(C, A)) / 2.0), 1, 64);
+			for (int32 I = 0; I <= Steps; ++I)
+			{
+				for (int32 J = 0; I + J <= Steps; ++J)
+				{
+					Out.Add(A + (B - A) * (static_cast<double>(I) / Steps) + (C - A) * (static_cast<double>(J) / Steps));
+				}
+			}
+		}
+		return Out;
+	}
+
+	/** Distancia mínima (cm) de los puntos a los tubos de la carrocería alrededor de la artillera, menos su radio. */
+	double CageClearance(const TArray<FVector>& Points)
+	{
+		using namespace TNBuggyTurretMesh;
+		struct FBar { FVector A; FVector B; };
+		const FBar Bars[] = {
+			{ FVector(RearBarX, -RailY, RearBarZ), FVector(RearBarX, RailY, RearBarZ) },
+			{ FVector(RearBarX, -RailY, RearFloorZ), FVector(RearBarX, -RailY, RearBarZ) },
+			{ FVector(RearBarX, RailY, RearFloorZ), FVector(RearBarX, RailY, RearBarZ) },
+			{ FVector(RearBarX, -RailY, RailZ), FVector(FrontBarX, -RailY, RailZ) },
+			{ FVector(RearBarX, RailY, RailZ), FVector(FrontBarX, RailY, RailZ) },
+			{ FVector(FrontBarX, -RailY, RailZ), FVector(FrontBarX, RailY, RailZ) } };
+		double Closest = 1.0e9;
+		for (const FVector& P : Points)
+		{
+			for (const FBar& Bar : Bars)
+			{
+				Closest = FMath::Min(Closest, FMath::PointDistToSegment(P, Bar.A, Bar.B) - BarRadius);
+			}
+		}
+		return Closest;
+	}
+
+	/** Puntos dentro del respaldo de la artillera (detrás de ella, hasta BackrestRadius del eje y BackrestTopZ). */
+	int32 CountInBackrest(const TArray<FVector>& Points)
+	{
+		using namespace TNBuggyTurretMesh;
+		int32 Inside = 0;
+		for (const FVector& P : Points)
+		{
+			Inside += P.X < -15.0 && FMath::Abs(P.Y) < 25.0 && FVector2D(P.X, P.Y).Size() < BackrestRadius && P.Z < BackrestTopZ ? 1 : 0;
+		}
+		return Inside;
+	}
+
+	TArray<FVector> Rotated(const TArray<FVector>& Points, const FRotator& Rotation)
+	{
+		TArray<FVector> Out;
+		Out.Reserve(Points.Num());
+		for (const FVector& P : Points)
+		{
+			Out.Add(Rotation.RotateVector(P));
+		}
+		return Out;
 	}
 }
 
@@ -112,56 +157,58 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNRallyTurretMeshClearanceTest,
 bool FTNRallyTurretMeshClearanceTest::RunTest(const FString& Parameters)
 {
 	using namespace TNTurretMeshTest;
-	const FTNProcMeshBuffers Ring = Build(&TNBuggyTurretMesh::BuildRing);
-	const FTNProcMeshBuffers Mount = Build(&TNBuggyTurretMesh::BuildMount);
-	const FTNProcMeshBuffers Gun = Build(&TNBuggyTurretMesh::BuildGun);
-	const FTNProcMeshBuffers Barrel = Build(&TNBuggyTurretMesh::BuildBarrel);
+	using namespace TNBuggyTurretMesh;
+	const FTNProcMeshBuffers Ring = Build(&BuildRing);
+	const FTNProcMeshBuffers Mount = Build(&BuildMount);
+	const FTNProcMeshBuffers Gun = Build(&BuildGun);
+	const FTNProcMeshBuffers Barrel = Build(&BuildBarrel);
 	for (const FTNProcMeshBuffers* Mesh : { &Ring, &Mount, &Gun, &Barrel })
 	{
 		TestFalse(TEXT("cada pieza tiene malla"), Mesh->IsEmpty());
 		TestEqual(TEXT("buffers coherentes"), Mesh->Normals.Num(), Mesh->Verts.Num());
 	}
 
-	// Nada de la torreta dentro de la cabeza de la artillera (gira y cabecea con ella dentro de su giro máximo).
-	TestEqual(TEXT("ningún vértice del cañón dentro de la cabeza"), CountInsideHead(Gun), 0);
-	TestEqual(TEXT("ningún vértice de la caña dentro de la cabeza"), CountInsideHead(Barrel), 0);
-	TestEqual(TEXT("ningún vértice del carro dentro de la cabeza"), CountInsideHead(Mount), 0);
-
-	// El aro y el carro pasan por encima del respaldo de la artillera (acaba 27,4 cm bajo el pivote, 25 cm a cada lado).
-	double LowestOverSeat = 1.0e9;
-	for (const FTNProcMeshBuffers* Mesh : { &Ring, &Mount })
-	{
-		for (const FVector& V : Mesh->Verts)
-		{
-			if (FMath::Abs(V.Y) < 26.0 && FMath::Abs(V.X) < 45.0)
-			{
-				LowestOverSeat = FMath::Min(LowestOverSeat, V.Z);
-			}
-		}
-	}
-	TestTrue(FString::Printf(TEXT("aro y carro por encima del respaldo (%.1f cm)"), LowestOverSeat), LowestOverSeat > -27.0);
-
-	// Apuntando al frente con el cabeceo mínimo, nada toca el travesaño del arco de la conductora (66 cm delante del
-	// pivote, a la altura de las barandillas, 4 cm de radio).
-	const FQuat Down = FRotator(TNRallyTurret::MinPitchDeg, 0.f, 0.f).Quaternion();
-	double Closest = 1.0e9;
-	for (const FTNProcMeshBuffers* Mesh : { &Gun, &Barrel })
-	{
-		for (const FVector& V : Mesh->Verts)
-		{
-			const FVector P = Down.RotateVector(V);
-			Closest = FMath::Min(Closest, FVector2D(P.X - 66.0, P.Z - TNBuggyTurretMesh::RailZ).Size());
-		}
-	}
-	TestTrue(FString::Printf(TEXT("cabeceo mínimo: el cañón no toca el arco de la conductora (%.1f cm del eje)"), Closest), Closest > 4.5);
-
-	// Los tirantes llegan a las barandillas.
+	// El aro va por fuera del respaldo y por dentro de las barandillas; sus tirantes llegan a ellas.
+	TestTrue(TEXT("el aro rodea el respaldo"), RingRadius - RingTube > BackrestRadius);
+	TestTrue(TEXT("el aro cabe dentro de las barandillas"), RingRadius + RingTube < RailY - BarRadius);
 	double RingReach = 0.0;
 	for (const FVector& V : Ring.Verts)
 	{
 		RingReach = FMath::Max(RingReach, FMath::Abs(V.Y));
 	}
-	TestTrue(TEXT("los tirantes llegan a las barandillas"), RingReach >= TNBuggyTurretMesh::RailY);
+	TestTrue(TEXT("los tirantes llegan a las barandillas"), RingReach >= RailY);
+
+	// Al girar 360° con todo el cabeceo, ni el cañón ni la caña tocan un tubo de la carrocería (el travesaño del arco
+	// trasero queda 42 cm detrás del pivote: con el pivote a la altura de Muzzle_Gunner lo atravesaba apuntando atrás).
+	const TArray<FVector> GunPoints = Samples(Gun);
+	const TArray<FVector> BarrelPoints = Samples(Barrel);
+	const TArray<FVector> MountPoints = Samples(Mount);
+	double GunClearance = 1.0e9;
+	FRotator WorstAim = FRotator::ZeroRotator;
+	int32 MountInBackrest = 0;
+	double MountClearance = 1.0e9;
+	for (int32 Yaw = -180; Yaw < 180; Yaw += 5)
+	{
+		for (float Pitch = TNRallyTurret::MinPitchDeg; Pitch <= TNRallyTurret::MaxPitchDeg + 0.1f; Pitch += 5.f)
+		{
+			const FRotator Aim(Pitch, static_cast<float>(Yaw), 0.f);
+			const double Clearance = FMath::Min(CageClearance(Rotated(GunPoints, Aim)), CageClearance(Rotated(BarrelPoints, Aim)));
+			if (Clearance < GunClearance)
+			{
+				GunClearance = Clearance;
+				WorstAim = Aim;
+			}
+		}
+		const TArray<FVector> MountAtYaw = Rotated(MountPoints, FRotator(0.f, static_cast<float>(Yaw), 0.f));
+		MountClearance = FMath::Min(MountClearance, CageClearance(MountAtYaw));
+		MountInBackrest += CountInBackrest(MountAtYaw);
+	}
+	TestTrue(FString::Printf(TEXT("el cañón no toca la carrocería en ningún apuntado (holgura %.1f cm con %s)"), GunClearance,
+		*WorstAim.ToString()), GunClearance > 0.5);
+	TestTrue(FString::Printf(TEXT("el carro y su poste no tocan la carrocería al girar (holgura %.1f cm)"), MountClearance),
+		MountClearance > 0.5);
+	TestEqual(TEXT("el carro no se mete en el respaldo al girar"), MountInBackrest, 0);
+	TestEqual(TEXT("el aro no se mete en el respaldo"), CountInBackrest(Samples(Ring)), 0);
 	return true;
 }
 

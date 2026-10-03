@@ -151,7 +151,7 @@ ATN_Buggy::ATN_Buggy()
 	BoostStartSound = BoostStartFinder.Object;
 	Turret = CreateDefaultSubobject<UTN_BuggyTurretComponent>(TEXT("Turret"));
 	Turret->SetupAttachment(Chassis);
-	// Pivote a la altura de la boca (Muzzle_Gunner) sobre el asiento: apuntando al frente, la boca cae en el socket.
+	// Pivote PivotRaiseCm por encima de Muzzle_Gunner: el cañón pasa sobre la cabeza de la artillera y el arco trasero.
 	Turret->SetRelativeLocation(GunnerSeatLocal + FVector(0.f, 0.f, UTN_BuggyTurretComponent::PivotAboveSeatCm));
 
 	// Torreta con forma propia (#435; el modelo de Art/Source no la trae): las mallas las construye BuildTurretVisuals en

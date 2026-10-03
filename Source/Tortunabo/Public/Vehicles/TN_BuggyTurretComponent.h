@@ -23,18 +23,28 @@ class TORTUNABO_API UTN_BuggyTurretComponent : public USceneComponent
 
 public:
 	/**
-	 * Altura del pivote de la torreta sobre el asiento de la artillera (cm): la de la boca, Muzzle_Gunner (169,38) menos
-	 * Seat_Gunner (127,38) en SM_TN_BuggyBody. Lo comprueba Tortunabo.Rally.Buggy.Assets.
+	 * Altura del socket Muzzle_Gunner sobre el asiento de la artillera (cm): Muzzle_Gunner (169,38) menos Seat_Gunner
+	 * (127,38) en SM_TN_BuggyBody, a la altura de su cabeza. La cámara de la artillera sigue aquí. Lo comprueba
+	 * Tortunabo.Rally.Buggy.Assets.
 	 */
-	static constexpr float PivotAboveSeatCm = 42.f;
+	static constexpr float MuzzleSocketAboveSeatCm = 42.f;
 	/**
-	 * Distancia de la boca al pivote (cm): apuntando al frente, la boca cae en Muzzle_Gunner (64,58 cm por delante del
-	 * asiento, 10 cm por delante del hocico de la artillera). El proyectil sale de ahí.
+	 * Lo que sube el pivote de la torreta sobre Muzzle_Gunner (cm, #435): el cañón pasa por encima de la cabeza de la
+	 * artillera y de su mano derecha levantada y, apuntando atrás con cualquier cabeceo, por encima del travesaño del arco
+	 * trasero (medido con
+	 * TN.Rally.DebugTurretFit; Tortunabo.Rally.Turret.MeshClearance).
+	 */
+	static constexpr float PivotRaiseCm = 45.f;
+	/** Altura del pivote de la torreta sobre el asiento de la artillera (cm). */
+	static constexpr float PivotAboveSeatCm = MuzzleSocketAboveSeatCm + PivotRaiseCm;
+	/**
+	 * Distancia de la boca al pivote (cm): apuntando al frente, la boca cae PivotRaiseCm por encima de Muzzle_Gunner
+	 * (64,58 cm por delante del asiento, 10 cm por delante del hocico de la artillera). El proyectil sale de ahí.
 	 */
 	static constexpr float MuzzleDistanceCm = 64.58f;
 	/**
-	 * Desplazamiento de la boca a la derecha del eje de apuntado (cm): el cañón va junto a la cabeza de la artillera, que
-	 * ocupa el eje (#435). El proyectil sale de la boca visible (TNRallyTurret::MuzzleWorldLocation).
+	 * Desplazamiento de la boca a la derecha del eje de apuntado (cm): el cañón va a la derecha, sobre la mano derecha
+	 * levantada de la artillera (#435). El proyectil sale de la boca visible (TNRallyTurret::MuzzleWorldLocation).
 	 */
 	static constexpr float MuzzleSideCm = 25.f;
 	/** Etiqueta de las mallas que toman el color de la munición seleccionada (la caña del cañón). */

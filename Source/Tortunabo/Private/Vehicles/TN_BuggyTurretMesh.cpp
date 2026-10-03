@@ -77,10 +77,16 @@ namespace TNBuggyTurretMesh
 		}
 	}
 
+	FVector PostPoint(double Radius, double Z)
+	{
+		const double Angle = FMath::DegreesToRadians(MountAngleDeg);
+		return FVector(Radius * FMath::Cos(Angle), Radius * FMath::Sin(Angle), Z);
+	}
+
 	void BuildRing(FTNProcMeshBuffers& Out)
 	{
 		AddTorus(Out, FVector(0.0, 0.0, RingZ), RingRadius, RingTube, Trim);
-		// Tirantes a las barandillas laterales, con su abrazadera.
+		// Tirantes que suben a las barandillas laterales, con su abrazadera.
 		for (const double Side : { -1.0, 1.0 })
 		{
 			Out.AddBeam(FVector(0.0, Side * (RingRadius + RingTube * 0.5), RingZ), FVector(0.0, Side * (RailY - 2.0), RailZ), 1.6, Trim);
@@ -90,22 +96,28 @@ namespace TNBuggyTurretMesh
 
 	void BuildMount(FTNProcMeshBuffers& Out)
 	{
-		// Carro sobre el aro (a la derecha) con dos zapatas que lo abrazan.
+		// Carro sobre el aro (tangente al aro) con dos zapatas que lo abrazan.
+		const FVector Radial = PostPoint(1.0, 0.0);
+		const FVector Tangent(-Radial.Y, Radial.X, 0.0);
 		const double CarriageZ = RingZ + RingTube + 2.5;
-		Out.AddBox(FVector(0.0, RingRadius, CarriageZ), AxisX, FVector(10.0, 4.5, 2.5), Dark);
+		Out.AddBox(PostPoint(RingRadius, CarriageZ), Tangent, FVector(8.0, 4.5, 2.5), Dark);
 		for (const double Side : { -1.0, 1.0 })
 		{
-			const double X = Side * 8.0;
-			Out.AddBox(FVector(X, FMath::Sqrt(RingRadius * RingRadius - X * X), RingZ), AxisX, FVector(1.5, 4.0, 3.2), Dark);
+			const FVector Shoe = PostPoint(RingRadius, RingZ) + Tangent * (Side * 6.5);
+			Out.AddBox(Shoe, Tangent, FVector(1.5, 4.0, 3.2), Dark);
 		}
-		// Horquilla del carro hasta el eje de cabeceo y cubo del eje (simétrico: no se nota que no cabecea).
-		const double PlateBottom = CarriageZ + 2.5;
-		const double PlateTop = HubRadius;
-		Out.AddBox(FVector(0.0, YokeY, (PlateBottom + PlateTop) * 0.5), AxisX, FVector(8.0, 1.8, (PlateTop - PlateBottom) * 0.5), Yellow);
-		// Pernos en la cara de fuera de la horquilla: se ve que el carro gira con la torreta.
-		for (const double X : { -5.0, 5.0 })
+		// Poste: sube por fuera del respaldo, se mete entre la nuca y el arco trasero y llega por encima de la cabeza; un
+		// brazo horizontal lo une al cubo. Abrazaderas en los codos.
+		const FVector Path[] = { PostPoint(RingRadius, CarriageZ + 2.5), PostPoint(RingRadius, PostBendLowZ),
+			PostPoint(PostInnerRadius, PostInnerLowZ), PostPoint(PostInnerRadius, PostInnerHighZ), PostPoint(PostTopRadius, 0.0),
+			FVector(0.0, (HubInnerY + HubOuterY) * 0.5, 0.0) };
+		for (int32 Index = 0; Index + 1 < UE_ARRAY_COUNT(Path); ++Index)
 		{
-			Out.AddBox(FVector(X, YokeY + 2.3, PlateBottom + 3.0), AxisX, FVector(1.2, 0.6, 1.2), Dark);
+			TNProcMesh::TNProcAddCylinder(Out, Path[Index], Path[Index + 1], PostHalf, PostHalf, 8, Yellow);
+			if (Index > 0)
+			{
+				Out.AddBox(Path[Index], Radial, FVector(PostHalf + 0.6, PostHalf + 0.6, PostHalf + 0.6), Dark);
+			}
 		}
 		TNProcMesh::TNProcAddCylinder(Out, FVector(0.0, HubInnerY, 0.0), FVector(0.0, HubOuterY, 0.0), HubRadius, HubRadius, 10, Dark);
 	}
@@ -113,17 +125,17 @@ namespace TNBuggyTurretMesh
 	void BuildGun(FTNProcMeshBuffers& Out)
 	{
 		const double SideY = UTN_BuggyTurretComponent::MuzzleSideCm;
-		// Brazo lateral del cubo al cuerpo, por fuera de la cabeza de la artillera.
-		Out.AddBox(FVector((BodyMinX + 2.0 - 3.0) * 0.5, 32.0, 0.0), AxisX, FVector((BodyMinX + 2.0 + 3.0) * 0.5, 2.0, 3.5), Trim);
+		// Brazo lateral del cubo al cuerpo, por fuera del cuerpo.
+		Out.AddBox(FVector((BodyMinX + 2.0 - 3.0) * 0.5, ArmY, 0.0), AxisX, FVector((BodyMinX + 2.0 + 3.0) * 0.5, 2.0, 3.5), Trim);
 		// Cuerpo, culata y tolva de cocos.
 		const double BodyHalfX = (BodyMaxX - BodyMinX) * 0.5;
-		Out.AddBox(FVector(BodyMinX + BodyHalfX, SideY, 0.0), AxisX, FVector(BodyHalfX, 8.0, 7.0), Yellow);
-		TNProcMesh::TNProcAddCylinder(Out, FVector(BodyMinX, SideY, 0.0), FVector(BodyMinX - 3.0, SideY, 0.0), 4.0, 3.0, 8, Dark);
-		TNProcMesh::TNProcAddCylinder(Out, FVector(BodyMinX + 9.0, SideY, 7.0), FVector(BodyMinX + 9.0, SideY, 14.0), 4.5, 6.5, 8, Paint);
+		Out.AddBox(FVector(BodyMinX + BodyHalfX, SideY, BodyZ), AxisX, FVector(BodyHalfX, 8.0, 7.0), Yellow);
+		TNProcMesh::TNProcAddCylinder(Out, FVector(BodyMinX, SideY, BodyZ), FVector(BodyMinX - 3.0, SideY, BodyZ), 4.0, 3.0, 8, Dark);
+		TNProcMesh::TNProcAddCylinder(Out, FVector(BodyMinX + 9.0, SideY, BodyZ + 7.0), FVector(BodyMinX + 9.0, SideY, BodyZ + 14.0), 4.5, 6.5, 8, Paint);
 		// Escudo frontal con su marco.
 		const double ShieldMaxY = SideY + 17.0;
-		const double ShieldMinZ = -13.0;
-		const double ShieldMaxZ = 15.0;
+		const double ShieldMinZ = BodyZ - 13.0;
+		const double ShieldMaxZ = BodyZ + 15.0;
 		const FVector ShieldCenter(ShieldX, (ShieldMinY + ShieldMaxY) * 0.5, (ShieldMinZ + ShieldMaxZ) * 0.5);
 		const FVector ShieldHalf(1.2, (ShieldMaxY - ShieldMinY) * 0.5, (ShieldMaxZ - ShieldMinZ) * 0.5);
 		Out.AddBox(ShieldCenter, AxisX, ShieldHalf, Cream);
