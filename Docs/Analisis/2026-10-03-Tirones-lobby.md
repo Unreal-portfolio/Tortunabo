@@ -47,7 +47,7 @@ Las ejecuciones 7 y 8 tienen el mismo montaje: en una hay tirones de 400 ms y en
 Como el tirón real no se ha podido capturar aquí, el juego trae ahora una forma de capturarlo en la partida de verdad sin tener que pulsar nada a tiempo:
 
 - `-TNHitchLog` (50 ms) o `-TNHitchLog=<ms>` en la línea de órdenes, o `TN.HitchLog.ThresholdMs <ms>` en la consola. No existe en Shipping y viene apagado por defecto.
-- Cada fotograma por encima del umbral escribe una línea en el log, por ejemplo: `[Tirón] 165 ms (juego 22.2, render 184.4, GPU 5.8 ms: hilo de render) · 3 jugadores · ventana sin foco · n.º 7, cada 4.4 s`. También deja un marcador «Tirón 165 ms» en Insights si la traza lleva el canal `bookmark`.
+- Cada fotograma por encima del umbral escribe una línea en el log, por ejemplo: `[Tirón] 165 ms (juego 22.2, render 184.4, RHI 3.1, GPU 5.8 ms: hilo de render) · 3 jugadores · ventana sin foco · n.º 7, a 4.1 s del anterior (mediana 4.4 s)`. Los tiempos de hilo no cuentan las esperas: si ningún hilo llega a la mitad del fotograma, sale «ningún hilo ocupado» (una espera de presentación o del controlador, o el proceso parado). También deja un marcador «Tirón 165 ms» en Insights si la traza lleva el canal `bookmark`.
 - Atribuye el tirón al hilo que explica al menos la mitad del fotograma. Si no lo explica ninguno, pone «ningún hilo (el proceso no corría)»: es la señal del planificador o de otro proceso.
 - Código: `Source/Tortunabo/{Public,Private}/Testing/TN_HitchTracker.*` (lógica pura) y `TN_HitchMonitorSubsystem.*`. Test: `Tortunabo.Testing.HitchTracker`.
 

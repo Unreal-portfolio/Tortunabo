@@ -16,9 +16,14 @@ namespace TNHitch
 		GameThread,
 		/** Preparación de la escena en el hilo de render. */
 		RenderThread,
-		/** La GPU (o la presentación) no termina a tiempo y la CPU la espera. */
+		/** Envío de órdenes al controlador en el hilo RHI. */
+		RhiThread,
+		/** La GPU no termina a tiempo y la CPU la espera. */
 		Gpu,
-		/** Ningún hilo lo explica: el proceso no ha corrido (planificador, otro proceso, controlador). */
+		/**
+		 * Ningún hilo ha estado ocupado la mitad del fotograma. Los tiempos de hilo excluyen las esperas: puede ser una espera
+		 * (presentación, vsync, controlador) o que el proceso no corriera (planificador, otro proceso).
+		 */
 		Unknown
 	};
 
@@ -26,9 +31,9 @@ namespace TNHitch
 
 	/**
 	 * El hilo con más tiempo, si explica al menos la mitad del fotograma; si no, Unknown. Los tiempos de hilo son los
-	 * que el motor publica (GGameThreadTime, GRenderThreadTime, RHIGetGPUFrameCycles), en milisegundos.
+	 * que el motor publica (GGameThreadTime, GRenderThreadTime, GRHIThreadTime, RHIGetGPUFrameCycles), en milisegundos.
 	 */
-	EBound Classify(float FrameMs, float GameThreadMs, float RenderThreadMs, float GpuMs);
+	EBound Classify(float FrameMs, float GameThreadMs, float RenderThreadMs, float RhiThreadMs, float GpuMs);
 
 	/** Últimos tirones: cuántos hay y cada cuánto llegan (mediana de los intervalos). */
 	class FTracker
@@ -45,6 +50,9 @@ namespace TNHitch
 
 		/** Mediana de los intervalos entre los últimos tirones; 0 si hay menos de dos. */
 		double MedianIntervalSeconds() const;
+
+		/** Tiempo entre el último tirón y el anterior; 0 si hay menos de dos. */
+		double LastIntervalSeconds() const;
 
 	private:
 		TArray<double> Times;

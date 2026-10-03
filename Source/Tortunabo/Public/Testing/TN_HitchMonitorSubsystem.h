@@ -8,7 +8,7 @@
 /**
  * Registro de tirones (#152; no existe en Shipping). Con TN.HitchLog.ThresholdMs > 0 (o -TNHitchLog[=ms] en la línea de
  * órdenes; sin valor, 50 ms), cada fotograma más largo que el umbral deja en el log una línea «[Tirón]» con su duración,
- * los tiempos de hilo de juego, render y GPU, a qué se debe, los jugadores, si la ventana tenía el foco y cada cuánto se
+ * los tiempos de hilo de juego, render, RHI y GPU, a qué se debe, los jugadores, si la ventana tenía el foco y cada cuánto se
  * repiten, y un marcador «Tirón N ms» en la traza de Insights (canal bookmark). Así el tirón queda capturado aunque nadie
  * llegue a pulsar nada. Docs/Analisis/2026-10-03-Tirones-lobby.md.
  */

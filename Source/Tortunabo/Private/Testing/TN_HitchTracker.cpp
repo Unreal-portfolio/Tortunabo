@@ -8,12 +8,13 @@ namespace TNHitch
 		{
 		case EBound::GameThread: return TEXT("hilo de juego");
 		case EBound::RenderThread: return TEXT("hilo de render");
+		case EBound::RhiThread: return TEXT("hilo RHI");
 		case EBound::Gpu: return TEXT("GPU");
-		default: return TEXT("ningún hilo (el proceso no corría)");
+		default: return TEXT("ningún hilo ocupado (espera de presentación o del controlador, o el proceso no corría)");
 		}
 	}
 
-	EBound Classify(float FrameMs, float GameThreadMs, float RenderThreadMs, float GpuMs)
+	EBound Classify(float FrameMs, float GameThreadMs, float RenderThreadMs, float RhiThreadMs, float GpuMs)
 	{
 		if (FrameMs <= 0.f)
 		{
@@ -25,6 +26,11 @@ namespace TNHitch
 		{
 			Bound = EBound::RenderThread;
 			Longest = RenderThreadMs;
+		}
+		if (RhiThreadMs > Longest)
+		{
+			Bound = EBound::RhiThread;
+			Longest = RhiThreadMs;
 		}
 		if (GpuMs > Longest)
 		{
@@ -42,6 +48,11 @@ namespace TNHitch
 		{
 			Times.RemoveAt(0, Times.Num() - MaxRemembered, EAllowShrinking::No);
 		}
+	}
+
+	double FTracker::LastIntervalSeconds() const
+	{
+		return Times.Num() < 2 ? 0.0 : Times.Last() - Times.Last(1);
 	}
 
 	double FTracker::MedianIntervalSeconds() const

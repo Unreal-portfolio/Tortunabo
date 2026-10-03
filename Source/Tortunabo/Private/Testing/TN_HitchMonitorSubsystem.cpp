@@ -90,18 +90,21 @@ void UTN_HitchMonitorSubsystem::ReportHitch(float FrameMs, double Now)
 	// Los tiempos de hilo que publica el motor son los del último fotograma medido (la GPU va uno o dos por detrás).
 	const float GameMs = static_cast<float>(FPlatformTime::ToMilliseconds(GGameThreadTime));
 	const float RenderMs = static_cast<float>(FPlatformTime::ToMilliseconds(GRenderThreadTime));
+	const float RhiMs = static_cast<float>(FPlatformTime::ToMilliseconds(GRHIThreadTime));
 	const float GpuMs = static_cast<float>(FPlatformTime::ToMilliseconds(RHIGetGPUFrameCycles()));
-	const TNHitch::EBound Bound = TNHitch::Classify(FrameMs, GameMs, RenderMs, GpuMs);
+	const TNHitch::EBound Bound = TNHitch::Classify(FrameMs, GameMs, RenderMs, RhiMs, GpuMs);
 	Tracker.Add(Now);
 
 	const UWorld* World = GetWorld();
 	const AGameStateBase* GameState = World ? World->GetGameState() : nullptr;
 	const int32 Players = GameState ? GameState->PlayerArray.Num() : 0;
 	const bool bForeground = FPlatformApplicationMisc::IsThisApplicationForeground();
-	const double Interval = Tracker.MedianIntervalSeconds();
+	const double SinceLast = Tracker.LastIntervalSeconds();
+	const double Median = Tracker.MedianIntervalSeconds();
 
-	UE_LOG(LogTortunabo, Warning, TEXT("[Tirón] %.0f ms (juego %.1f, render %.1f, GPU %.1f ms: %s) · %d jugadores · ventana %s · n.º %d, cada %.1f s"),
-		FrameMs, GameMs, RenderMs, GpuMs, TNHitch::BoundName(Bound), Players, bForeground ? TEXT("con foco") : TEXT("sin foco"),
-		Tracker.Total(), Interval);
+	UE_LOG(LogTortunabo, Warning,
+		TEXT("[Tirón] %.0f ms (juego %.1f, render %.1f, RHI %.1f, GPU %.1f ms: %s) · %d jugadores · ventana %s · n.º %d, a %.1f s del anterior (mediana %.1f s)"),
+		FrameMs, GameMs, RenderMs, RhiMs, GpuMs, TNHitch::BoundName(Bound), Players, bForeground ? TEXT("con foco") : TEXT("sin foco"),
+		Tracker.Total(), SinceLast, Median);
 	TRACE_BOOKMARK(TEXT("Tirón %d ms"), FMath::RoundToInt(FrameMs));
 }
