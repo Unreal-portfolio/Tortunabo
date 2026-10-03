@@ -340,7 +340,7 @@ FString ATN_Buggy::DebugMeasureTurretFit() const
 	const TArray<FVector> Mount = Samples(FromBuilder(TurretMount, &TNBuggyTurretMesh::BuildMount));
 	const TArray<FVector> Gun = Samples(FromBuilder(TurretGun, &TNBuggyTurretMesh::BuildGun));
 	const TArray<FVector> Barrel = Samples(FromBuilder(TurretBarrel, &TNBuggyTurretMesh::BuildBarrel));
-	// El aro va sujeto a las barandillas: sus abrazaderas tocan la carrocería a propósito.
+	// El aro no se mide contra la carrocería: los pies de sus patas apoyan en el suelo trasero a propósito.
 	const FResult MountBody = Measure(Mount, BodySoup);
 	const FResult GunBody = Measure(Gun, BodySoup);
 	const FResult BarrelBody = Measure(Barrel, BodySoup);

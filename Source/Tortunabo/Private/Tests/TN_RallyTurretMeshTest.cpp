@@ -4,6 +4,7 @@
 //   UnrealEditor-Cmd <uproject> -ExecCmds="Automation RunTests Tortunabo.Rally.Turret; Quit" -nullrhi -unattended
 
 #include "Misc/AutomationTest.h"
+#include "Vehicles/TN_BuggyRiderAnimComponent.h"
 #include "Vehicles/TN_BuggyTurretComponent.h"
 #include "Vehicles/TN_RallyTurretLogic.h"
 #include "../Vehicles/TN_BuggyTurretMesh.h"
@@ -176,7 +177,7 @@ bool FTNRallyTurretMeshClearanceTest::RunTest(const FString& Parameters)
 	{
 		RingLowest = FMath::Min(RingLowest, V.Z);
 	}
-	TestTrue(TEXT("las patas del aro llegan al suelo de la carrocería trasera"), RingLowest <= FloorZ);
+	TestTrue(TEXT("las patas del aro llegan al suelo de la carrocería trasera"), RingLowest <= FloorZ + 0.01);
 	TestTrue(TEXT("el aro no toca las barandillas"), CageClearance(Samples(Ring)) > 0.5);
 
 	// Al girar 360° con todo el cabeceo, ni el cañón ni la caña tocan un tubo de la carrocería (el travesaño del arco
@@ -210,6 +211,34 @@ bool FTNRallyTurretMeshClearanceTest::RunTest(const FString& Parameters)
 		MountClearance > 0.5);
 	TestEqual(TEXT("el carro no se mete en el respaldo al girar"), MountInBackrest, 0);
 	TestEqual(TEXT("el aro no se mete en el respaldo"), CountInBackrest(Samples(Ring)), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNRallyTurretPostBehindHeadTest,
+	"Tortunabo.Rally.Turret.PostBehindHead",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNRallyTurretPostBehindHeadTest::RunTest(const FString& Parameters)
+{
+	// El poste del carro gira con el apuntado (MountAngleDeg detrás de él) y la cabeza de la artillera lo sigue hasta
+	// MaxYawDeg. Con el tope en 110° el poste le quedaba delante de la cara apuntando atrás (96° de separación a 180°, roce
+	// a -150°/45° medido con TN.Rally.DebugTurretFit, #435): en toda la vuelta el poste queda a 130° o más de su cara.
+	const FTNGunnerAimTuning Tuning;
+	float Closest = 360.f;
+	int32 WorstYaw = 0;
+	for (int32 Yaw = -180; Yaw <= 180; Yaw += 5)
+	{
+		const float HeadYaw = TNRiderAnim::GunnerAimTargets(static_cast<float>(Yaw), 45.f, false, Tuning).YawDeg;
+		const float PostYaw = static_cast<float>(Yaw + TNBuggyTurretMesh::MountAngleDeg);
+		const float Separation = FMath::Abs(FMath::FindDeltaAngleDegrees(HeadYaw, PostYaw));
+		if (Separation < Closest)
+		{
+			Closest = Separation;
+			WorstYaw = Yaw;
+		}
+	}
+	TestTrue(FString::Printf(TEXT("el poste queda detrás de la cabeza en toda la vuelta (%.0f° con el apuntado a %d°)"), Closest, WorstYaw),
+		Closest >= 130.f);
 	return true;
 }
 

@@ -319,13 +319,13 @@ protected:
 	float GunnerAirCrouch = 0.75f;
 
 	/**
-	 * Grados que bajan los brazos al agarrarse en el aire. 0: bajados, los brazos atravesaban el aro y los tirantes de la
+	 * Grados que bajan los brazos al agarrarse en el aire. 0: al bajarlos, atravesaban el aro y los tirantes que tenía la
 	 * torreta (#435, TN.Rally.DebugRiderAirborne con TN.Rally.DebugTurretFit); se queda agarrada a la torreta encogida.
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Ocupantes|Artillera", meta = (ClampMin = "0", ClampMax = "90"))
 	float GripArmDeg = 0.f;
 
-	/** Grados que se encorva hacia delante agarrada en el aire. 0: encorvada, la cabeza bajaba hasta el aro (#435). */
+	/** Grados que se encorva hacia delante agarrada en el aire. 0: al encorvarse, la cabeza bajaba hasta el aro (#435). */
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Ocupantes|Artillera", meta = (ClampMin = "0", ClampMax = "60"))
 	float GripHunchDeg = 0.f;
 
