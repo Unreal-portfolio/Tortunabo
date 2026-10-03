@@ -293,6 +293,14 @@ void UTN_TutorialPlayerComponent::ClientTaskDone_Implementation(uint8 StationInd
 	RefreshWidget();
 }
 
+void UTN_TutorialPlayerComponent::ClientResetProgress_Implementation()
+{
+	// Las tareas tachadas, la estación y las medidas son locales: se vacían como al entrar de nuevas (HandleInTutorialChanged).
+	ResetProgress();
+	FinalMessageSeconds = 0.f;
+	RefreshWidget();
+}
+
 void UTN_TutorialPlayerComponent::StartLocalFall(ATortugaCharacter* Turtle)
 {
 	APlayerController* PC = GetPC();

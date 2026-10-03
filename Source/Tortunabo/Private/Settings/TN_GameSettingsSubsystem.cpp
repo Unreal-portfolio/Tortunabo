@@ -1314,7 +1314,9 @@ void UTN_GameSettingsSubsystem::UpdateSounds(UWorld* World)
 			{
 				return;
 			}
-			const FString Key = PlayerKey(Speaker->GetPlayerState());
+			// El jugador de esa voz: el del peón o, si el peón ya no tiene (sin poseer, o aún sin replicar), el último que tuvo;
+			// con la clave vacía la voz saldría sin silenciar a volumen pleno (#248).
+			const FString Key = PlayerKey(Voice->GetSpeakerState());
 			const float Target = Voice->PlaybackVolume * (IsPlayerMuted(Key) ? 0.f : GetPlayerVoiceVolume(Key));
 			if (!FMath::IsNearlyEqual(Component->VolumeMultiplier, Target, 0.001f))
 			{

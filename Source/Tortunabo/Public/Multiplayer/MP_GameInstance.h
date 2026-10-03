@@ -26,18 +26,6 @@ struct FUniqueNetIdRepl;
 /** Aviso de las salas para la interfaz (sala cerrada, llena, código que no existe...). bError: en coral; si no, en dorado. */
 DECLARE_MULTICAST_DELEGATE_TwoParams(FTNOnRoomNotice, const FText& /*Message*/, bool /*bError*/);
 
-/** Para qué es la búsqueda de sesiones en marcha (UMP_GameInstance). */
-enum class ETNRoomSearch : uint8
-{
-	None,
-	/** Lista de salas públicas. */
-	List,
-	/** Sala de un código. */
-	Code,
-	/** «Unirse a la primera» (FindAndJoinSession). */
-	QuickJoin,
-};
-
 /** Aviso que espera al menú principal (tras volver a él: expulsado, sala cerrada, el anfitrión se fue...). */
 struct FTNMenuNotice
 {
@@ -129,6 +117,12 @@ public:
 
 	/** true mientras hay una búsqueda de salas en marcha (la lista o un código). */
 	bool IsSearchingRooms() const;
+
+	/**
+	 * true mientras se cierra la sesión vieja, se crea la sala, se entra en otra o se viaja a su mapa. Entonces «Crear» y
+	 * «Unirse» no hacen nada: un segundo intento destruiría la sesión que se está creando.
+	 */
+	bool IsRoomTransitionBusy() const { return RoomOp.IsBusy(); }
 
 	/** Salas públicas de la última búsqueda: primero las que tienen sitio, luego las más llenas. */
 	const TArray<FTNRoomListing>& GetRoomListings() const { return RoomListings; }
@@ -525,9 +519,16 @@ private:
 	/** @brief Devuelve la interfaz online de sesiones (o nullptr si OnlineSubsystem no está disponible). */
 	IOnlineSessionPtr GetSessionInterface() const;
 
-	bool bPendingHostAfterDestroy = false;
-	bool bPendingJoinAfterDestroy = false;
+	/** Qué hace ahora con la sesión de la sala (cerrar la vieja, crear, entrar o viajar); RoomOpStartTime: desde cuándo. */
+	FTNRoomOpState RoomOp;
+	double RoomOpStartTime = 0.0;
 	FOnlineSessionSearchResult PendingInviteResult;
+
+	/** Empieza a entrar en una sesión (JoinSession): apunta la operación y, si ni arranca ni avisa, la da por fallida. */
+	void BeginSessionJoin(const FOnlineSessionSearchResult& Result, int32 ControllerId);
+
+	/** Una operación de sesión que no contesta a tiempo: se deshace (cierra la sesión, quita la pantalla de carga y avisa). */
+	void AbortRoomOperation();
 
 	/**
 	 * true durante el intervalo entre PreLoadMap y PostLoadMap.

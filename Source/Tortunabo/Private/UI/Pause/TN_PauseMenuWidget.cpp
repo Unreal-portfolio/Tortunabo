@@ -19,6 +19,7 @@
 #include "Player/TortugaCharacter.h"
 #include "Settings/TN_GameSettingsSubsystem.h"
 #include "Settings/TN_LanguageSettings.h"
+#include "UI/Pause/TN_PlayerRowRules.h"
 #include "Voice/ProximityVoiceComponent.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
 #include "Blueprint/WidgetTree.h"
@@ -317,6 +318,24 @@ namespace TNPauseUI
 	{
 		IOnlineSubsystem* OnlineSub = IOnlineSubsystem::Get();
 		return OnlineSub ? OnlineSub->GetSessionInterface() : nullptr;
+	}
+
+	/**
+	 * La segunda línea de una tortuga en la lista de jugadores: «Tú», «Tú · anfitrión», «Anfitrión» o su ping. Un invitado ve
+	 * también el suyo («Tú · 42 ms»); antes solo veía el de los demás y su propia fila decía «Tú» (#256).
+	 */
+	FText PlayerSub(const APlayerState* PS, bool bMe, bool bRowHost, bool bLocalIsClient)
+	{
+		const TNPlayerRowRules::ESub Sub = TNPlayerRowRules::Decide(bMe, bRowHost, bLocalIsClient);
+		switch (Sub)
+		{
+		case TNPlayerRowRules::ESub::YouHost: return NSLOCTEXT("TNPause", "YouHost", "Tú · anfitrión");
+		case TNPlayerRowRules::ESub::You: return NSLOCTEXT("TNPause", "You", "Tú");
+		case TNPlayerRowRules::ESub::Host: return NSLOCTEXT("TNPause", "Host", "Anfitrión");
+		default: break;
+		}
+		const FText Ping = FText::Format(NSLOCTEXT("TNPause", "Ping", "{0} ms"), FText::AsNumber(PS ? FMath::RoundToInt(PS->GetPingInMilliseconds()) : 0));
+		return Sub == TNPlayerRowRules::ESub::YouPing ? FText::Join(INVTEXT(" · "), NSLOCTEXT("TNPause", "You", "Tú"), Ping) : Ping;
 	}
 
 	/** Límites de fotogramas (0 = sin límite). */
@@ -1866,10 +1885,9 @@ void UTN_PauseMenuWidget::RebuildPlayers()
 		UTextBlock* Name = TNPauseUI::Label(Tree, FText::FromString(PS->GetPlayerName()), TEXT("Bold"), 18, bMe ? TNHUDArt::Gold : TNHUDArt::Cream);
 		TNPauseUI::AddV(Names, TNPauseUI::Sized(Tree, Name, 0.f, 0.f), FMargin(0.f), HAlign_Left);
 		const bool bLocalGame = IsLocalGame();
-		const FText Sub = bMe ? (bHost ? NSLOCTEXT("TNPause", "YouHost", "Tú · anfitrión") : NSLOCTEXT("TNPause", "You", "Tú"))
-			: (bLocalGame ? NSLOCTEXT("TNLocal", "ChipLocal", "En este PC")
-				: (bHost ? NSLOCTEXT("TNPause", "Host", "Anfitrión")
-					: FText::Format(NSLOCTEXT("TNPause", "Ping", "{0} ms"), FText::AsNumber(FMath::RoundToInt(PS->GetPingInMilliseconds())))));
+		// En la partida local los demás juegan en este PC: sin ping.
+		const FText Sub = (!bMe && bLocalGame) ? NSLOCTEXT("TNLocal", "ChipLocal", "En este PC")
+			: TNPauseUI::PlayerSub(PS, bMe, bHost, World->GetNetMode() == NM_Client);
 		TNPauseUI::AddV(Names, TNPauseUI::Label(Tree, Sub, TEXT("Regular"), 14, TNHUDArt::SeaLight), FMargin(0.f), HAlign_Left);
 		TNPauseUI::AddH(Chip, Names, FMargin(0.f, 0.f, 8.f, 0.f));
 		if (bHost) { TNPauseUI::AddH(Chip, TNPauseUI::Picture(Tree, TNPauseArt::HostCrown(), FVector2D(26.f, 26.f)), FMargin(0.f, 0.f, 6.f, 0.f)); }
@@ -2900,9 +2918,7 @@ void UTN_PauseMenuWidget::FillRoomList()
 			const bool bRowHost = (bMe && bHostView) || (!bHostView && ((HostId.IsValid() && PS->GetUniqueId() == HostId)
 				|| (bRoom && !Room.HostName.IsEmpty() && PS->GetPlayerName() == Room.HostName)));
 			const bool bCanKick = bHostView && !bMe;
-			const FText Sub = bMe ? (bRowHost ? NSLOCTEXT("TNPause", "YouHost", "Tú · anfitrión") : NSLOCTEXT("TNPause", "You", "Tú"))
-				: (bRowHost ? NSLOCTEXT("TNPause", "Host", "Anfitrión")
-					: FText::Format(NSLOCTEXT("TNPause", "Ping", "{0} ms"), FText::AsNumber(FMath::RoundToInt(PS->GetPingInMilliseconds()))));
+			const FText Sub = TNPauseUI::PlayerSub(PS, bMe, bRowHost, World && World->GetNetMode() == NM_Client);
 			TWeakObjectPtr<APlayerState> WeakPlayer(PS);
 			if (UTN_PauseRow* Row = AddListRow(RoomList))
 			{
