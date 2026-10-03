@@ -22,7 +22,9 @@ INTEGRACION = CONFIG["rama_integracion"]
 ESTADOS = ["Backlog", "Bloqueada", "Ready", "In progress", "In review", "Revisiones", "QA editor", "Validada", "Done"]
 ORDEN_PRIORIDAD = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
 ORDEN_TAMANO = {"XS": 0, "S": 1, "M": 2, "L": 3}
-REF_ISSUE = re.compile(r"(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|cierra|resuelve|refs?)\s+#(\d+)", re.I)
+# «Closes #n» cierra la issue al fusionar; «Refs #n» solo la menciona (así se enlaza la PR con su lote).
+REF_CIERRE = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|cierra|resuelve)\s+#(\d+)", re.I)
+REF_MENCION = re.compile(r"\brefs?\s+#(\d+)", re.I)
 REF_RAMA = re.compile(r"/(\d+)-")
 
 CONSULTA_ITEMS = """
@@ -37,7 +39,7 @@ query($org: String!, $num: Int!, $cursor: String) {
         content { __typename
           ... on Issue { number title state url updatedAt
             assignees(first: 5) { nodes { login } } labels(first: 15) { nodes { name } }
-            blockedBy(first: 10) { nodes { number state } }
+            blockedBy(first: 50) { nodes { number state } }
             blocking(first: 10) { nodes { number state labels(first: 10) { nodes { name } } } } }
           ... on PullRequest { number title state url }
         }
@@ -57,7 +59,7 @@ query($owner: String!, $repo: String!, $num: Int!) {
   repository(owner: $owner, name: $repo) { issue(number: $num) {
     number title state url updatedAt
     assignees(first: 5) { nodes { login } } labels(first: 15) { nodes { name } }
-    blockedBy(first: 10) { nodes { number state } }
+    blockedBy(first: 50) { nodes { number state } }
     blocking(first: 10) { nodes { number state labels(first: 10) { nodes { name } } } }
     projectItems(first: 10) { nodes { id project { number }
       fieldValues(first: 20) { nodes {
@@ -154,10 +156,19 @@ def item_de_issue(proyecto: dict, numero: int) -> str:
     return cache[numero]
 
 
+def comprobar_campos(proyecto: dict, campos: dict) -> None:
+    """Falla si algún valor no es una opción de su campo (los vacíos no cuentan): para comprobar antes de crear nada."""
+    for campo, valor in campos.items():
+        if not valor:
+            continue
+        info = proyecto["campos"].get(campo)
+        if info is None or valor not in info["opciones"]:
+            raise ErrorTablero(f"El campo «{campo}» no admite «{valor}». Opciones: {list((info or {}).get('opciones', {}))}")
+
+
 def poner_campo(proyecto: dict, numero: int, campo: str, valor: str) -> None:
-    info = proyecto["campos"].get(campo)
-    if info is None or valor not in info["opciones"]:
-        raise ErrorTablero(f"El campo «{campo}» no admite «{valor}». Opciones: {list((info or {}).get('opciones', {}))}")
+    comprobar_campos(proyecto, {campo: valor})
+    info = proyecto["campos"][campo]
     gh("project", "item-edit", "--project-id", proyecto["id"], "--id", item_de_issue(proyecto, numero),
        "--field-id", info["id"], "--single-select-option-id", info["opciones"][valor])
 
@@ -177,9 +188,16 @@ def prs_abiertas() -> list[dict]:
     return json.loads(gh("pr", "list", "--repo", REPO, "--state", "open", "--limit", "100", "--json", campos))
 
 
-def issues_de_pr(pr: dict) -> set[int]:
-    refs = {int(n) for n in REF_ISSUE.findall(pr.get("body") or "")}
+def issues_de_pr(pr: dict, menciones: bool = False) -> set[int]:
+    """Issues que cierra la PR (cuerpo y rama); con `menciones`, también las citadas con «Refs #n».
+
+    Las menciones solo sirven para enlazar la PR con su lote: una issue citada no avanza ni cuenta como fusionada.
+    """
+    cuerpo = pr.get("body") or ""
+    refs = {int(n) for n in REF_CIERRE.findall(cuerpo)}
     refs |= {int(n) for n in REF_RAMA.findall(pr.get("headRefName") or "")}
+    if menciones:
+        refs |= {int(n) for n in REF_MENCION.findall(cuerpo)}
     return refs
 
 

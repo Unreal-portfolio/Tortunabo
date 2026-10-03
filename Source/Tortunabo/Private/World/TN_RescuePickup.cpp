@@ -21,7 +21,9 @@ ATN_RescuePickup::ATN_RescuePickup()
 	SetNetUpdateFrequency(15.f);
 	SetMinNetUpdateFrequency(5.f);
 	PromptText = NSLOCTEXT("Tortunabo", "RescuePrompt", "Rescatar");
-	InteractionDistance = 300.f;
+	// Como el alcance de la tortuga (250; antes 300, pero el escaneo ya solo encontraba lo que estuviera a 350): la del
+	// interactuable solo cuenta en el servidor, y más que el escaneo no sirve de nada.
+	InteractionDistance = ATortugaCharacter::DefaultInteractionDistance;
 }
 
 void ATN_RescuePickup::Tick(float DeltaSeconds)

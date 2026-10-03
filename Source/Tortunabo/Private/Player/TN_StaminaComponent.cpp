@@ -68,7 +68,7 @@ bool UTN_StaminaComponent::CanSprint(bool bRequested) const
 	return bRequested && (bUnlimitedStamina || CurrentStamina > KINDA_SMALL_NUMBER);
 }
 
-float UTN_StaminaComponent::ComputeMaxWalkSpeed(bool bSprinting, float EnvironmentMultiplier) const
+float UTN_StaminaComponent::ComputeMaxWalkSpeed(bool bSprinting, float EnvironmentMultiplier, float RaceMultiplier) const
 {
 	TNMovementLimits::FWalkSpeedInputs In;
 	In.WalkSpeed = WalkSpeed;
@@ -76,7 +76,7 @@ float UTN_StaminaComponent::ComputeMaxWalkSpeed(bool bSprinting, float Environme
 	In.bSprinting = bSprinting;
 	In.PostBoostMultiplier = bPostBoostPenaltyActive ? PostBoostSpeedMultiplier : 1.f;
 	In.EnvironmentMultiplier = EnvironmentMultiplier;
-	In.RaceMultiplier = RaceSpeedMultiplier;
+	In.RaceMultiplier = RaceMultiplier;
 	In.Cap = ActiveSpeedCap;
 	return TNMovementLimits::ResolveWalkSpeed(In);
 }
@@ -102,6 +102,10 @@ void UTN_StaminaComponent::GrantUnlimitedStamina(float DurationSeconds)
 	bUnlimitedStamina = true;
 	UnlimitedStaminaRemaining = DurationSeconds;
 	CurrentStamina = MaxStamina;
+	// Fuera el agotamiento, como en RestoreStaminaToFull: solo se descuenta sin esprintar, y con shift pulsado el HUD, la
+	// cara y el «sin aliento» lo seguirían enseñando con la barra llena.
+	bIsExhausted = false;
+	ExhaustionTimer = 0.f;
 	RecomputeSprintState();
 }
 
@@ -308,8 +312,9 @@ void UTN_StaminaComponent::ApplyMovementSpeed() const
 	{
 		if (UCharacterMovementComponent* Movement = Character->GetCharacterMovement())
 		{
-			// La tortuga la calcula en cada paso del movimiento (UTN_TurtleMovementComponent::GetMaxSpeed); esto queda para
-			// quien lee MaxWalkSpeed (el sonido) y para personajes sin ese movimiento.
+			// La tortuga la calcula en cada paso del movimiento (UTN_TurtleMovementComponent::GetMaxSpeed), con el sprint, el
+			// vadeo y el turbo de carrera de ese movimiento; esto queda, sin turbo, para quien lee MaxWalkSpeed (el sonido) y
+			// para personajes sin ese movimiento.
 			Movement->MaxWalkSpeed = ComputeMaxWalkSpeed(bIsSprinting, EnvironmentSpeedMultiplier);
 		}
 	}
@@ -405,32 +410,6 @@ void UTN_StaminaComponent::ApplyGravityScaleOverrides()
 void UTN_StaminaComponent::SetEnvironmentSpeedMultiplier(float Multiplier)
 {
 	EnvironmentSpeedMultiplier = Multiplier;
-	ApplyMovementSpeed();
-}
-
-void UTN_StaminaComponent::SetRaceSpeedMultiplier(float Multiplier)
-{
-	const float NewMultiplier = FMath::Clamp(Multiplier, 1.0f, 4.0f);
-	if (FMath::IsNearlyEqual(NewMultiplier, RaceSpeedMultiplier))
-	{
-		return;
-	}
-	if (const ACharacter* Character = Cast<ACharacter>(GetOwner()))
-	{
-		if (UCharacterMovementComponent* Movement = Character->GetCharacterMovement())
-		{
-			// La aceleración sube con la velocidad (el doble de rápido: el triple de aceleración) para que el empujón del
-			// turbo sea casi inmediato; al acabar vuelve la de antes.
-			if (RaceSpeedMultiplier <= 1.0f + KINDA_SMALL_NUMBER)
-			{
-				RaceBaseAcceleration = Movement->MaxAcceleration;
-			}
-			Movement->MaxAcceleration = NewMultiplier > 1.0f
-				? RaceBaseAcceleration * (1.0f + (NewMultiplier - 1.0f) * 2.0f)
-				: RaceBaseAcceleration;
-		}
-	}
-	RaceSpeedMultiplier = NewMultiplier;
 	ApplyMovementSpeed();
 }
 

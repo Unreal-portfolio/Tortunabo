@@ -503,6 +503,12 @@ private:
 	void ResetRoundGameState() const;
 	void CancelRoundTimers();
 	void CleanupRoundActors();
+	/**
+	 * Servidor: quita lo suelto que dejan las jugadoras en la ronda que acaba (pickups soltados, bolas paradas, conchas
+	 * trampa y cajas de objetos) para que no pase a la siguiente (#71). No toca lo colocado a mano en el nivel. Lo llama
+	 * CleanupRoundActors y, en el sprint final (que no limpia peones), StartSprint.
+	 */
+	void CleanupRoundLeftovers();
 	void LeaveAfterDelay(TFunction<void()> Action);
 
 	// Sprint final

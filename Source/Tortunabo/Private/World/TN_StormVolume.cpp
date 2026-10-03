@@ -96,8 +96,10 @@ void ATN_StormVolume::BeginPlay()
 {
 	Super::BeginPlay();
 
-	TriggerBox->OnComponentBeginOverlap.AddDynamic(this, &ATN_StormVolume::OnBoxBeginOverlap);
-	TriggerBox->OnComponentEndOverlap.AddDynamic(this, &ATN_StormVolume::OnBoxEndOverlap);
+	// AddUnique: BP_StormVolume y la instancia de LVL_Run traen el enlace serializado de cuando se hacía en el
+	// constructor; un AddDynamic lo duplicaba (ensure de ScriptDelegates.h y cada overlap contado dos veces).
+	TriggerBox->OnComponentBeginOverlap.AddUniqueDynamic(this, &ATN_StormVolume::OnBoxBeginOverlap);
+	TriggerBox->OnComponentEndOverlap.AddUniqueDynamic(this, &ATN_StormVolume::OnBoxEndOverlap);
 
 	NormalizedGrowthDir = GrowthDirection.GetSafeNormal();
 	if (NormalizedGrowthDir.IsNearlyZero())
@@ -108,9 +110,23 @@ void ATN_StormVolume::BeginPlay()
 	if (HasAuthority())
 	{
 		ReplicatedBoxHalfExtent = TriggerBox->GetUnscaledBoxExtent();
+		InitialLocation = GetActorLocation();
+		InitialBoxHalfExtent = ReplicatedBoxHalfExtent;
 	}
 
 	SyncVisualToBox();
+}
+
+void ATN_StormVolume::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (TriggerBox)
+	{
+		TriggerBox->OnComponentBeginOverlap.RemoveDynamic(this, &ATN_StormVolume::OnBoxBeginOverlap);
+		TriggerBox->OnComponentEndOverlap.RemoveDynamic(this, &ATN_StormVolume::OnBoxEndOverlap);
+	}
+	GetWorldTimerManager().ClearTimer(SharedCountdownTimerHandle);
+
+	Super::EndPlay(EndPlayReason);
 }
 
 void ATN_StormVolume::Tick(float DeltaTime)
@@ -310,6 +326,31 @@ void ATN_StormVolume::ForceCheckPlayer(APlayerController* PC)
 
 	UE_LOG(LogTortunabo, Log, TEXT("[Storm] ForceCheckPlayer: '%s' dentro de '%s' tras revive — countdown reiniciado (%.1fs)"),
 		*GetNameSafe(PC), *GetName(), SecondsInsideToDie);
+}
+
+void ATN_StormVolume::ResetToInitialState()
+{
+	if (!HasAuthority() || !TriggerBox) { return; }
+
+	for (const TPair<TWeakObjectPtr<APlayerController>, float>& Pending : PendingDeathRemaining)
+	{
+		const APlayerController* PC = Pending.Key.Get();
+		if (ATN_CoopPlayerState* TNPS = PC ? PC->GetPlayerState<ATN_CoopPlayerState>() : nullptr)
+		{
+			TNPS->DeathZoneTimeRemaining = -1.f;
+		}
+	}
+	PendingDeathRemaining.Reset();
+	GetWorldTimerManager().ClearTimer(SharedCountdownTimerHandle);
+
+	// La caja se replica (ReplicatedBoxHalfExtent) y la posición con el movimiento del actor.
+	TriggerBox->SetBoxExtent(InitialBoxHalfExtent);
+	ReplicatedBoxHalfExtent = InitialBoxHalfExtent;
+	SetActorLocation(InitialLocation, false, nullptr, ETeleportType::TeleportPhysics);
+	SyncVisualToBox();
+	ForceNetUpdate();
+
+	UE_LOG(LogTortunabo, Log, TEXT("[Storm] '%s' vuelve a su estado inicial."), *GetName());
 }
 
 void ATN_StormVolume::HandlePlayerDeath(APlayerController* PC)

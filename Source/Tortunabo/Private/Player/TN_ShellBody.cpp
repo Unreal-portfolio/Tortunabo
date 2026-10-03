@@ -47,7 +47,7 @@ namespace TNShellBodyDetail
 	constexpr float CliffSkip = 1000.f;
 
 	TAutoConsoleVariable<int32> CVarShellDebug(TEXT("TN.Shell.Debug"), UE_BUILD_SHIPPING ? 0 : 1,
-		TEXT("Instrumento de la bola del caparazón (todas las máquinas): 1 = avisa en el registro («[Caparazón] TN.Shell.Debug») cuando la caja gira cerca de su tope durante 0,4 s (torbellino), cuando su parte de abajo queda más de 25 cm bajo el terreno de la playa o cuando su velocidad salta más de 9 m/s en un paso fuera de un lanzamiento, con sus últimos choques (quién la empuja) y, en los clientes, el desfase con el servidor; 0 = apagado (por defecto en Shipping)."));
+		TEXT("Instrumento de la bola del caparazón (todas las máquinas): 1 = avisa en el registro («[Caparazón] TN.Shell.Debug») cuando la caja gira cerca de su tope durante 0,4 s (torbellino), cuando su parte de abajo queda más de 25 cm bajo el terreno de la playa o cuando sale empujada a más de 9 m/s en un paso (lo que no es frenar un choque) fuera de un lanzamiento, con sus últimos choques (quién la empuja) y, en los clientes, el desfase con el servidor; 0 = apagado (por defecto en Shipping)."));
 
 	const TCHAR* AnomalyName(TNShellLogic::EShellMotionAnomaly Anomaly)
 	{
@@ -62,6 +62,13 @@ namespace TNShellBodyDetail
 
 	TAutoConsoleVariable<int32> CVarShellPhysicsRep(TEXT("TN.Shell.PhysicsRep"), 1,
 		TEXT("Réplica de la física de la bola del caparazón en los clientes (se aplica a las bolas nuevas): 1 = interpolación predictiva (de serie: corrige con velocidad hacia el estado del servidor extrapolado, sin tirones); 0 = la de siempre del motor (fijaba cada paso la velocidad y el 40 % del giro hacia un estado ya viejo: la bola temblaba y rebotaba en los clientes)."));
+
+	/** La colisión de siempre de la caja: cuerpo físico que choca con todo menos con la cámara (ni la propia ni la de los demás). */
+	void SetDefaultCollision(UBoxComponent& Box)
+	{
+		Box.SetCollisionProfileName(TEXT("PhysicsActor"));
+		Box.SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+	}
 }
 
 ATN_ShellBody::ATN_ShellBody()
@@ -74,9 +81,7 @@ ATN_ShellBody::ATN_ShellBody()
 	Box = CreateDefaultSubobject<UBoxComponent>(TEXT("Box"));
 	SetRootComponent(Box);
 	Box->InitBoxExtent(BoxHalfExtent());
-	Box->SetCollisionProfileName(TEXT("PhysicsActor"));
-	// La cámara no choca con el caparazón (ni con el propio ni con el de los demás).
-	Box->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+	TNShellBodyDetail::SetDefaultCollision(*Box);
 	Box->SetSimulatePhysics(true);
 	Box->SetEnableGravity(true);
 	Box->SetUseCCD(true);
@@ -111,6 +116,43 @@ void ATN_ShellBody::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLif
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(ATN_ShellBody, Turtle);
+	DOREPLIFETIME(ATN_ShellBody, bPassThrough);
+}
+
+void ATN_ShellBody::SetPassThrough(bool bOn)
+{
+	if (!HasAuthority() || bPassThrough == bOn)
+	{
+		return;
+	}
+	bPassThrough = bOn;
+	ApplyPassThrough();
+	ForceNetUpdate();
+}
+
+void ATN_ShellBody::OnRep_PassThrough()
+{
+	ApplyPassThrough();
+}
+
+void ATN_ShellBody::ApplyPassThrough()
+{
+	if (!Box)
+	{
+		return;
+	}
+	if (bPassThrough)
+	{
+		// Sigue simulando (la gravedad la lleva por el mismo arco), pero no choca con nada.
+		Box->SetCollisionResponseToAllChannels(ECR_Ignore);
+	}
+	else
+	{
+		TNShellBodyDetail::SetDefaultCollision(*Box);
+	}
+	// Sin el tope del motor a la depenetración no hay nada que limitar mientras cruza; al volver a chocar empieza de cero.
+	bPushOutPrimed = false;
+	SunkStrikes = 0;
 }
 
 void ATN_ShellBody::InitBody(ATortugaCharacter* InTurtle, bool bInExitOnRest)
@@ -179,7 +221,8 @@ void ATN_ShellBody::Tick(float DeltaSeconds)
 	Shell->FollowBody(this);
 	const bool bFreshDepth = SampleTerrainDepth(DeltaSeconds);
 	// Antes del instrumento: mide la velocidad que queda. En los clientes no: allí la réplica acerca la caja al servidor.
-	bPushOutLimited = HasAuthority() && LimitTerrainPushOut();
+	// Atravesando no choca con el terreno: no hay nada que la escupa.
+	bPushOutLimited = HasAuthority() && !bPassThrough && LimitTerrainPushOut();
 	TickDebugWatch(DeltaSeconds);
 
 	if (HasAuthority())
@@ -303,6 +346,13 @@ void ATN_ShellBody::ServerChecks(float DeltaSeconds, bool bFreshDepth)
 		return;
 	}
 
+	// Atravesando (la patada de la tormenta sin arco libre): ni el agua de donde sale ni lo que cruza la paran; vuelve a
+	// mirarse al volver a chocar, ya encima de su sitio.
+	if (bPassThrough)
+	{
+		return;
+	}
+
 	// Al agua: sale del caparazón y nada.
 	WaterCheckTimer -= DeltaSeconds;
 	if (WaterCheckTimer <= 0.f)
@@ -364,11 +414,11 @@ void ATN_ShellBody::TickDebugWatch(float DeltaSeconds)
 	TNShellLogic::FShellMotionSample Sample;
 	Sample.DeltaSeconds = DeltaSeconds;
 	Sample.AngularSpeed = static_cast<float>(Spin.Size());
-	// Con el tope a la depenetración actuando, el cambio es parar la caída dentro del terreno más lo poco que la deja salir:
-	// no es un salto sin causa (el registro ya lo cuenta).
-	Sample.VelocityChange = bPushOutLimited ? 0.f : static_cast<float>((Velocity - DebugPrevVelocity).Size());
+	// Solo cuenta la velocidad con la que sale empujada: frenar (aterrizar, chocar) o el tope a la depenetración (ya lo registra) no.
+	Sample.VelocityChange = bPushOutLimited ? 0.f : TNShellLogic::UnexplainedVelocityChange(DebugPrevVelocity, Velocity);
 	Sample.BottomDepthUnderTerrain = TerrainDepth;
 	Sample.AgeSeconds = Age;
+	const FVector PrevVelocity = DebugPrevVelocity;
 	DebugPrevVelocity = Velocity;
 	const TNShellLogic::EShellMotionAnomaly Anomaly = TNShellLogic::ClassifyShellMotion(Sample, DebugSpinSeconds);
 	const float Now = World->GetTimeSeconds();
@@ -382,9 +432,10 @@ void ATN_ShellBody::TickDebugWatch(float DeltaSeconds)
 	const double ServerGap = HasAuthority() ? 0.0 : FVector::Dist(Box->GetComponentLocation(), GetReplicatedMovement().Location);
 	const FVector At = Box->GetComponentLocation();
 	UE_LOG(LogTortunabo, Warning,
-		TEXT("[Caparazón] TN.Shell.Debug %s de %s en %s: %s · caja en (%.1f, %.1f, %.1f) m, su parte de abajo %.0f cm bajo el terreno · v %.0f cm/s (cambio de %.0f en el paso) · giro %.1f rad/s (vertical %.1f) desde hace %.2f s · desfase con el servidor %.0f cm · edad %.2f s · choques: %s"),
+		TEXT("[Caparazón] TN.Shell.Debug %s de %s en %s: %s · caja en (%.1f, %.1f, %.1f) m, su parte de abajo %.0f cm bajo el terreno · v %.0f cm/s (cambio de %.0f en el paso; antes %s, después %s) · giro %.1f rad/s (vertical %.1f) desde hace %.2f s · desfase con el servidor %.0f cm · edad %.2f s · choques: %s"),
 		*GetName(), *GetNameSafe(Turtle.Get()), HasAuthority() ? TEXT("el servidor") : TEXT("un cliente"), AnomalyName(Anomaly),
-		At.X / 100.0, At.Y / 100.0, At.Z / 100.0, TerrainDepth, Velocity.Size(), Sample.VelocityChange, Sample.AngularSpeed, Spin.Z,
+		At.X / 100.0, At.Y / 100.0, At.Z / 100.0, TerrainDepth, Velocity.Size(), Sample.VelocityChange, *PrevVelocity.ToCompactString(),
+		*Velocity.ToCompactString(), Sample.AngularSpeed, Spin.Z,
 		DebugSpinSeconds, ServerGap, Age, *DescribeDebugContacts(Now));
 }
 

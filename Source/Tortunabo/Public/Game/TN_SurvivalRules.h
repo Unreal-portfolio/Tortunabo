@@ -1,7 +1,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "World/TN_ChunkManager.h" // ETNChunkDifficulty
 
 /**
  * Reglas del modo Supervivencia (ATN_SurvivalGameMode) como funciones PURAS, igual que TN_ChunkDecisions.h:
@@ -125,53 +124,9 @@ namespace TNSurvivalLogic
 		return Ids;
 	}
 
-	/**
-	 * Dificultad de cada chunk de un nivel. Sube con el nivel y dentro de él:
-	 * con 3 chunks, nivel 1 = E E M, 2 = E M M, 3 = M M H, 4 = M H H y del 5 en adelante H H H.
-	 */
-	inline TArray<ETNChunkDifficulty> LevelDifficulties(int32 Level, int32 ChunksPerLevel)
+	/** Dificultad 1–5 del mapa del nivel (TNProcMap::MakeSurvivalParams): el nivel N pide min(N, 5). */
+	inline int32 LevelMapDifficulty(int32 Level)
 	{
-		TArray<ETNChunkDifficulty> Out;
-		for (int32 i = 0; i < ChunksPerLevel; ++i)
-		{
-			const int32 V = FMath::Max(1, Level) - 1 + i;
-			Out.Add(V <= 1 ? ETNChunkDifficulty::Easy : (V <= 3 ? ETNChunkDifficulty::Medium : ETNChunkDifficulty::Hard));
-		}
-		return Out;
-	}
-
-	/**
-	 * Distancia que falta hasta el final de la polilínea Path desde el punto P, proyectado sobre el tramo más cercano.
-	 * Path va de la salida a la meta. Con menos de dos puntos, la distancia en línea recta al único punto (o 0).
-	 */
-	inline float RemainingAlongPath(const TArray<FVector>& Path, const FVector& P)
-	{
-		if (Path.Num() == 0) { return 0.f; }
-		if (Path.Num() == 1) { return FVector::Dist(Path[0], P); }
-
-		int32 BestSeg = 0;
-		float BestT = 0.f;
-		float BestDistSq = TNumericLimits<float>::Max();
-		for (int32 i = 0; i + 1 < Path.Num(); ++i)
-		{
-			const FVector A = Path[i];
-			const FVector AB = Path[i + 1] - A;
-			const float LenSq = AB.SizeSquared();
-			const float T = LenSq > KINDA_SMALL_NUMBER ? FMath::Clamp(FVector::DotProduct(P - A, AB) / LenSq, 0.f, 1.f) : 0.f;
-			const float DistSq = FVector::DistSquared(A + AB * T, P);
-			if (DistSq < BestDistSq)
-			{
-				BestDistSq = DistSq;
-				BestSeg = i;
-				BestT = T;
-			}
-		}
-
-		float Remaining = FVector::Dist(Path[BestSeg], Path[BestSeg + 1]) * (1.f - BestT);
-		for (int32 i = BestSeg + 1; i + 1 < Path.Num(); ++i)
-		{
-			Remaining += FVector::Dist(Path[i], Path[i + 1]);
-		}
-		return Remaining;
+		return FMath::Clamp(Level, 1, 5);
 	}
 }

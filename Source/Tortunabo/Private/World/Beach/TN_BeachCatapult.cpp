@@ -470,8 +470,8 @@ void ATN_BeachCatapult::ApplySpec()
 	TNBeachTrapKit::FBuffers Bowl;
 	BuildArm(Arm, Bowl, A, Seed, CrackX, bBoosted);
 	ShiftX(Bowl, -CrackX);
-	TNBeachTrapKit::SetMesh(ArmMesh, this, Arm);
-	TNBeachTrapKit::SetMesh(BowlMesh, this, Bowl);
+	TNBeachTrapKit::SetMesh(ArmMesh, this, Arm, TN_ART("Beach.Catapult.Arm"));
+	TNBeachTrapKit::SetMesh(BowlMesh, this, Bowl, TN_ART("Beach.Catapult.Bowl"));
 	TNBeachTrapKit::FHulls ArmHulls;
 	TNBeachTrapKit::FHulls BowlHulls;
 	BuildArmHulls(ArmHulls, BowlHulls, A, CrackX);
@@ -482,7 +482,7 @@ void ATN_BeachCatapult::ApplySpec()
 	const FLinearColor Raw = bBoosted ? TNPlaygroundKit::Rgb(0xFFE9A8, 0.3f)
 		: (A.Style == 0 ? TNPlaygroundKit::Rgb(0xF4F1EA, 0.2f) : TNPlaygroundKit::Rgb(0xF2D9A8, 0.05f));
 	BuildSplinters(Splinters, A, CrackX, Seed, Raw);
-	TNBeachTrapKit::SetMesh(SplinterMesh, this, Splinters);
+	TNBeachTrapKit::SetMesh(SplinterMesh, this, Splinters, TN_ART("Beach.Catapult.Splinters"));
 
 	// Piedra, tapón con estrías y una cuna para el brazo, arena removida.
 	TNBeachTrapKit::FBuffers Base;
@@ -526,14 +526,14 @@ void ATN_BeachCatapult::ApplySpec()
 		TNBeachBoostKit::AddNavyFlag(Base, NavyFoot, 260.0, FVector(-1.0, 0.4, 0.0), 120.0, 80.0, Seed);
 		TNBeachBoostKit::AddBunting(Base, PoleTop, NavyFoot + FVector(0.0, 0.0, 240.0), 28.0, 26.0, Seed);
 	}
-	TNBeachTrapKit::SetMesh(BaseMesh, this, Base);
+	TNBeachTrapKit::SetMesh(BaseMesh, this, Base, TN_ART("Beach.Catapult.Base"));
 	BaseCollision->SetCollisionConvexMeshes(BaseHulls);
 	TNBeachTrapKit::FBuffers Green;
 	TNPlaygroundKit::AddPennant(Green, PoleTop, FVector(-1.0, 0.0, 0.0), 95.0, 60.0, TNPlaygroundKit::Rgb(0x3DDC97, 0.2f));
-	TNBeachTrapKit::SetMesh(FlagGreen, this, Green);
+	TNBeachTrapKit::SetMesh(FlagGreen, this, Green, TN_ART("Beach.Catapult.FlagReady"));
 	TNBeachTrapKit::FBuffers Red;
 	TNPlaygroundKit::AddPennant(Red, PoleTop, FVector(-1.0, 0.0, 0.0), 95.0, 60.0, TNPlaygroundKit::Rgb(0xFF4B3E, 0.2f));
-	TNBeachTrapKit::SetMesh(FlagRed, this, Red);
+	TNBeachTrapKit::SetMesh(FlagRed, this, Red, TN_ART("Beach.Catapult.FlagArmed"));
 
 	// Palo de polo de pie bajo el extremo del mango, con su montoncito de arena.
 	const double PropArmX = A.Short - 2.0 * A.BucketR - 10.0;
@@ -543,7 +543,7 @@ void ATN_BeachCatapult::ApplySpec()
 	TNBeachTrapKit::FBuffers Prop;
 	TNPlaygroundKit::AddStick(Prop, FVector(0.0, 0.0, 0.5 * PropLen), FVector::UpVector, FVector::RightVector, PropLen + 20.0, 48.0, 12.0,
 		TNPlaygroundKit::Rgb(0xE9CC98, 0.05f));
-	TNBeachTrapKit::SetMesh(PropMesh, this, Prop);
+	TNBeachTrapKit::SetMesh(PropMesh, this, Prop, TN_ART("Beach.Catapult.Prop"));
 
 	// Cartel por el lado por el que se llega (-X del marco): a medio brazo largo, a un lado (fuera del cazo, la piedra y los
 	// banderines; el arco va hacia +X) y girado 20° hacia el centro para leerse al venir de frente.
@@ -554,10 +554,10 @@ void ATN_BeachCatapult::ApplySpec()
 	SignPivot->SetRelativeScale3D(FVector::OneVector);
 	TNBeachTrapKit::FBuffers Sign;
 	TNBeachSignKit::BuildSign(Sign, TNBeachSignKit::EIcon::Arc, bBoosted, Seed);
-	TNBeachTrapKit::SetMesh(SignMesh, this, Sign);
+	TNBeachTrapKit::SetMesh(SignMesh, this, Sign, TN_ART("Beach.Catapult.Sign"));
 	TNBeachTrapKit::FBuffers Cross;
 	TNBeachSignKit::BuildBrokenCross(Cross);
-	TNBeachTrapKit::SetMesh(SignCross, this, Cross);
+	TNBeachTrapKit::SetMesh(SignCross, this, Cross, TN_ART("Beach.Sign.BrokenCross"));
 	SignCross->SetVisibility(false);
 	TNBeachSignKit::SetText(SignText, NSLOCTEXT("TNBeach", "CatapultSign", "¡CATAPULTA!"), TNBeachSignKit::TextColor(bBoosted));
 	bSignShowsBroken = false;

@@ -51,11 +51,12 @@ public:
 	bool CanSprint(bool bRequested) const;
 
 	/**
-	 * Velocidad máxima andando (cm/s) corriendo o no y con este multiplicador del entorno: penalización tras el boost,
-	 * turbo y el tope que mande (TNMovementLimits::ResolveWalkSpeed). La usa el movimiento en cada paso, con el sprint y el
-	 * vadeo de ese movimiento, para que el cliente y el servidor calculen lo mismo.
+	 * Velocidad máxima andando (cm/s) corriendo o no, con este multiplicador del entorno y este turbo de los objetos de
+	 * carrera (1 = sin turbo): penalización tras el boost, turbo y el tope que mande (TNMovementLimits::ResolveWalkSpeed).
+	 * La usa el movimiento en cada paso, con el sprint, el vadeo y el turbo de ese movimiento (FTNSavedMove_Turtle), para
+	 * que el cliente y el servidor calculen lo mismo (#250, #22).
 	 */
-	float ComputeMaxWalkSpeed(bool bSprinting, float EnvironmentMultiplier) const;
+	float ComputeMaxWalkSpeed(bool bSprinting, float EnvironmentMultiplier, float RaceMultiplier = 1.f) const;
 
 	/**
 	 * @brief Otorga stamina ilimitada durante DurationSeconds (Barrita Energética / boosts).
@@ -111,15 +112,6 @@ public:
 	 *        — cada una aplica localmente, igual que SetSpeedCap.
 	 */
 	void SetEnvironmentSpeedMultiplier(float Multiplier);
-
-	/**
-	 * @brief Multiplica la velocidad máxima (objetos de carrera: coco turbo y protector solar, UTN_RaceItemComponent). 1 = sin
-	 *        efecto. Mientras sea mayor que 1, la velocidad base es al menos la de correr aunque no se esprinte, y la
-	 *        aceleración sube con ella para que el empujón sea inmediato. Llamar en todas las máquinas, como SetSpeedCap.
-	 */
-	void SetRaceSpeedMultiplier(float Multiplier);
-
-	float GetRaceSpeedMultiplier() const { return RaceSpeedMultiplier; }
 
 	/** @brief Vincula el componente de inventario para calcular el peso total cargado. */
 	void SetInventoryComponent(UTN_InventoryComponent* InvComp);
@@ -277,9 +269,6 @@ private:
 
 	/** Multiplicador ambiental (vadeo, etc.). 1.0 = sin efecto. Ver SetEnvironmentSpeedMultiplier. */
 	float EnvironmentSpeedMultiplier = 1.0f;
-	/** Multiplicador de velocidad de los objetos de carrera (1 = ninguno) y la aceleración de antes del turbo. */
-	float RaceSpeedMultiplier = 1.0f;
-	float RaceBaseAcceleration = 0.0f;
 
 	/** @brief OnRep: aplica MovementSpeed/visual al cambiar el estado de sprint. */
 	UFUNCTION()

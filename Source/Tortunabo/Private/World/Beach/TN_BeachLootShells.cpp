@@ -25,7 +25,6 @@
 #include "World/Beach/TN_BeachRaceGenerator.h"
 #include "World/TN_ScorePickup.h"
 #include "World/TN_ScoreShells.h"
-#include "Core/TN_Log.h"
 #include "Components/BoxComponent.h"
 #include "Engine/World.h"
 #include "UObject/UnrealType.h"

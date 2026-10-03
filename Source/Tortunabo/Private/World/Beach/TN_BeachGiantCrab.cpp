@@ -228,22 +228,23 @@ void ATN_BeachGiantCrab::BuildCrab()
 	UStaticMesh* FingerMesh = TNBeachKit::CachedMesh(Pal + TEXT("Finger"), [&Look](FTNProcMeshBuffers& M) { TNBeachMeshes::BuildCrabBigFinger(M, Look); });
 	UStaticMesh* SmallMesh = TNBeachKit::CachedMesh(Pal + TEXT("Small"), [&Look](FTNProcMeshBuffers& M) { TNBeachMeshes::BuildCrabSmallClaw(M, Look); });
 
-	Body = TNBeachKit::AddPart(this, Scaler, BodyMesh, FVector(0.0, 0.0, R.BodyZ));
-	Eyes.Add(TNBeachKit::AddPart(this, Body, EyeMesh, R.EyeL, false));
-	Eyes.Add(TNBeachKit::AddPart(this, Body, EyeMesh, R.EyeR, false));
+	Body = TNBeachKit::AddPart(this, Scaler, BodyMesh, FVector(0.0, 0.0, R.BodyZ), true, TN_ART("Beach.GiantCrab.Body"));
+	Eyes.Add(TNBeachKit::AddPart(this, Body, EyeMesh, R.EyeL, false, TN_ART("Beach.GiantCrab.Eye")));
+	Eyes.Add(TNBeachKit::AddPart(this, Body, EyeMesh, R.EyeR, false, TN_ART("Beach.GiantCrab.Eye")));
 	for (int32 k = 0; k < 8; ++k)
 	{
-		UStaticMeshComponent* Leg = TNBeachKit::AddPart(this, Body, k < 4 ? LegL : LegR, R.LegPivot[k]);
+		UStaticMeshComponent* Leg = TNBeachKit::AddPart(this, Body, k < 4 ? LegL : LegR, R.LegPivot[k], true,
+			k < 4 ? TN_ART("Beach.GiantCrab.LegLeft") : TN_ART("Beach.GiantCrab.LegRight"));
 		if (Leg)
 		{
 			Leg->SetRelativeRotation(FRotator(0.f, R.LegSplay[k], 0.f));
 		}
 		Legs.Add(Leg);
 	}
-	BigArm = TNBeachKit::AddPart(this, Body, ArmMesh, R.BigShoulder);
-	BigHand = TNBeachKit::AddPart(this, BigArm, HandMesh, R.BigElbow);
-	BigFinger = TNBeachKit::AddPart(this, BigHand, FingerMesh, R.BigKnuckle);
-	SmallClaw = TNBeachKit::AddPart(this, Body, SmallMesh, R.SmallShoulder);
+	BigArm = TNBeachKit::AddPart(this, Body, ArmMesh, R.BigShoulder, true, TN_ART("Beach.GiantCrab.BigArm"));
+	BigHand = TNBeachKit::AddPart(this, BigArm, HandMesh, R.BigElbow, true, TN_ART("Beach.GiantCrab.BigHand"));
+	BigFinger = TNBeachKit::AddPart(this, BigHand, FingerMesh, R.BigKnuckle, true, TN_ART("Beach.GiantCrab.BigFinger"));
+	SmallClaw = TNBeachKit::AddPart(this, Body, SmallMesh, R.SmallShoulder, true, TN_ART("Beach.GiantCrab.SmallClaw"));
 	ClawShadow = TNBeachKit::AddShadow(this, 0.6f);
 	TNBeachKit::PlaceShadow(ClawShadow, FVector::ZeroVector, 0.f);
 

@@ -266,6 +266,32 @@ namespace TNBeachScenery
 		}
 	}
 
+	/**
+	 * Pieza de arte de cada especie de la selva (Docs/Arte_Assets.md): sus variantes y biomas comparten nombre. Las instancias
+	 * van a la escala de la playa (20-45 veces la malla del mapa procedural).
+	 */
+	FName JungleSlot(TNProcMap::EFloraShape Shape)
+	{
+		using EShape = TNProcMap::EFloraShape;
+		switch (Shape)
+		{
+			case EShape::Palm: return TN_ART("Beach.Jungle.Palm");
+			case EShape::Casuarina: return TN_ART("Beach.Jungle.Casuarina");
+			case EShape::BroadTree: return TN_ART("Beach.Jungle.BroadTree");
+			case EShape::Ceiba: return TN_ART("Beach.Jungle.Ceiba");
+			case EShape::Pandanus: return TN_ART("Beach.Jungle.Pandanus");
+			case EShape::Rock: return TN_ART("Beach.Jungle.Rock");
+			case EShape::BananaPlant: return TN_ART("Beach.Jungle.BananaPlant");
+			case EShape::FanPalm: return TN_ART("Beach.Jungle.FanPalm");
+			case EShape::TreeFern: return TN_ART("Beach.Jungle.TreeFern");
+			case EShape::SeaGrape: return TN_ART("Beach.Jungle.SeaGrape");
+			case EShape::Bush: return TN_ART("Beach.Jungle.Bush");
+			case EShape::Fern: return TN_ART("Beach.Jungle.Fern");
+			case EShape::Creeper: return TN_ART("Beach.Jungle.Creeper");
+			default: return NAME_None;
+		}
+	}
+
 	/** Mata de hojas enormes (como las de la salida, más pequeña): tallo de 10 m y 5-7 hojas que caen y se mecen por la punta. */
 	void BuildLeafClump(FBuffers& M, uint32 Seed)
 	{
@@ -298,13 +324,17 @@ void ATN_BeachRaceGenerator::BuildStartGrove()
 {
 	TNBeachScenery::FBuffers Solid;
 	TNBeachScenery::FBuffers Deco;
+	// Piezas que Arte puede sustituir (Docs/Arte_Assets.md): en locales del generador, +X hacia la meta.
+	TNArt::FPieceLog Log(TEXT("Grove"));
 	const FLinearColor Bark = TNBeachRaceKit::Hex(0x6E5A45u);
 	const FLinearColor BarkDark = TNBeachRaceKit::Hex(0x4F3F31u);
 	const FLinearColor Moss = TNBeachRaceKit::Hex(0x5D6B34u);
 	const FVector2D Trunk(TNBeachLayout::TrunkX, 0.0);
 	const double TrunkGround = TNBeachLayout::GroundZ(Trunk.X, Trunk.Y);
 
-	// Tronco colosal (una ceiba de ~300 m), ensanchado en la base; se pierde en su copa por encima de la selva.
+	// Tronco colosal (una ceiba de ~300 m), ensanchado en la base; se pierde en su copa por encima de la selva. Con la copa y
+	// las raíces tabulares, una sola pieza.
+	const int32 TreePiece = Log.Begin(TN_ART("Beach.Start.GiantTree"), TNArt::PiecePivot(FVector(Trunk, TrunkGround)), { &Solid, &Deco });
 	TNProcMesh::TNProcAddLathe(Solid, FVector(Trunk, TrunkGround - 300.0), { 0.0, 800.0, 2200.0, 4800.0, 9000.0, 15000.0, 22000.0, 28000.0 },
 		{ 2600.0, 1950.0, 1600.0, 1400.0, 1200.0, 1000.0, 800.0, 650.0 }, 0.07, 0x7E0Cu, Bark, 16, 0.25);
 	const double CrownZ = TrunkGround + 27500.0;
@@ -338,6 +368,7 @@ void ATN_BeachRaceGenerator::BuildStartGrove()
 		const FVector2D P2 = Trunk + Dir * Reach + Perp * (1200.0 * TNProcMesh::TNProcHashNoise(i, 8, 0xB0Bu));
 		TNBeachScenery::AddButtress(Solid, P0, (P0 + P2) * 0.5 + Perp * 900.0, P2, 2600.0, 650.0, 0xB0C0u + static_cast<uint32>(i), i % 2 ? Bark : Moss);
 	}
+	Log.End(TreePiece);
 
 	// Plantas de hojas enormes a los lados y detrás de la salida: sus hojas cubren la salida como un techo.
 	static const TNBeachScenery::FGiantPlant Plants[] = {
@@ -354,6 +385,9 @@ void ATN_BeachRaceGenerator::BuildStartGrove()
 		const TNBeachScenery::FGiantPlant& Plant = Plants[p];
 		const double Ground = TNBeachLayout::GroundZ(Plant.Base.X, Plant.Base.Y);
 		const FVector StemTop(Plant.Base, Ground + Plant.StemH);
+		// Tallo y hojas: escala 1 = tallo de 2400 y hojas de 5000 de largo.
+		TNArt::FPieceScope PlantPiece(Log, TN_ART("Beach.Start.GiantPlant"),
+			TNArt::PiecePivot(FVector(Plant.Base, Ground), 0.0, FVector(Plant.LeafLen / 5000.0, Plant.LeafLen / 5000.0, Plant.StemH / 2400.0)), { &Solid, &Deco });
 		TNProcMesh::TNProcAddCylinder(Solid, FVector(Plant.Base, Ground - 200.0), StemTop, 260.0, 170.0, 8, Stem);
 		for (int32 l = 0; l < Plant.NumLeaves; ++l)
 		{
@@ -369,6 +403,7 @@ void ATN_BeachRaceGenerator::BuildStartGrove()
 	const double GateGround = TNBeachLayout::GroundZ(GateX, 0.0);
 	const double BarZ = GateGround + 1500.0;
 	const FLinearColor Drift = TNBeachRaceKit::Hex(0xB8AA95u);
+	const int32 BannerPiece = Log.Begin(TN_ART("Beach.Start.Banner"), TNArt::PiecePivot(FVector(GateX, 0.0, GateGround)), { &Solid, &Deco });
 	for (const double Side : { -1.0, 1.0 })
 	{
 		const double Ground = TNBeachLayout::GroundZ(GateX, Side * PostY);
@@ -409,6 +444,7 @@ void ATN_BeachRaceGenerator::BuildStartGrove()
 		TNFinishMesh::TNFinishText(Deco, "TORTUNAVY", FVector(GateX + 4.0, 0.0, ZMid), FVector(0.0, -1.0, 0.0), FVector(0.0, 0.0, 1.0), FVector(1.0, 0.0, 0.0),
 			55.0, 6.0, 4.0, Fill, Ink);
 	}
+	Log.End(BannerPiece);
 
 	// Nido de la salida: dos filas de cuatro huevos (las bases de los del lobby, medio enterradas; ocho jugadores como mucho)
 	// dentro de un anillo de arena removida que se pisa; las tapas son componentes aparte (TN_BeachRaceGenerator_Start.cpp).
@@ -417,9 +453,13 @@ void ATN_BeachRaceGenerator::BuildStartGrove()
 	for (int32 i = 0; i < TNBeachLayout::MaxStartEggs; ++i)
 	{
 		const FVector Spot = TNBeachLayout::StartSpot(i);
-		TNCastleKit::BuildEggCup(Eggs, Spot - FVector(0.0, 0.0, 8.0), TNCastleKit::Col(0xFFF3DC), TNCastleKit::Col(TNCastleKit::EggAccent(i)));
+		{
+			TNArt::FPieceScope CupPiece(Log, TN_ART("Beach.Start.EggCup"), TNArt::PiecePivot(Spot - FVector(0.0, 0.0, 8.0)), { &Eggs });
+			TNCastleKit::BuildEggCup(Eggs, Spot - FVector(0.0, 0.0, 8.0), TNCastleKit::Col(0xFFF3DC), TNCastleKit::Col(TNCastleKit::EggAccent(i)));
+		}
 		auto RingAt = [&Spot](double A, double R, double Z) { return FVector(Spot.X + FMath::Cos(A) * R, Spot.Y + FMath::Sin(A) * R, Spot.Z + Z); };
 		constexpr int32 Seg = 20;
+		TNArt::FPieceScope MoundPiece(Log, TN_ART("Beach.Start.NestMound"), TNArt::PiecePivot(Spot), { &Solid });
 		for (int32 k = 0; k < Seg; ++k)
 		{
 			const double A0 = TNProcMap::TwoPi * k / Seg;
@@ -434,10 +474,12 @@ void ATN_BeachRaceGenerator::BuildStartGrove()
 	}
 
 	UMaterialInterface* Mat = TNBeachRaceKit::TerrainMaterial();
-	TNBeachRaceKit::Upload(GroveSolidMesh, 0, Solid, Mat, true);
-	TNBeachRaceKit::Upload(GroveDecoMesh, 0, Deco, Mat, false);
+	TNBeachRaceKit::Upload(GroveSolidMesh, 0, Solid, Mat, true, &Log);
+	TNBeachRaceKit::Upload(GroveDecoMesh, 0, Deco, Mat, false, &Log);
 	// Las bases de los huevos, con el material de los del lobby (el de color de vértice de los cosméticos).
-	TNBeachRaceKit::Upload(GroveDecoMesh, 1, Eggs, TNCastleKit::VertexColorMaterial(), false);
+	TNBeachRaceKit::Upload(GroveDecoMesh, 1, Eggs, TNCastleKit::VertexColorMaterial(), false, &Log);
+	// La malla de arte de cada pieza con sustituto, en su sitio (hija de la malla de la salida: los mismos ejes).
+	TNArt::SpawnPieceArt(GroveSolidMesh, Log);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -467,9 +509,14 @@ void ATN_BeachRaceGenerator::BuildFinishDecor()
 	TNFinishMesh::TNFinishBuild(LocalSolid, LocalDeco, Params, Ground, HalfWidthAt);
 	TNBeachScenery::FBuffers Solid;
 	TNBeachScenery::FBuffers Deco;
+	// Piezas que Arte puede sustituir (Docs/Arte_Assets.md): el arco va con la meta y las boyas con la malla que se mece.
+	TNArt::FPieceLog Log(TEXT("Finish"));
+	TNArt::FPieceLog FloatLog(TEXT("FinishFloats"));
 	const FVector ArchOrigin(ArchX, 0.0, TNBeachLayout::WaterZ);
+	const int32 ArchPiece = Log.Begin(TN_ART("Beach.Finish.Arch"), TNArt::PiecePivot(ArchOrigin), { &Solid, &Deco });
 	TNBeachRaceKit::AppendScaled(Solid, LocalSolid, ArchOrigin, ArchScale);
 	TNBeachRaceKit::AppendScaled(Deco, LocalDeco, ArchOrigin, ArchScale);
+	Log.End(ArchPiece);
 
 	// Boyas con banderas a cuadros de 12 m sobre mástiles de 28 m, a 26 m del filo, unidas por un cabo con boyas pequeñas:
 	// se ven desde la salida por encima del borde.
@@ -479,26 +526,31 @@ void ATN_BeachRaceGenerator::BuildFinishDecor()
 	for (int32 k = -3; k <= 3; ++k)
 	{
 		const FVector Buoy(FlagX + 150.0 * TNProcMesh::TNProcHashNoise(k, 1, 0xF1A6u), k * 4000.0, TNBeachLayout::WaterZ + 40.0);
+		const int32 FlagBuoyPiece = FloatLog.Begin(TN_ART("Beach.Finish.FlagBuoy"), TNArt::PiecePivot(Buoy), { &Floats });
 		TNFinishMesh::TNFinishBuoy(Floats, Buoy, 260.0, (k % 2 != 0) ? TNFinishMesh::FinishColors::White : TNFinishMesh::FinishColors::Red);
 		TNProcMesh::TNProcAddCylinder(Floats, Buoy, Buoy + FVector(0.0, 0.0, 2800.0), 45.0, 32.0, 6, TNFinishMesh::FinishColors::Pole);
 		TNFinishMesh::TNFinishCheckerFlag(Floats, Buoy + FVector(0.0, 0.0, 2780.0), FVector(0.0, 1.0, 0.0), FVector(0.0, 0.0, -1.0), 5, 4, 240.0, 120.0,
 			0xF1A0u + static_cast<uint32>(k + 3));
+		FloatLog.End(FlagBuoyPiece);
 		if (k > -3)
 		{
 			Floats.AddBeam(PrevBuoy + FVector(0.0, 0.0, -10.0), Buoy + FVector(0.0, 0.0, -10.0), 28.0, TNFinishMesh::FinishColors::Rope);
 			for (int32 m = 1; m <= 3; ++m)
 			{
-				TNFinishMesh::TNFinishBuoy(Floats, FMath::Lerp(PrevBuoy, Buoy, m / 4.0) - FVector(0.0, 0.0, 20.0), 90.0,
-					m % 2 ? TNFinishMesh::FinishColors::Red : TNFinishMesh::FinishColors::White);
+				const FVector SmallBuoy = FMath::Lerp(PrevBuoy, Buoy, m / 4.0) - FVector(0.0, 0.0, 20.0);
+				TNArt::FPieceScope SmallPiece(FloatLog, TN_ART("Beach.Finish.Buoy"), TNArt::PiecePivot(SmallBuoy), { &Floats });
+				TNFinishMesh::TNFinishBuoy(Floats, SmallBuoy, 90.0, m % 2 ? TNFinishMesh::FinishColors::Red : TNFinishMesh::FinishColors::White);
 			}
 		}
 		PrevBuoy = Buoy;
 	}
 
 	UMaterialInterface* Mat = TNBeachRaceKit::TerrainMaterial();
-	TNBeachRaceKit::Upload(FinishSolidMesh, 0, Solid, Mat, true);
-	TNBeachRaceKit::Upload(FinishDecoMesh, 0, Deco, Mat, false);
-	TNBeachRaceKit::Upload(FloatMesh, 0, Floats, Mat, false);
+	TNBeachRaceKit::Upload(FinishSolidMesh, 0, Solid, Mat, true, &Log);
+	TNBeachRaceKit::Upload(FinishDecoMesh, 0, Deco, Mat, false, &Log);
+	TNBeachRaceKit::Upload(FloatMesh, 0, Floats, Mat, false, &FloatLog);
+	TNArt::SpawnPieceArt(FinishSolidMesh, Log);
+	TNArt::SpawnPieceArt(FloatMesh, FloatLog);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -880,13 +932,14 @@ void ATN_BeachRaceGenerator::BuildJungle()
 		if (UInstancedStaticMeshComponent* Comp = MakeFlora(Mesh, bShadow, Wind.Stiffness > 0.f ? 20000 : 0))
 		{
 			Comp->AddInstances(Entry.Value, false, false);
+			TNArt::ApplyToInstances(Comp, TNBeachScenery::JungleSlot(Shape));
 			(bShadow ? Shadowed : Unshadowed) += Entry.Value.Num();
 		}
 	}
 
 	// Lianas y matas de los huecos: dos variantes de cada una, sin sombra, con viento cerca y hasta 350 m de la cámara.
 	int32 GapInstances = 0;
-	auto AddGapMeshes = [this, Mat, &GapInstances](TArray<FTransform>* Instances, void (*Build)(TNBeachScenery::FBuffers&, uint32), uint32 BaseSeed)
+	auto AddGapMeshes = [this, Mat, &GapInstances](TArray<FTransform>* Instances, void (*Build)(TNBeachScenery::FBuffers&, uint32), uint32 BaseSeed, FName Slot)
 	{
 		for (int32 v = 0; v < 2; ++v)
 		{
@@ -900,13 +953,14 @@ void ATN_BeachRaceGenerator::BuildJungle()
 			{
 				Comp->SetCullDistances(30000, 35000);
 				Comp->AddInstances(Instances[v], false, false);
+				TNArt::ApplyToInstances(Comp, Slot);
 				GapInstances += Instances[v].Num();
 			}
 		}
 	};
-	AddGapMeshes(Drapes, &TNBeachScenery::BuildLianaDrape, 0x11A0u);
-	AddGapMeshes(Curtains, &TNBeachScenery::BuildLianaCurtain, 0x22B0u);
-	AddGapMeshes(Clumps, &TNBeachScenery::BuildLeafClump, 0x33C0u);
+	AddGapMeshes(Drapes, &TNBeachScenery::BuildLianaDrape, 0x11A0u, TN_ART("Beach.Jungle.LianaDrape"));
+	AddGapMeshes(Curtains, &TNBeachScenery::BuildLianaCurtain, 0x22B0u, TN_ART("Beach.Jungle.LianaCurtain"));
+	AddGapMeshes(Clumps, &TNBeachScenery::BuildLeafClump, 0x33C0u, TN_ART("Beach.Jungle.LeafClump"));
 	UE_LOG(LogTortunabo, Log, TEXT("[Playa] selva: %d árboles y plantas con sombra y %d sin ella · %d huecos entre copas con %d lianas y matas."),
 		Shadowed, Unshadowed, NumGaps, GapInstances);
 }

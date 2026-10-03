@@ -580,6 +580,78 @@ bool FTNBeachLayoutDeterminismTest::RunTest(const FString& Parameters)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Decorado suelto sobre la malla de la arena
+// ─────────────────────────────────────────────────────────────────────────────
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNBeachLitterOnMeshTest,
+	"Tortunabo.Beach.Layout.LitterOnMesh",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNBeachLitterOnMeshTest::RunTest(const FString& Parameters)
+{
+	// MeshSandZ es la arena tal como se dibuja (triángulos de la rejilla de 3 m): en los vértices, la cota con los asientos;
+	// y el plano de una pieza suelta apoyada con su normal no se separa de la malla dentro de su triángulo (#253).
+	TNBeachLayout::FRoundLayout L;
+	TNBeachLayout::GenerateRound(1, ETNProcDifficulty::Normal, L);
+	const double S = TNBeachLayout::TerrainGridStep;
+	int32 NodeMisses = 0;
+	for (int32 k = 0; k < 40; ++k)
+	{
+		const double X = TNBeachLayout::TerrainGridMaxX - S * (3 + k * 37);
+		const double Y = S * ((k * 13) % 40 - 20);
+		const double Seated = TNBeachLayout::SeatedZ(L, X, Y, TNBeachLayout::SandZ(X, Y));
+		NodeMisses += FMath::IsNearlyEqual(TNBeachLayout::MeshSandZ(L, X, Y), Seated, 0.01) ? 0 : 1;
+	}
+	TestEqual(TEXT("en los vértices de la rejilla, la cota de la arena con los asientos"), NodeMisses, 0);
+
+	auto Cell = [S](double X, double Y)
+	{
+		const double Fx = (X - TNBeachLayout::TerrainGridMaxX) / S;
+		const double Fy = Y / S;
+		const double U = Fx - FMath::FloorToDouble(Fx);
+		const double V = Fy - FMath::FloorToDouble(Fy);
+		return FIntVector(FMath::FloorToInt32(Fx), FMath::FloorToInt32(Fy), U + V <= 1.0 ? 0 : 1);
+	};
+	int32 Litter = 0;
+	int32 Sloped = 0;
+	double WorstGap = 0.0;
+	for (const TNBeachLayout::FItem& Item : L.Items)
+	{
+		if (!TNBeachLayout::IsLitter(Item) || FMath::Abs(Item.Pos.Y) > TNBeachLayout::HalfWidth || Item.Pos.X < 0.0
+			|| Item.Pos.X > TNBeachLayout::TerrainGridMaxX - S)
+		{
+			continue;
+		}
+		++Litter;
+		FVector Normal;
+		const double Z = TNBeachLayout::MeshSandZ(L, Item.Pos.X, Item.Pos.Y, &Normal);
+		if (Normal.Z > FMath::Cos(FMath::DegreesToRadians(30.0)) && Normal.Z < 0.999)
+		{
+			++Sloped;
+		}
+		const FVector Center(Item.Pos.X, Item.Pos.Y, Z);
+		const FIntVector Home = Cell(Item.Pos.X, Item.Pos.Y);
+		const double R = FMath::Min(Item.Radius, 60.0);
+		for (int32 a = 0; a < 8; ++a)
+		{
+			const double Ang = UE_DOUBLE_TWO_PI * a / 8.0;
+			const double PX = Item.Pos.X + R * FMath::Cos(Ang);
+			const double PY = Item.Pos.Y + R * FMath::Sin(Ang);
+			if (Cell(PX, PY) != Home)
+			{
+				continue;
+			}
+			// Altura del plano de la pieza (por el centro, con su normal) en ese punto, contra la de la malla.
+			const double PlaneZ = Center.Z - (Normal.X * (PX - Center.X) + Normal.Y * (PY - Center.Y)) / Normal.Z;
+			WorstGap = FMath::Max(WorstGap, FMath::Abs(PlaneZ - TNBeachLayout::MeshSandZ(L, PX, PY)));
+		}
+	}
+	TestTrue(FString::Printf(TEXT("hay decorado suelto en la playa (%d) y parte en cuesta (%d)"), Litter, Sloped), Litter > 100 && Sloped > 0);
+	TestTrue(FString::Printf(TEXT("apoyado con su normal, a menos de 5 cm de la malla en su triángulo (peor: %.2f cm)"), WorstGap), WorstGap < 5.0);
+	return true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Reparto: reglas sobre muchas semillas (y con cada dificultad)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -947,9 +1019,9 @@ bool FTNBeachLayoutDifficultyTest::RunTest(const FString& Parameters)
 		Ratio(E.Hazards, N.Hazards) <= 0.8 && Ratio(H.Hazards, N.Hazards) >= 1.2);
 	TestTrue(FString::Printf(TEXT("ayudas: Fácil x%.2f (>= 1,25), Difícil x%.2f (>= 1)"), Ratio(E.Aids, N.Aids), Ratio(H.Aids, N.Aids)),
 		Ratio(E.Aids, N.Aids) >= 1.25 && Ratio(H.Aids, N.Aids) >= 1.0);
-	// Con 1200 m: Fácil x1,2 y Difícil x1,3 (medido). Con 800 m los sitios donde caben (unos 12 de los 60-90 que salen: tras las
-	// conchas que atrapan, los lanzadores, las trincheras...) limitan los cofres de sitio especial y salen casi los mismos en
-	// las tres dificultades (x0,98 y x1,07): no bajan del 90 % de Normal.
+	// Con 800 m caben pocos cofres por pasada en los sitios especiales (tras las conchas que atrapan, los lanzadores, las
+	// trincheras...), y en Fácil hay menos conchas y campos de minas; PlaceChests repite pasadas mientras falten (#445).
+	// Medido: Fácil x1,38 y Difícil x1,25 (antes de #445, x0,84 y x1,11). No deben bajar del 90 % de Normal.
 	TestTrue(FString::Printf(TEXT("cofres: Fácil x%.2f y Difícil x%.2f, no menos del 90 %% que en Normal"), Ratio(E.Chests, N.Chests), Ratio(H.Chests, N.Chests)),
 		E.Chests * 10 >= N.Chests * 9 && H.Chests * 10 >= N.Chests * 9);
 	return true;

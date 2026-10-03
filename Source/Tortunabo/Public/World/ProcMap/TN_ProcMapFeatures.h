@@ -76,8 +76,8 @@ namespace TNProcMap
 	{
 		using namespace FeatureDetail;
 		L.BiomeCell = 800.0;
-		L.BiomeW = FMath::Max(2, FMath::CeilToInt(L.WorldSize / L.BiomeCell));
-		L.BiomeH = L.BiomeW;
+		L.BiomeW = FMath::Max(2, FMath::CeilToInt(L.WorldSizeX / L.BiomeCell));
+		L.BiomeH = FMath::Max(2, FMath::CeilToInt(L.WorldSize / L.BiomeCell));
 		const int32 Cells = L.BiomeW * L.BiomeH;
 		L.BiomeWeights.Init(0.0f, Cells * NumBiomes);
 		L.LevelField.Init(0.0f, Cells);
@@ -88,7 +88,7 @@ namespace TNProcMap
 			{
 				const FVector2D C((x + 0.5) * L.BiomeCell, (y + 0.5) * L.BiomeCell);
 				int32 Mod = L.ModuleAt(C);
-				if (Mod == INDEX_NONE) { Mod = L.ModuleAt(FVector2D(FMath::Min(C.X, L.WorldSize - 1.0), FMath::Min(C.Y, L.WorldSize - 1.0))); }
+				if (Mod == INDEX_NONE) { Mod = L.ModuleAt(FVector2D(FMath::Min(C.X, L.WorldSizeX - 1.0), FMath::Min(C.Y, L.WorldSize - 1.0))); }
 				if (Mod == INDEX_NONE) { continue; }
 				const FModule& M = L.Modules[Mod];
 				const int32 Idx = y * L.BiomeW + x;
@@ -922,7 +922,7 @@ namespace TNProcMap
 
 		for (int32 Attempt = 0; Attempt < 30; ++Attempt)
 		{
-			const double X0 = Rng.Range(0.2, 0.8) * L.WorldSize;
+			const double X0 = Rng.Range(0.2, 0.8) * L.WorldSizeX;
 			if (FMath::Abs(X0 - L.EndPoint.X) < 12000.0) { continue; }
 			TArray<FVector2D> Pts;
 			TArray<double> Widths;
@@ -939,7 +939,7 @@ namespace TNProcMap
 				Heading = -Pi * 0.5 + 0.8 * Fbm1(RSeed, Len / 20000.0, 2);
 				Pos = Pos + DirFromAngle(Heading) * 1000.0;
 				Len += 1000.0;
-				if (Pos.X < P.MapEdgeClearance || Pos.X > L.WorldSize - P.MapEdgeClearance || Pos.Y < P.MapEdgeClearance * 1.5) { break; }
+				if (Pos.X < P.MapEdgeClearance || Pos.X > L.WorldSizeX - P.MapEdgeClearance || Pos.Y < P.MapEdgeClearance * 1.5) { break; }
 				const int32 Mod = L.ModuleAt(Pos);
 				if (Mod != INDEX_NONE && IsCrossingModule(L, Mod)) { bOk = false; break; }
 				for (int32 a = 0; a < Avoid.Num(); ++a) { if (FVector2D::Distance(Avoid[a], Pos) < AvoidR[a]) { bOk = false; break; } }
@@ -1006,7 +1006,7 @@ namespace TNProcMap
 		TArray<FPathSample> All = L.Main;
 		for (const FBranch& B : L.Branches) { All.Append(B.Samples); }
 		FSampleGrid Grid;
-		Grid.Build(All, L.WorldSize);
+		Grid.Build(All, L.MaxExtent());
 
 		TArray<int32> Regions;
 		for (const FModule& M : L.Modules)
@@ -1025,7 +1025,7 @@ namespace TNProcMap
 					const int32 Mod = L.ModuleOfCell[L.CellIndex(x, y)];
 					if (Mod < 0 || L.Modules[Mod].Region != Region) { continue; }
 					const FVector2D C = L.CellCenter(x, y);
-					const double Edge = FMath::Min(FMath::Min(C.X, L.WorldSize - C.X), FMath::Min(C.Y, L.CoastY(C.X) - C.Y));
+					const double Edge = FMath::Min(FMath::Min(C.X, L.WorldSizeX - C.X), FMath::Min(C.Y, L.CoastY(C.X) - C.Y));
 					if (Edge < 12000.0) { continue; }
 					double D = 0.0;
 					const int32 Near = Grid.Nearest(C, 40000.0, D);
@@ -1069,7 +1069,7 @@ namespace TNProcMap
 		TArray<FPathSample> All = L.Main;
 		for (const FBranch& B : L.Branches) { All.Append(B.Samples); }
 		FSampleGrid Grid;
-		Grid.Build(All, L.WorldSize);
+		Grid.Build(All, L.MaxExtent());
 
 		for (const FModule& M : L.Modules)
 		{
@@ -1357,7 +1357,7 @@ namespace TNProcMap
 		TArray<FPathSample> All = L.Main;
 		for (const FBranch& B : L.Branches) { All.Append(B.Samples); }
 		PathDetail::FSampleGrid Grid;
-		Grid.Build(All, L.WorldSize);
+		Grid.Build(All, L.MaxExtent());
 		for (const FModule& M : L.Modules)
 		{
 			if (M.Biome != ETNProcBiome::Mangrove) { continue; }

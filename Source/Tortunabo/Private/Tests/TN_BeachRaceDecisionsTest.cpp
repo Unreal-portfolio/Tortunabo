@@ -54,4 +54,63 @@ bool FTNBeachRaceTimeLimitWinnerTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNBeachRaceRoundLeftoversTest,
+	"Tortunabo.BeachRace.RoundLeftovers",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNBeachRaceRoundLeftoversTest::RunTest(const FString& Parameters)
+{
+	using namespace TNBeachRaceRules;
+
+	// #71: al preparar la ronda siguiente se quita lo suelto que dejaron las jugadoras (pickups soltados, bolas paradas,
+	// conchas trampa, cajas de objetos): todo eso se crea jugando.
+	TestTrue(TEXT("Un pickup creado en la ronda se quita"), ShouldClearRoundLeftover(false, false));
+	// Lo colocado a mano en el nivel no es de ninguna ronda: no se pierde.
+	TestFalse(TEXT("Un pickup colocado en el nivel se queda"), ShouldClearRoundLeftover(true, false));
+	// Lo que ya se está destruyendo no se vuelve a destruir.
+	TestFalse(TEXT("Lo que ya se destruye se deja en paz"), ShouldClearRoundLeftover(false, true));
+	TestFalse(TEXT("Colocado en el nivel y destruyéndose: nada"), ShouldClearRoundLeftover(true, true));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNBeachRaceLiveTest,
+	"Tortunabo.BeachRace.RaceLive",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNBeachRaceLiveTest::RunTest(const FString& Parameters)
+{
+	using namespace TNBeachRaceRules;
+
+	// #72: es la regla que miran la mina, el cangrejo, la gaviota y ahora también el disco, el protector solar y el rayo antes
+	// de golpear (ATN_BeachEnemy::IsRaceLive y TNBeachRideKit::IsRaceLive la usan tal cual): con la carrera parada, ninguno
+	// aplica efecto.
+	const ETNBeachRacePhase Phases[] = { ETNBeachRacePhase::Waiting, ETNBeachRacePhase::Racing, ETNBeachRacePhase::RoundResults,
+		ETNBeachRacePhase::Champion, ETNBeachRacePhase::SprintIntro };
+	const ETNBeachFinishCountdown Countdowns[] = { ETNBeachFinishCountdown::None, ETNBeachFinishCountdown::Counting,
+		ETNBeachFinishCountdown::TimeUp, ETNBeachFinishCountdown::AllIn };
+	for (const ETNBeachRacePhase Phase : Phases)
+	{
+		for (const ETNBeachFinishCountdown Countdown : Countdowns)
+		{
+			const bool bPhaseStops = Phase == ETNBeachRacePhase::RoundResults || Phase == ETNBeachRacePhase::Champion
+				|| Phase == ETNBeachRacePhase::SprintIntro;
+			const bool bCountdownStops = Countdown == ETNBeachFinishCountdown::TimeUp || Countdown == ETNBeachFinishCountdown::AllIn;
+			TestEqual(*FString::Printf(TEXT("Fase %d, cuenta %d"), static_cast<int32>(Phase), static_cast<int32>(Countdown)),
+				IsRaceLive(Phase, Countdown), !(bPhaseStops || bCountdownStops));
+		}
+	}
+
+	// Lo que importa, con nombre: en marcha se ataca (también en la espera, a propósito, y durante la cuenta de 10 s tras la
+	// primera en el agua) y parada no (tras la cuenta, en el recuento, en el título del sprint y en el podio).
+	TestTrue(TEXT("Esperando (3, 2, 1) cuenta como carrera"), IsRaceLive(ETNBeachRacePhase::Waiting, ETNBeachFinishCountdown::None));
+	TestTrue(TEXT("Corriendo"), IsRaceLive(ETNBeachRacePhase::Racing, ETNBeachFinishCountdown::None));
+	TestTrue(TEXT("Cuenta de meta en marcha: aún se corre"), IsRaceLive(ETNBeachRacePhase::Racing, ETNBeachFinishCountdown::Counting));
+	TestFalse(TEXT("«¡TIEMPO!»"), IsRaceLive(ETNBeachRacePhase::Racing, ETNBeachFinishCountdown::TimeUp));
+	TestFalse(TEXT("«¡TODAS AL AGUA!»"), IsRaceLive(ETNBeachRacePhase::Racing, ETNBeachFinishCountdown::AllIn));
+	TestFalse(TEXT("Recuento de conchas"), IsRaceLive(ETNBeachRacePhase::RoundResults, ETNBeachFinishCountdown::None));
+	TestFalse(TEXT("Título del sprint final"), IsRaceLive(ETNBeachRacePhase::SprintIntro, ETNBeachFinishCountdown::None));
+	TestFalse(TEXT("Podio"), IsRaceLive(ETNBeachRacePhase::Champion, ETNBeachFinishCountdown::None));
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

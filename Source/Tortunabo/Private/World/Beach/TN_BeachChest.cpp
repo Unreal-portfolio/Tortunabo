@@ -6,6 +6,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "World/Beach/TN_BeachChest.h"
+#include "Art/TN_Art.h"
 #include "Settings/TN_GameplayAssetSettings.h"
 #include "World/TN_PickupInteractableBase.h"
 #include "World/TN_ScorePickup.h"
@@ -663,10 +664,9 @@ ATN_BeachChestSpot::ATN_BeachChestSpot()
 	bRepeatable = false;
 	// Suena a chismes y monedas más que a arena.
 	RummagePitch = 1.4f;
-	// Grande y a la escala de la playa: chispitas desde más lejos y el anillo de dónde abrirlo, antes y más grande.
+	// Grande y a la escala de la playa: chispitas desde más lejos. El anillo fijo abarca su huella (SpotRadius) y se ve,
+	// como el de los objetos del suelo, desde 90 m.
 	HintDistance = 5000.f;
-	MarkerDistance = 2200.f;
-	MarkerRadius = 140.f;
 	// La playa mide 0,8 km: se ve (y su columna de luz) desde lejos; lo de serie son 150 m.
 	SetNetCullDistanceSquared(FMath::Square(40000.f));
 
@@ -769,9 +769,10 @@ void ATN_BeachChestSpot::BuildChestMeshes()
 	{
 		return;
 	}
-	ChestBody->SetStaticMesh(SharedMesh(0));
-	ChestTreasure->SetStaticMesh(SharedMesh(1));
-	ChestLid->SetStaticMesh(SharedMesh(2));
+	// Piezas de arte (Docs/Arte_Assets.md): la tapa gira en su bisagra y el tesoro se ve al abrirse; las mallas de arte van con ellos.
+	TNArt::SetMesh(ChestBody, SharedMesh(0), TN_ART("Beach.Chest.Body"));
+	TNArt::SetMesh(ChestTreasure, SharedMesh(1), TN_ART("Beach.Chest.Treasure"));
+	TNArt::SetMesh(ChestLid, SharedMesh(2), TN_ART("Beach.Chest.Lid"));
 }
 
 void ATN_BeachChestSpot::EnsureBeacon()

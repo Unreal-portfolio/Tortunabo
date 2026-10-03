@@ -2,11 +2,13 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Player/TN_ServerLaunch.h"
 #include "Player/TN_TurtleSurface.h"
 #include "TN_TurtleMovementComponent.generated.h"
 
 class ATortugaCharacter;
 class ATN_ProcMapGenerator;
+class UTN_RaceItemComponent;
 
 /** Fase del panzazo en el suelo. La simulan igual el cliente dueño (predicha y guardada en sus movimientos) y el servidor. */
 enum class ETNBellyPhase : uint8
@@ -30,8 +32,17 @@ enum class ETNBellyPhase : uint8
  */
 struct FTNTurtleNetworkMoveDataContainer : public FCharacterNetworkMoveDataContainer
 {
+	/** Con los datos de la tortuga (FTNTurtleNetworkMoveData: también el número del lanzamiento concedido que estrenan). */
+	FTNTurtleNetworkMoveDataContainer();
+
+	/** Número del lanzamiento concedido que lleva Data, si es uno de estos datos (0 si no). */
+	uint8 GetLaunchId(const FCharacterNetworkMoveData* Data) const;
+
 	virtual void ClientFillNetworkMoveData(const FSavedMove_Character* ClientNewMove, const FSavedMove_Character* ClientPendingMove,
 		const FSavedMove_Character* ClientOldMove) override;
+
+private:
+	FTNTurtleNetworkMoveData TurtleMoveData[3];
 };
 
 /**
@@ -114,12 +125,28 @@ public:
 	/** Lo que pide ahora el jugador (lo que se guarda en el movimiento nuevo). */
 	bool InputWantsToSprint() const { return bInputWantsToSprint; }
 
+	// ── Turbo de los objetos de carrera (issue #22) ─────────────────────────
+	// Va en la predicción como el panzazo: quien mueve la tortuga (su dueño o el anfitrión) toma el multiplicador de
+	// UTN_RaceItemComponent al empezar cada movimiento y lo guarda en él (FTNSavedMove_Turtle: marca FLAG_Custom_1 al
+	// servidor y el valor para repetirlo); el servidor simula los movimientos marcados con el que él le reconoce
+	// (UTN_RaceItemComponent::ResolveOwnerBoostMultiplier) y los demás sin turbo. GetMaxSpeed y GetMaxAcceleration lo aplican.
+
+	/** Los objetos de carrera de la tortuga (UTN_RaceItemComponent::ApplyEffects se da a conocer en cada máquina). */
+	void SetRaceItems(UTN_RaceItemComponent* InRaceItems);
+
+	/** Multiplicador del turbo en el movimiento que se simula (1 = sin turbo). */
+	float GetRaceBoostMultiplier() const { return RaceBoostMultiplier; }
+
+	/** Repetición de movimientos tras una corrección (FTNSavedMove_Turtle::PrepMoveFor): el turbo con que se hizo. */
+	void RestoreRaceBoost(float InMultiplier) { RaceBoostMultiplier = FMath::Max(1.f, InMultiplier); }
+
 	// ── UCharacterMovementComponent ──────────────────────────────────────────
 
 	virtual void UpdateCharacterStateBeforeMovement(float DeltaSeconds) override;
 	virtual void CalcVelocity(float DeltaTime, float Friction, bool bFluid, float BrakingDeceleration) override;
 	virtual FRotator ComputeOrientToMovementRotation(const FRotator& CurrentRotation, float DeltaTime, FRotator& DeltaRotation) const override;
 	virtual float GetMaxSpeed() const override;
+	virtual float GetMaxAcceleration() const override;
 	virtual bool CanAttemptJump() const override;
 	virtual bool DoJump(bool bReplayingMoves, float DeltaTime) override;
 	virtual FNetworkPredictionData_Client* GetPredictionData_Client() const override;
@@ -144,6 +171,17 @@ public:
 	 * Con estas bases todo va en coordenadas del mundo (Docs/Modo_Carrera.md, «Seguridad: nunca bajo el mapa»).
 	 */
 	static bool IsNetResolvableBase(const UPrimitiveComponent* Base);
+
+	// ── Red: lanzamientos que decide el servidor ────────────────────────────
+
+	/**
+	 * Servidor: lanza a Character con LaunchVelocity (como LaunchCharacter con las dos componentes sustituidas). Si es la
+	 * tortuga de un cliente remoto, el lanzamiento lo estrena su dueño en su siguiente movimiento y el servidor lo aplica en
+	 * ese mismo movimiento (FTNServerLaunch): sin corrección. Si no (el anfitrión, otro personaje), LaunchCharacter.
+	 */
+	static void LaunchFromServer(ACharacter* Character, const FVector& LaunchVelocity);
+
+	const FTNServerLaunch& GetServerLaunch() const { return ServerLaunch; }
 
 	// ── Cápsula ─────────────────────────────────────────────────────────────
 
@@ -289,7 +327,13 @@ public:
 	float BellyBodyProbeHeight = 32.f;
 
 protected:
-	/** Servidor (y repetición en el cliente): la petición de sprint del movimiento (FLAG_Custom_0). */
+	/** Quien mueve la tortuga en esta máquina: antes de guardar y simular el movimiento, el turbo que lleva ahora. */
+	virtual void ControlledCharacterMove(const FVector& InputVector, float DeltaSeconds) override;
+
+	/**
+	 * Servidor (y repetición en el cliente): la petición de sprint del movimiento (FLAG_Custom_0). Servidor, movimiento de un
+	 * cliente: con la marca de turbo (FLAG_Custom_1), el multiplicador que le reconoce; sin ella, ninguno.
+	 */
 	virtual void UpdateFromCompressedFlags(uint8 Flags) override;
 
 	virtual void ProcessLanded(const FHitResult& Hit, float remainingTime, int32 Iterations) override;
@@ -304,8 +348,36 @@ protected:
 	virtual void ServerMoveHandleClientError(float ClientTimeStamp, float DeltaTime, const FVector& Accel, const FVector& RelativeClientLocation,
 		UPrimitiveComponent* ClientMovementBase, FName ClientBaseBoneName, uint8 ClientMovementMode) override;
 
+	/** Servidor: el movimiento del cliente que estrena un lanzamiento concedido lo aplica; el cliente, al repetirlo, también. */
+	virtual void MoveAutonomous(float ClientTimeStamp, float DeltaTime, uint8 CompressedFlags, const FVector& NewAccel) override;
+
+	/** Cliente dueño: el lanzamiento concedido que ha llegado entra en este movimiento. */
+	virtual void ReplicateMoveToServer(float DeltaTime, const FVector& NewAcceleration) override;
+
+	/** Cliente dueño: apunta en qué movimiento ha entrado el lanzamiento concedido. */
+	virtual bool HandlePendingLaunch() override;
+
+	/**
+	 * Servidor: mientras la mueve su caja del caparazón (UTN_ShellComponent::HasLocalBody), los pasos que el dueño aún manda
+	 * andando hasta que le llega la bola no se corrigen: la bola replicada ya lo coloca.
+	 */
+	virtual bool ServerCheckClientError(float ClientTimeStamp, float DeltaTime, const FVector& Accel, const FVector& ClientWorldLocation,
+		const FVector& RelativeClientLocation, UPrimitiveComponent* ClientMovementBase, FName ClientBaseBoneName, uint8 ClientMovementMode) override;
+
 private:
 	ATortugaCharacter* GetTurtle() const;
+
+	/** Lanzamiento concedido por el servidor para el dueño (LaunchFromServer). */
+	UFUNCTION(Client, Reliable)
+	void ClientReceiveServerLaunch(uint8 Id, FVector_NetQuantize LaunchVelocity);
+
+	/**
+	 * El lanzamiento concedido que entra en el movimiento ClientTimeStamp: en el servidor, el que estrena ese movimiento del
+	 * cliente (o, pasado el plazo, el que no llegó); en el dueño que repite sus movimientos, el que estrenó ese.
+	 */
+	bool FindServerLaunchForMove(float ClientTimeStamp, FVector& OutVelocity);
+
+	FTNServerLaunch ServerLaunch;
 
 	/** Esta máquina simula el movimiento de la tortuga (el dueño, el servidor o el propio anfitrión; no los demás). */
 	bool SimulatesBelly() const;
@@ -353,6 +425,14 @@ private:
 	/** Multiplicador del vadeo en este paso del movimiento (1 = fuera del agua). */
 	float MoveWadingMultiplier = 1.f;
 
+	/**
+	 * Trampolines de la playa (#21), al empezar cada paso: si la cápsula toca el sensor de uno (ATN_BeachTrampoline) y no
+	 * sube (TNTrampolineRules::CanBounce), el rebote entra en este mismo paso (HandlePendingLaunch va justo después). Lo
+	 * hacen igual el servidor y el cliente dueño, también al repetir pasos tras una corrección: solo depende del estado del
+	 * paso. El boing y la deformación, solo en un paso nuevo.
+	 */
+	void TickTrampolineBounce();
+
 	ETNBellyPhase BellyPhase = ETNBellyPhase::None;
 	float BellyTime = 0.f;
 	uint8 SlideSerial = 0;
@@ -382,4 +462,7 @@ private:
 
 	/** Lo que el cliente manda al servidor en cada movimiento (SetNetworkMoveDataContainer en el constructor). */
 	FTNTurtleNetworkMoveDataContainer TurtleNetworkMoveData;
+
+	TWeakObjectPtr<UTN_RaceItemComponent> RaceItems;
+	float RaceBoostMultiplier = 1.f;
 };

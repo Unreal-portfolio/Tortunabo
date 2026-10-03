@@ -33,8 +33,9 @@ void ATN_DeathZoneVolume::BeginPlay()
 {
 	Super::BeginPlay();
 
-	TriggerBox->OnComponentBeginOverlap.AddDynamic(this, &ATN_DeathZoneVolume::OnBoxBeginOverlap);
-	TriggerBox->OnComponentEndOverlap.AddDynamic(this, &ATN_DeathZoneVolume::OnBoxEndOverlap);
+	// AddUnique: los BP_Chunk_* traen el enlace serializado de cuando se hacía en el constructor.
+	TriggerBox->OnComponentBeginOverlap.AddUniqueDynamic(this, &ATN_DeathZoneVolume::OnBoxBeginOverlap);
+	TriggerBox->OnComponentEndOverlap.AddUniqueDynamic(this, &ATN_DeathZoneVolume::OnBoxEndOverlap);
 }
 
 void ATN_DeathZoneVolume::OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,

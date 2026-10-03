@@ -85,3 +85,32 @@ def con_decision(etiquetas_por_miembro: dict[int, set[str]], etiqueta: str) -> l
 def pr_necesita_lote(refs_trabajo: set[int], con_lote: bool) -> bool:
     """Una PR que cierra varias issues de trabajo debe ir con su lote."""
     return len(refs_trabajo) >= MINIMO_MIEMBROS and not con_lote
+
+
+def miembros_nuevos(lote: int, pedidos: list[int], actuales: set[int]) -> list[int]:
+    """Miembros que hay que añadir al lote, en orden y sin los que ya están. Error si no queda ninguno."""
+    if lote in pedidos:
+        raise ErrorLote(f"El lote #{lote} no puede ser miembro de sí mismo.")
+    nuevos = [n for n in dict.fromkeys(pedidos) if n not in actuales]
+    if not nuevos:
+        raise ErrorLote(f"{', '.join(f'#{n}' for n in pedidos)} ya están en el lote #{lote}.")
+    return nuevos
+
+
+def cuerpo_con_miembros(texto: str, nuevos: list[int]) -> str:
+    """Cuerpo del lote con los miembros nuevos añadidos tras la última casilla de la lista."""
+    lineas = texto.splitlines()
+    casillas = [i for i, linea in enumerate(lineas) if linea.lstrip().startswith(("- [ ] #", "- [x] #"))]
+    lineas_nuevas = [f"- [ ] #{n}" for n in nuevos]
+    if not casillas:
+        return texto.rstrip() + "\n\n" + "\n".join(lineas_nuevas)
+    corte = casillas[-1] + 1
+    return "\n".join(lineas[:corte] + lineas_nuevas + lineas[corte:])
+
+
+def fuera_del_lote(cierra: set[int], miembros_por_lote: dict[int, set[int]]) -> dict[int, list[int]]:
+    """Issues de trabajo que cierra una PR enlazada a lotes sin ser miembro de ninguno: {issue: [lotes]}."""
+    if not miembros_por_lote:
+        return {}
+    todos = set().union(*miembros_por_lote.values())
+    return {n: sorted(miembros_por_lote) for n in sorted(cierra - todos)}

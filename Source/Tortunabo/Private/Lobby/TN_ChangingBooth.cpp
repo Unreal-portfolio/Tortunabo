@@ -1,4 +1,5 @@
 #include "Lobby/TN_ChangingBooth.h"
+#include "Art/TN_Art.h"
 #include "Core/TN_Log.h"
 #include "Player/MP_GamePlayerController.h"
 #include "Settings/TN_LanguageSettings.h"
@@ -391,7 +392,7 @@ void ATN_ChangingBooth::BuildMeshes()
 		const FVector J0 = LipPt(DoorR - 22.0, P0, WallR - 10.0), J1 = LipPt(DoorR - 22.0, P1, WallR - 10.0);
 		B.AddQuad(I0, I1, J1, J0, Axis - (I0 + J1) * 0.5, GlassLight * 0.85f);
 	}
-	Bottle->SetStaticMesh(TNProcRuntimeMesh::MakeStaticMesh(this, B, VertexColorMat));
+	TNArt::SetMesh(Bottle, TNProcRuntimeMesh::MakeStaticMesh(this, B, VertexColorMat), TN_ART("Lobby.Booth.Bottle"));
 
 	// ── Puerta: el tapón, una chapa de corona roja con su estrella (en el espacio de la bisagra) ──
 	TNProcMesh::FTNProcMeshBuffers D;
@@ -460,7 +461,7 @@ void ATN_ChangingBooth::BuildMeshes()
 		const FVector E1 = CapPt(CapFaceR, DoorR * FMath::Cos(P1), DoorZ + DoorR * FMath::Sin(P1));
 		D.AddQuad(E0, E1, F1, F0, Radial, CapRed);
 	}
-	Door->SetStaticMesh(TNProcRuntimeMesh::MakeStaticMesh(this, D, VertexColorMat));
+	TNArt::SetMesh(Door, TNProcRuntimeMesh::MakeStaticMesh(this, D, VertexColorMat), TN_ART("Lobby.Booth.Door"));
 }
 
 void ATN_ChangingBooth::BuildLabel()

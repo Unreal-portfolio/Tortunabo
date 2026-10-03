@@ -14,7 +14,6 @@
 #include "World/ProcMap/TN_ProcWaterActors.h"
 #include "Multiplayer/MP_GameInstance.h"
 #include "Core/TN_Log.h"
-#include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Engine/CollisionProfile.h"
@@ -31,7 +30,6 @@
 #include "Net/UnrealNetwork.h"
 #include "ProceduralMeshComponent.h"
 #include "UObject/UObjectGlobals.h"
-#include "TN_BeachRaceKit.h"
 #include "../ProcMap/TN_ProcMapAmbientFX.h"
 
 namespace TNBeachRace

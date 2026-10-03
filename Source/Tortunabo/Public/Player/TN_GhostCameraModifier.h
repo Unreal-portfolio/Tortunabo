@@ -14,7 +14,9 @@ class ATN_SpectatorGhost;
  * que la vista «fija» es la cámara de esa tortuga tal cual, con la rotación de su jugador; la «libre» la sustituye por
  * una órbita propia alrededor de la tortuga (ratón o stick derecho; rueda o gatillos para acercar), que no atraviesa el
  * suelo ni las paredes. Se pasa de una a otra con una mezcla suave. Volviendo a la vida, la cámara se aparta un poco y
- * mira el vuelo del fantasma hasta el huevo (luego la tapa la cáscara oscura).
+ * mira el vuelo del fantasma hasta el huevo (luego la tapa la cáscara oscura). Si un gusano de arena se come a la tortuga
+ * seguida (fin de la carrera), cualquiera de las dos pasa, con otra mezcla, a la vista lejana de la escena que ve ella
+ * (ATN_BeachSandWorm::GetSpectatorView), con el gusano entero.
  */
 UCLASS()
 class TORTUNABO_API UTN_GhostCameraModifier : public UCameraModifier
@@ -64,6 +66,11 @@ private:
 
 	bool bHasLastView = false;
 	FMinimalViewInfo LastView;
+
+	/** Vista lejana del gusano que se come a la seguida: mezcla (0-1) y la última vista que dio. */
+	float WormBlend = 0.f;
+	FVector WormLocation = FVector::ZeroVector;
+	FRotator WormRotation = FRotator::ZeroRotator;
 
 	/** Volviendo a la vida: desde dónde mira y hacia dónde. */
 	bool bReviveViewReady = false;

@@ -1888,7 +1888,7 @@ El espectador tiene su propia cámara libre o fija (§22.4).
 | Energía sin fin: penalización posterior | por defecto 4 s (`PostBoostExhaustionSeconds`); cada objeto pone la suya | [C] |
 | Durante la penalización | velocidad × 0,75 y gasto × 2 (la recarga no se bloquea) | [C] |
 | Tope de la energía sin fin pedida por un cliente | 15 s (el servidor lo recorta) | [C] `MaxGrantDuration` |
-| Multiplicador de velocidad de la carrera | limitado a 1–4; la aceleración sube con él (`RaceBaseAcceleration × (1 + (m−1)·2)`) | [C] `SetRaceSpeedMultiplier` |
+| Multiplicador de velocidad de la carrera | hasta 2,4 (`MaxSpeedMultiplier`); en cada movimiento guardado (`FTNSavedMove_Turtle`); la aceleración sube con él (`MaxAcceleration × (1 + (m−1)·2)`) | [C] `TNMovementLimits::RaceBoostAcceleration` |
 
 **Cifras derivadas** [calc]:
 
@@ -2125,7 +2125,9 @@ cuenta. Mientras forcejea, a quien carga **le tiembla la cámara** (2,5° a 41 y
 **45 %** de la fuerza (`StruggleThrowMultiplier`).
 
 Se suelta también sin lanzar (`ForceRelease(false)`) si quien carga o la cargada muere, si quien carga cae derribada, y en el
-mapa procedural al reaparecer o llegar (`ATN_ProcMapGameMode::ReleaseCarry`).
+mapa procedural al reaparecer o llegar (`ATN_ProcMapGameMode::ReleaseCarry`). Si **la cargada** cae derribada (el lanzable de
+un tercero, la piel de plátano, el DBNO), quien la lleva la suelta antes y ella cae derribada como en el suelo, fuera del
+caparazón (`TNCarryRules::KnockdownDropsFromCarrier`, #68); aturdida (la bola de la carrera) sigue en sus brazos.
 
 ### 19.3 Lanzar con la E: el saque de banda
 
@@ -2346,11 +2348,14 @@ existe): `TNGhost::ReviveIntoEgg(PC, EggTransform)`, `OnHatched()`, `IsReviving`
 
 ### 23.1 Interactuar (E)
 
-- **Detección**: cada 0,1 s (`InteractionScanInterval`) se buscan actores `ATN_InteractableBase` en una esfera de **350 cm**
-  alrededor de la tortuga; gana el más cercano por su punto de interacción (`GetInteractionPointFor`). El HUD muestra la tecla y
-  el texto del interactuable (`UTN_RunHUDWidget::TickPrompt`).
-- **Validación en el servidor** (`ServerTryInteract`): distancia ≤ `max(350, distancia del interactuable) + 100 + holgura por
-  ping` (el 25 % del ping, hasta 120 cm).
+- **Detección**: cada 0,1 s (`InteractionScanInterval`) se buscan actores `ATN_InteractableBase` en una esfera de **250 cm**
+  (`MaxInteractionDistance`, bajada de 350 en #214; sale de `ATortugaCharacter::DefaultInteractionDistance`) alrededor de la
+  tortuga; gana el más cercano por su punto de interacción (`GetInteractionPointFor`). El HUD muestra la tecla y el texto del
+  interactuable (`UTN_RunHUDWidget::TickPrompt`).
+- **Validación en el servidor** (`ServerTryInteract`): distancia ≤ `max(250, distancia del interactuable) + 100 + holgura por
+  ping` (el 25 % del ping, hasta 120 cm). La distancia propia del interactuable (`InteractionDistance`: 250 de serie) solo
+  cuenta aquí y solo si supera a la de la tortuga; ningún interactuable la supera ya (rescates y entrada del tutorial bajaron
+  de 300 a 250).
 - **Orden de prioridades al pulsar E** (`ATortugaCharacter::TryInteract`):
   1. Derribada o en el caparazón: nada.
   2. **Llevando a alguien**: lo lanza (§19).
@@ -2360,7 +2365,7 @@ existe): `TNGhost::ReviveIntoEgg(PC, EggTransform)`, `OnHatched()`, `IsReviving`
   6. Caso especial: si el interactuable a mano es un objeto que no cabe (las dos ranuras llenas) y hay un objeto equipado, el
      servidor **usa el objeto de la mano** en vez de perder la pulsación.
 - **Interacción de mantener** (`ServerBeginHoldInteract` / `ServerEndHoldInteract`): el aro del HUD se llena mientras se mantiene
-  E; soltar antes cancela; el servidor cuenta el tiempo y vigila que la tortuga siga cerca (alcance + 1,2 m) y en condiciones
+  E; soltar antes cancela; el servidor cuenta el tiempo y vigila que la tortuga siga cerca (alcance + 0,85 m) y en condiciones
   (no se meta en el caparazón, no quede tumbada, no muera, no la cojan). Rebuscar: 1,3 s; cofre del lobby: 5 s; cofre de la
   playa: 5,5 s (§28.4).
 - **Los interactuables** (§34, §36.15): botones, placas, tienda y probador, tótem, sombrilla, rescates, objetos del suelo,
@@ -2524,7 +2529,7 @@ texturas de relleno del motor, [DT]).
 
 ### 27.2 Recoger
 
-- Con **E** cerca de un objeto del suelo (`ATN_PickupInteractableBase`, esfera de 350 cm como cualquier interactuable).
+- Con **E** cerca de un objeto del suelo (`ATN_PickupInteractableBase`, esfera de 250 cm como cualquier interactuable).
 - **Destino** (`TNInventoryLogic::DecideAddSlot`): mano libre → la mano; si no, y el caparazón está libre → al caparazón (con la
   animación de guardar); con **las dos llenas no se recoge** (`CanReceiveItem(…, false)`: el objeto se queda en el suelo y esa
   pulsación de E **usa el objeto de la mano**, §23).
@@ -2706,7 +2711,8 @@ mira**. En la playa las sombrillas clavadas son solo decorado (se rebuscan).
 
 Rebuscar y el cofre: marca común de lo que se coge (anillo dorado que gira en el suelo, columna de luz de 3,6 m visible a 150 m,
 chispitas a menos de 30 m, luz a menos de 18 m; el objeto sube 14 cm, flota ±6 cm y gira a 0,2 vueltas/s a menos de 40 m;
-`UTN_PickupGlowComponent`, [`Docs/Botin_Decorados.md`](Botin_Decorados.md)).
+`UTN_PickupGlowComponent`, [`Docs/Botin_Decorados.md`](Botin_Decorados.md)). En los rebuscables, el anillo está fijo
+alrededor del decorado y abarca su huella (en la playa, centrado en su montículo de arena), sin seguir a nadie.
 
 ## 29. Objetos de carrera
 
@@ -2932,8 +2938,8 @@ Los nombres valen en inglés, en español o por número. La gaviota justiciera y
 ### 29.10 Límites conocidos
 
 Todo este código se escribió sin compilar (puede haber errores de compilación la primera vez); las cajas no reaparecen ni dicen lo
-que dan; las minas lanzadas solo miran el suelo; el turbo y el protector cambian `MaxWalkSpeed` en cada máquina por su cuenta
-(con latencia alta, corrección de movimiento al empezar o acabar); los efectos se acaban solos al cambiar la ronda; los abortos del
+que dan; las minas lanzadas solo miran el suelo; el turbo y el protector van en la predicción del movimiento
+(issue #22: sin corrección al empezar o acabar); los efectos se acaban solos al cambiar la ronda; los abortos del
 pelícano la sueltan donde estén.
 
 ## 30. Puntuación
@@ -3834,8 +3840,9 @@ Rebota hacia arriba y adelante; sirve para atajos y para subirse a castillos. Cu
   cima de una fortaleza, ~38–53 m [calc] (45–66 m con las del código). Aro dorado en la arena, cuatro palos con pomos dorados (uno con la bandera de Tortunavy) y
   guirnaldas de banderines; cada rebote suma boing grave, barrido de aire, destellos dorados y la fanfarria (una cada 3 s por
   máquina como mucho).
-- **Red**: el rebote lo aplican el servidor y el cliente dueño dentro del mismo movimiento (golpe con la colisión o solape con el
-  sensor, 15 cm más grande); el resto lo ve por un multicast no fiable. Lo potenciado sale de `Spec`.
+- **Red**: el rebote lo decide el movimiento de la tortuga al empezar cada paso en que su cápsula toca el sensor (15 cm más
+  grande): el servidor y el cliente dueño rebotan en el mismo paso, sin corrección (#21); el resto lo ve por un multicast no
+  fiable. Lo potenciado sale de `Spec`.
 - **Cómo se usa**: caer encima o andar contra un costado; encadenar dos para subir más; saltar desde uno por encima de un alambre.
   Trampolín delante de un castillo grande = subida rápida.
 
@@ -3918,9 +3925,9 @@ blanco con reborde de color y bisagras; hasta 300 de ancho) tendida sobre un **h
 redondeada de 90 cm de ancho a 240 de alto, ladera exterior de 30°, pared interior empinada, hoyo de 364 cm de radio arriba y
 una brecha de ~2,4 m por el lado +Y por la que se sale andando del fondo). El hoyo va en la malla del elemento (el terreno no se cava).
 
-- **Tambaleo** (cada máquina con las tortugas que ve encima; la tabla es una base móvil): se ladea 4,5° por tortuga según dónde
-  pise (tope 7°, `MaxRollDeg`), cabecea hasta 2°, se mece al andar y los aterrizajes (caída >250 cm/s) la sacuden; muelle poco
-  amortiguado (~1,2 Hz) y crujidos.
+- **Tambaleo** (la tabla es una base móvil; el muelle lo mueve el servidor y manda la pose y el estado del muelle en siete
+  bytes hasta 15 veces por segundo, y en el acto al aterrizar; cada cliente mueve el mismo muelle desde la última muestra): se ladea 4,5° por tortuga según dónde pise (tope 7°, `MaxRollDeg`), cabecea hasta
+  2°, se mece al andar y los aterrizajes (caída >250 cm/s) la sacuden; muelle poco amortiguado (~1,2 Hz) y crujidos.
 - **Rotura** (servidor): con **2 o más tortugas** a la vez (`BreakRiders`) la grieta sube y en **1,1 s** (`CrackSeconds`) se parte;
   si se bajan, baja a 0,45/s. Al partirse: chasquido, astillas, «¡CRAC!»; las mitades caen (0,5 s) y a los 0,8 s son rampas de
   ~34° de la cresta al fondo. Quien estuviera encima cae al hoyo y sale por la brecha o subiendo por una mitad. **No se recompone
@@ -4038,7 +4045,7 @@ Dos actores: `ATN_BeachChest` es el elemento del reparto (solo servidor, no se r
 ### 34.12 Rebuscables y montículos que vibran (`TN_BeachLoot`, `World/Beach/TN_BeachLoot.*`, `TN_BeachSearchMounds.cpp`)
 
 En la playa se rebusca en casi todo el decorado (tablas de §33.3) con mantener E **1,3 s**: **70 % de suerte** (55 % en el
-cooperativo; `SearchLuck`), pesos por puesto de quien rebusca, saltito del objeto, anillo dorado a 18 m del borde (105 cm de radio)
+cooperativo; `SearchLuck`), pesos por puesto de quien rebusca, saltito del objeto, anillo dorado fijo en su montículo de arena
 y chispitas desde 35 m. La huella es la caja real de la malla (cápsula a lo largo del lado largo; la sombrilla se rebusca en el
 montón de arena de su pie). **Uno por corrillo** (9 m entre centros, 3 m entre bordes), **hasta 240 por ronda y 50 por sexto del
 recorrido** (360 y 75 con 1200 m), ×1,6 en Fácil y ×1,4 en Difícil.
@@ -4445,6 +4452,8 @@ Caracola de turbante de 2,24 m de diámetro (4 cm reales) con el ermitaño asoma
   últimos 7 m frena y se para al final.
 - **Derriba** a quien toca la bola (1,12 m + 0,7 m del tramo que recorre en ese fotograma, y a menos de 2,2 m en altura), **sin
   pararse**: a todas las que estén en fila. Tabla de §36.2 («¡BOLO!»/«¡STRIKE!»).
+- **Es sólido** cuando no rueda (esperando, metiéndose, asomando, andando o mareado): la tortuga choca con él. Rodando no
+  bloquea: derriba.
 - **Al final** asoma (0,35 s), se sacude la arena, se da la vuelta y **vuelve andando** a lo alto a 2,3 m/s (por la raíz del tamaño).
 - **Red**: los estados son función de su hora (reloj del servidor); la rodada es un camino calculado igual en cada máquina (pasos de
   1/60 s, 14 s como mucho). Los derribos, por el servidor.

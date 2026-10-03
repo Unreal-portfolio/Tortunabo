@@ -26,6 +26,7 @@
 #include "Player/TN_TurtleFoleyComponent.h"
 #include "Player/TN_TurtleMovementComponent.h"
 #include "World/TN_InteractableBase.h"
+#include "World/Beach/TN_BeachTrampoline.h"
 #include "GameFramework/PlayerState.h"
 #include "Components/SceneComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -1595,6 +1596,11 @@ void ATortugaCharacter::TickFallRules(float /*DeltaTime*/)
 	}
 	if (FallApexZ - Z > AutoShellFallHeight)
 	{
+		// Sobre un trampolín, sin bola: rebota como tortuga en el mismo paso aquí y en el cliente dueño (#21).
+		if (TNTrampolineRules::HoldsAutoShell(ATN_BeachTrampoline::DropOntoTrampoline(*this, TNTrampolineRules::AutoShellLookDown)))
+		{
+			return;
+		}
 		bAutoShelledThisFall = true;
 		if (!IsInShell())
 		{

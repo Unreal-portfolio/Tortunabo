@@ -125,50 +125,57 @@ namespace TNBeachLootDetail
 
 	/**
 	 * Montículo de un punto rebuscable: en la arena junto a su borde, del lado por el que se llega (hacia la salida, ±50°;
-	 * si ahí hay otra pieza, se prueba a los lados y detrás), algo metido bajo la pieza, como escarbado de debajo.
+	 * si ahí hay otra pieza, se prueba a los lados, detrás y en las diagonales: TNBeachLoot::PickMoundSide), algo metido bajo
+	 * la pieza, como escarbado de debajo. Devuelve false, sin montículo, si ningún lado está libre: un rebuscable sin
+	 * montículo a la vista no existe (#254). OutAnchor dice dónde queda el montículo y qué ocupa su base: ahí se pone el actor
+	 * interactivo del punto.
 	 */
-	FTNBeachSearchMound MakeMound(const ATN_BeachRaceGenerator& Gen, const TNBeachLoot::FSearchPoint& Point, ETNBeachElement Element, FRandomStream& Rng)
+	bool MakeMound(const ATN_BeachRaceGenerator& Gen, const TNBeachLoot::FSearchPoint& Point, ETNBeachElement Element, FRandomStream& Rng,
+		FTNBeachSearchMound& OutMound, TNBeachLoot::FSearchAnchor& OutAnchor)
 	{
 		const FTransform GenXf = Gen.GetActorTransform();
+		// Todo el azar de este montículo, junto y antes de buscarle sitio: que lo haya o no, no cambia el de los demás.
 		const float Size = Rng.FRandRange(0.8f, 1.25f);
+		const double BaseAngle = Rng.FRandRange(-50.f, 50.f);
+		const uint8 Yaw = static_cast<uint8>(Rng.RandRange(0, 255));
+		const float VariantRoll = Rng.FRand();
 		const double Reach = TNBeachDecorKit::SearchMoundRadius * Size;
 		const FVector AxisW = FVector(Point.Axis.X, Point.Axis.Y, 0.0).GetSafeNormal();
-		const double BaseAngle = Rng.FRandRange(-50.f, 50.f);
-		const double Tries[4] = { 0.0, 90.0, -90.0, 180.0 };
-		FVector Best = FVector::ZeroVector;
-		bool bHave = false;
-		for (const double Turn : Tries)
+		// Dónde quedaría el montículo por el lado Side: en el punto del borde de la huella en esa dirección (el de más allá de
+		// la cápsula) y algo por fuera.
+		const auto SiteOf = [&](int32 Side)
 		{
 			// Hacia la salida (-X del generador), girado.
-			const FVector LocalDir = TNBeachProp::YawQ(BaseAngle + Turn).RotateVector(FVector(-1.0, 0.0, 0.0));
+			const FVector LocalDir = TNBeachProp::YawQ(BaseAngle + TNBeachLoot::MoundSideTurns[Side]).RotateVector(FVector(-1.0, 0.0, 0.0));
 			const FVector Dir = GenXf.TransformVectorNoScale(LocalDir).GetSafeNormal2D();
-			// El punto del borde de la huella en esa dirección (el de más allá de la cápsula) y algo por fuera.
-			const double Side = FVector::DotProduct(AxisW, Dir) >= 0.0 ? 1.0 : -1.0;
-			const FVector Rim = Point.Center + AxisW * (Point.HalfLength * Side) + Dir * Point.Radius;
-			const FVector At = Rim + Dir * (Reach * 0.3);
-			const FVector LocalAt = GenXf.InverseTransformPosition(At);
-			if (!bHave)
-			{
-				Best = At;
-				bHave = true;
-			}
-			if (TNBeachLoot::IsClearOfLayout(Gen, FVector2D(LocalAt.X, LocalAt.Y), Reach * 0.5, Point.Item))
-			{
-				Best = At;
-				break;
-			}
+			const double Along = FVector::DotProduct(AxisW, Dir) >= 0.0 ? 1.0 : -1.0;
+			const FVector Rim = Point.Center + AxisW * (Point.HalfLength * Along) + Dir * Point.Radius;
+			return Rim + Dir * (Reach * 0.3);
+		};
+		const int32 Side = TNBeachLoot::PickMoundSide([&](int32 Candidate)
+		{
+			const FVector LocalAt = GenXf.InverseTransformPosition(SiteOf(Candidate));
+			return TNBeachLoot::IsClearOfLayout(Gen, FVector2D(LocalAt.X, LocalAt.Y), Reach * 0.5, Point.Item);
+		});
+		if (Side == INDEX_NONE)
+		{
+			return false;
 		}
-		const FVector Ground(Best.X, Best.Y, Gen.GetGroundHeightAt(Best));
+		const FVector At = SiteOf(Side);
+		const FVector Ground(At.X, At.Y, Gen.GetGroundHeightAt(At));
 		const FVector Local = GenXf.InverseTransformPosition(Ground);
-		FTNBeachSearchMound Mound;
-		Mound.X = static_cast<uint16>(FMath::Clamp(FMath::RoundToInt32(Local.X * 0.5), 0, 65535));
-		Mound.Y = static_cast<int16>(FMath::Clamp(FMath::RoundToInt32(Local.Y), -32767, 32767));
-		Mound.Z = static_cast<int16>(FMath::Clamp(FMath::RoundToInt32(Local.Z), -32767, 32767));
-		Mound.Yaw = static_cast<uint8>(Rng.RandRange(0, 255));
-		const int32 Variant = MoundVariantFor(Element, Rng.FRand());
+		OutMound = FTNBeachSearchMound();
+		OutMound.X = static_cast<uint16>(FMath::Clamp(FMath::RoundToInt32(Local.X * 0.5), 0, 65535));
+		OutMound.Y = static_cast<int16>(FMath::Clamp(FMath::RoundToInt32(Local.Y), -32767, 32767));
+		OutMound.Z = static_cast<int16>(FMath::Clamp(FMath::RoundToInt32(Local.Z), -32767, 32767));
+		OutMound.Yaw = Yaw;
+		const int32 Variant = MoundVariantFor(Element, VariantRoll);
 		const int32 SizeStep = FMath::Clamp(FMath::RoundToInt32((Size - 0.8f) / 0.45f * 63.f), 0, 63);
-		Mound.Look = static_cast<uint8>((Variant & 3) | (SizeStep << 2));
-		return Mound;
+		OutMound.Look = static_cast<uint8>((Variant & 3) | (SizeStep << 2));
+		// La base con los terrones que asoman: 1,1 veces el radio del montículo, por su tamaño.
+		OutAnchor.Ground = Ground;
+		OutAnchor.Radius = static_cast<float>(TNBeachDecorKit::SearchMoundRadius * 1.1 * Size);
+		return true;
 	}
 }
 
@@ -331,13 +338,35 @@ ATN_BeachSearchSpot::ATN_BeachSearchSpot()
 	LootChance = TNBeachLoot::SearchLuck;
 	// Los pesos son los de la carrera (GetLootWeight): los del cooperativo, fuera.
 	LootWeights.Reset();
-	// A la escala de la playa (todo 28 veces más grande): chispitas desde más lejos y el anillo de dónde rebuscar, antes y
-	// más grande.
+	// A la escala de la playa (todo 28 veces más grande): chispitas desde más lejos. El anillo es el de siempre, fijo y
+	// centrado en el montículo de arena de su punto (GetMarkerAnchor); como el actor solo existe a menos de
+	// ProxySpawnDistance de alguna tortuga, se ve desde que aparece.
 	HintDistance = 3500.f;
-	MarkerDistance = 1800.f;
-	MarkerRadius = 105.f;
 	// Solo existe cerca de alguna tortuga (el registro lo crea y lo quita): a un cliente le basta con tenerlo cerca.
 	SetNetCullDistanceSquared(FMath::Square(TNBeachLoot::ProxyNetRelevance));
+}
+
+void ATN_BeachSearchSpot::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME_CONDITION(ATN_BeachSearchSpot, MoundIndex, COND_InitialOnly);
+}
+
+ETNSearchMarkerAnchor ATN_BeachSearchSpot::GetMarkerAnchor(FVector& OutGround, float& OutFootRadius) const
+{
+	if (MoundIndex == INDEX_NONE)
+	{
+		return ETNSearchMarkerAnchor::Footprint;
+	}
+	// El montículo sale de lo replicado del registro (mismo sitio y tamaño en todas las máquinas). Si el registro o ese
+	// montículo aún no han llegado aquí, sin anillo todavía (no sale uno en la huella para saltar luego).
+	if (!MoundRegistry.IsValid())
+	{
+		MoundRegistry = ATN_BeachSearchRegistry::Find(this);
+	}
+	const ATN_BeachSearchRegistry* Registry = MoundRegistry.Get();
+	return Registry && Registry->GetMoundFoot(MoundIndex, OutGround, OutFootRadius)
+		? ETNSearchMarkerAnchor::Point : ETNSearchMarkerAnchor::Pending;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -476,6 +505,7 @@ void UTN_BeachLootSubsystem::Deinitialize()
 	SpawnedItems.Reset();
 	SpawnedShells.Reset();
 	SearchPoints.Reset();
+	SearchAnchors.Reset();
 	SearchProxies.Reset();
 	SearchUsed.Reset();
 	SpotDiscs.Reset();
@@ -563,6 +593,7 @@ void UTN_BeachLootSubsystem::ClearLoot()
 	}
 	SearchProxies.Reset();
 	SearchPoints.Reset();
+	SearchAnchors.Reset();
 	SearchUsed.Reset();
 	for (TArray<TWeakObjectPtr<AActor>>* List : { &SpawnedItems, &SpawnedShells })
 	{
@@ -601,7 +632,8 @@ void UTN_BeachLootSubsystem::SpawnForRound(ATN_BeachRaceGenerator& Gen)
 	const int32 Seed = Gen.GetRoundSeed();
 	FRandomStream Rng(static_cast<int32>(HashCombine(GetTypeHash(Seed), GetTypeHash(0x10075EEDu + static_cast<uint32>(RerollSalt)))));
 	int32 Candidates = 0;
-	const int32 NumSpots = BuildSearchRegistry(Gen, Rng, Candidates);
+	int32 NoMoundSite = 0;
+	const int32 NumSpots = BuildSearchRegistry(Gen, Rng, Candidates, NoMoundSite);
 	const UDataTable* Catalog = TNPreload::ItemCatalog();
 	const int32 NumItems = Catalog ? SpawnLooseItems(Gen, Rng, *Catalog) : 0;
 	if (!Catalog)
@@ -609,15 +641,17 @@ void UTN_BeachLootSubsystem::SpawnForRound(ATN_BeachRaceGenerator& Gen)
 		UE_LOG(LogTortunabo, Warning, TEXT("[Playa] Sin catálogo de objetos (%s): no hay objetos sueltos."), TNBeachLoot::CatalogPath());
 	}
 	const FString Shells = SpawnRoundShells(Gen, Seed + RerollSalt * 7919);
-	UE_LOG(LogTortunabo, Log, TEXT("[Playa] botín de la ronda %d: %d decorados para rebuscar (de %d candidatos; su actor aparece solo cerca de una tortuga) y %d objetos sueltos · %.0f ms."),
-		LootRound, NumSpots, Candidates, NumItems, (FPlatformTime::Seconds() - T0) * 1000.0);
+	UE_LOG(LogTortunabo, Log, TEXT("[Playa] botín de la ronda %d: %d decorados para rebuscar (de %d candidatos, %d sin sitio libre para su montículo; su actor aparece solo cerca de una tortuga, en su montículo) y %d objetos sueltos · %.0f ms."),
+		LootRound, NumSpots, Candidates, NoMoundSite, NumItems, (FPlatformTime::Seconds() - T0) * 1000.0);
 	UE_LOG(LogTortunabo, Log, TEXT("[Playa] conchas de la ronda %d: %s"), LootRound, *Shells);
 }
 
-int32 UTN_BeachLootSubsystem::BuildSearchRegistry(ATN_BeachRaceGenerator& Gen, FRandomStream& Rng, int32& OutCandidates)
+int32 UTN_BeachLootSubsystem::BuildSearchRegistry(ATN_BeachRaceGenerator& Gen, FRandomStream& Rng, int32& OutCandidates, int32& OutNoMoundSite)
 {
 	OutCandidates = 0;
+	OutNoMoundSite = 0;
 	SearchPoints.Reset();
+	SearchAnchors.Reset();
 	SearchProxies.Reset();
 	SearchUsed.Reset();
 	const ATN_BeachDecorField* Field = Gen.GetDecorField();
@@ -662,6 +696,10 @@ int32 UTN_BeachLootSubsystem::BuildSearchRegistry(ATN_BeachRaceGenerator& Gen, F
 	const int32 MaxSpots = FMath::RoundToInt32(TNBeachLoot::MaxSearchSpots * Scale);
 	const int32 MaxPerSection = FMath::RoundToInt32(TNBeachLoot::MaxSearchSpotsPerSection * Scale);
 	int32 PerSection[TNBeachLoot::Sections] = {};
+	// El montículo de arena de cada punto (lo que se ve en todas las máquinas y donde se rebusca), con su propio azar: no
+	// cambia el resto. Se hace al elegir el punto: sin sitio libre para él, el punto no se crea.
+	TArray<FTNBeachSearchMound> Mounds;
+	FRandomStream MoundRng(static_cast<int32>(HashCombine(GetTypeHash(Gen.GetRoundSeed()), GetTypeHash(0x40D5u + static_cast<uint32>(RerollSalt)))));
 	for (int32 c = 0; c < Candidates.Num(); ++c)
 	{
 		const TNBeachLoot::FSearchPoint& Shape = Candidates[c];
@@ -694,21 +732,22 @@ int32 UTN_BeachLootSubsystem::BuildSearchRegistry(ATN_BeachRaceGenerator& Gen, F
 		{
 			continue;
 		}
+		const ETNBeachElement Element = Items.IsValidIndex(Shape.Item) ? Items[Shape.Item].Element : ETNBeachElement::Rock;
+		FTNBeachSearchMound Mound;
+		TNBeachLoot::FSearchAnchor Anchor;
+		if (!TNBeachLootDetail::MakeMound(Gen, Shape, Element, MoundRng, Mound, Anchor))
+		{
+			++OutNoMoundSite;
+			continue;
+		}
 		SearchPoints.Add(Shape);
+		SearchAnchors.Add(Anchor);
+		Mounds.Add(Mound);
 		SpotDiscs.Add(FVector4(Shape.Center.X, Shape.Center.Y, Shape.Center.Z, Reach));
 		++PerSection[Section];
 	}
 	SearchProxies.SetNum(SearchPoints.Num());
 	SearchUsed.Init(false, SearchPoints.Num());
-	// El montículo de arena de cada punto (lo que se ve en todas las máquinas), con su propio azar: no cambia el resto.
-	TArray<FTNBeachSearchMound> Mounds;
-	Mounds.Reserve(SearchPoints.Num());
-	FRandomStream MoundRng(static_cast<int32>(HashCombine(GetTypeHash(Gen.GetRoundSeed()), GetTypeHash(0x40D5u + static_cast<uint32>(RerollSalt)))));
-	for (const TNBeachLoot::FSearchPoint& Point : SearchPoints)
-	{
-		const ETNBeachElement Element = Items.IsValidIndex(Point.Item) ? Items[Point.Item].Element : ETNBeachElement::Rock;
-		Mounds.Add(TNBeachLootDetail::MakeMound(Gen, Point, Element, MoundRng));
-	}
 	if (ATN_BeachSearchRegistry* Reg = EnsureRegistry())
 	{
 		Reg->ServerReset(LootRound, RerollSalt, Mounds);
@@ -809,17 +848,26 @@ void UTN_BeachLootSubsystem::TickSearchProxies()
 		{
 			continue;
 		}
-		// Alguien se acerca: el rebuscable de siempre, con la huella de su decorado.
+		// Alguien se acerca: el rebuscable de siempre, pero en el montículo de su punto y con la huella de su base (#254): el
+		// aviso, el alcance, las chispitas, el anillo y la tierra salen donde se ve que se rebusca, no por cualquier lado del
+		// decorado entero.
+		if (!SearchAnchors.IsValidIndex(i))
+		{
+			continue;
+		}
+		const TNBeachLoot::FSearchAnchor& Anchor = SearchAnchors[i];
 		FActorSpawnParameters Params;
 		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-		const double Yaw = FMath::RadiansToDegrees(FMath::Atan2(Point.Axis.Y, Point.Axis.X));
 		ATN_BeachSearchSpot* NewSpot = World->SpawnActor<ATN_BeachSearchSpot>(ATN_BeachSearchSpot::StaticClass(),
-			FTransform(FRotator(0.0, Yaw, 0.0), Point.Center), Params);
+			FTransform(FRotator::ZeroRotator, Anchor.Ground), Params);
 		if (!NewSpot)
 		{
 			continue;
 		}
-		NewSpot->SetupSpot(Point.Radius, Point.HalfLength, Point.Height, TNBeachLoot::SandDust());
+		// Su montículo es el del mismo índice en el registro (BuildSearchRegistry los crea en el mismo orden); antes de
+		// SetupSpot, que despierta la réplica: así el índice sale en el primer envío y el anillo se centra en él (#214).
+		NewSpot->SetMoundIndex(i);
+		NewSpot->SetupSpot(Anchor.Radius, 0.f, TNBeachLoot::MoundSpotHeight, TNBeachLoot::SandDust());
 		SearchProxies[i] = NewSpot;
 	}
 }
