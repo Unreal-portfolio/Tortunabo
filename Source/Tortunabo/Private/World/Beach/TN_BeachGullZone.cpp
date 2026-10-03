@@ -23,6 +23,22 @@
 
 namespace TNBeachGull
 {
+	/** Pieza de arte de cada hueso de una gaviota o un pelícano (Docs/Arte_Assets.md): pivote en su articulación. */
+	inline FName BirdSlot(bool bPelican, TNFauna::ETNFaunaBone Bone)
+	{
+		using EBone = TNFauna::ETNFaunaBone;
+		switch (Bone)
+		{
+		case EBone::Body: return bPelican ? TN_ART("Beach.Pelican.Body") : TN_ART("Beach.Gull.Body");
+		case EBone::Head: return bPelican ? TN_ART("Beach.Pelican.Head") : TN_ART("Beach.Gull.Head");
+		case EBone::WingL: return bPelican ? TN_ART("Beach.Pelican.WingLeft") : TN_ART("Beach.Gull.WingLeft");
+		case EBone::WingR: return bPelican ? TN_ART("Beach.Pelican.WingRight") : TN_ART("Beach.Gull.WingRight");
+		case EBone::LegBL: return bPelican ? TN_ART("Beach.Pelican.LegLeft") : TN_ART("Beach.Gull.LegLeft");
+		case EBone::LegBR: return bPelican ? TN_ART("Beach.Pelican.LegRight") : TN_ART("Beach.Gull.LegRight");
+		default: return NAME_None;
+		}
+	}
+
 	/** Tiempo entre ataques (s) mientras haya tortugas debajo (TN_BeachGullTuning.h: el nerf de la ronda 4). */
 	constexpr float AttackMin = TNBeachGullTuning::AttackIntervalMin;
 	constexpr float AttackMax = TNBeachGullTuning::AttackIntervalMax;
@@ -306,6 +322,7 @@ void ATN_BeachGullZone::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Ou
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(ATN_BeachGullZone, Attack);
+	DOREPLIFETIME(ATN_BeachGullZone, ShellStains);
 }
 
 void ATN_BeachGullZone::ApplySpec()
@@ -498,7 +515,7 @@ void ATN_BeachGullZone::BuildBirds()
 				UStaticMesh* Mesh = TNBeachKit::CachedMesh(FString::Printf(TEXT("Beach.%s.%d"), Bird.bPelican ? TEXT("Pelican") : TEXT("Gull"), i),
 					[&Buffers](TNProcMesh::FTNProcMeshBuffers& M) { M = Buffers; });
 				USceneComponent* Parent = bIsBody ? BirdRoot : static_cast<USceneComponent*>(BodyComp);
-				UStaticMeshComponent* Comp = TNBeachKit::AddPart(this, Parent ? Parent : BirdRoot, Mesh, Part.Pivot, false);
+				UStaticMeshComponent* Comp = TNBeachKit::AddPart(this, Parent ? Parent : BirdRoot, Mesh, Part.Pivot, false, TNBeachGull::BirdSlot(Bird.bPelican, Part.Bone));
 				if (bIsBody && !BodyComp)
 				{
 					BodyComp = Comp;
@@ -522,7 +539,8 @@ void ATN_BeachGullZone::BuildBirds()
 		const bool bPelican = Bird.bPelican;
 		UStaticMesh* JawMesh = TNBeachKit::CachedMesh(bPelican ? TEXT("Beach.Pelican.Jaw") : TEXT("Beach.Gull.Jaw"),
 			[bPelican](TNProcMesh::FTNProcMeshBuffers& M) { TNBeachMeshes::BuildBirdJaw(M, bPelican); });
-		Jaws.Add(HeadComp ? TNBeachKit::AddPart(this, HeadComp, JawMesh, TNBeachMeshes::BirdGeom(bPelican).BeakBase, false) : nullptr);
+		Jaws.Add(HeadComp ? TNBeachKit::AddPart(this, HeadComp, JawMesh, TNBeachMeshes::BirdGeom(bPelican).BeakBase, false,
+			bPelican ? TN_ART("Beach.Pelican.Jaw") : TN_ART("Beach.Gull.Jaw")) : nullptr);
 
 		UStaticMeshComponent* Shadow = TNBeachKit::AddShadow(this, 0.38f);
 		TNBeachKit::PlaceShadow(Shadow, FVector::ZeroVector, 0.f);
@@ -938,6 +956,7 @@ void ATN_BeachGullZone::EndAttack(double Now)
 void ATN_BeachGullZone::ServerTick(float DeltaSeconds)
 {
 	const double Now = ServerNow(this);
+	PruneShellStains(Now);
 	if (Attack.Kind == 3)
 	{
 		// Mareada en la arena: cuando se le pasa y ha despegado, vuelve a su círculo (y la zona, a atacar).
@@ -1102,6 +1121,21 @@ void ATN_BeachGullZone::ServerPoop(float Tau, float DeltaSeconds)
 			}
 		}
 		Attack.Result = Hit.Num() > 0 ? 1 : 2;
+		// Las manchas como estado (OnRep_ShellStains): las ve también quien entra o reconecta mientras siguen frescas.
+		const double StainNow = ServerNow(this);
+		PruneShellStains(StainNow);
+		for (int32 HitIndex = 0; HitIndex < Hit.Num(); ++HitIndex)
+		{
+			FTNBeachGullStain& Stain = ShellStains.AddDefaulted_GetRef();
+			Stain.Turtle = Hit[HitIndex];
+			Stain.ServerTime = static_cast<float>(StainNow);
+			Stain.Serial = Attack.Serial;
+			Stain.Variant = static_cast<uint8>(HitIndex);
+		}
+		while (ShellStains.Num() > TNBeachGull::MaxStains)
+		{
+			ShellStains.RemoveAt(0);
+		}
 		ForceNetUpdate();
 		MulticastSplat(Impact, Hit);
 		OnAttackChanged();
@@ -1507,7 +1541,12 @@ void ATN_BeachGullZone::MulticastSplat_Implementation(FVector_NetQuantize Where,
 	{
 		if (Turtle)
 		{
-			SpawnStain(Turtle, StainVariant++);
+			// En los clientes la pinta OnRep_ShellStains (también a quien entra luego); aquí solo el anfitrión con pantalla.
+			if (HasAuthority())
+			{
+				SpawnStain(Turtle, Attack.Serial, StainVariant);
+			}
+			++StainVariant;
 			TNBeachKit::BurstAt(Droplets, Turtle->GetActorLocation() + FVector(0.0, 0.0, 120.0), FVector::UpVector, 14);
 			UTN_BeachCameraShake::Kick(this, Turtle->GetActorLocation(), 0.4f, 200.f, 1200.f);
 		}
@@ -1549,10 +1588,51 @@ void ATN_BeachGullZone::SpawnSplat(const FVector& Where, ATortugaCharacter* InTu
 	SplatScale.Add(InScale);
 }
 
-void ATN_BeachGullZone::SpawnStain(ATortugaCharacter* InTurtle, int32 Variant)
+void ATN_BeachGullZone::PruneShellStains(double Now)
+{
+	const int32 Before = ShellStains.Num();
+	ShellStains.RemoveAll([Now](const FTNBeachGullStain& Stain)
+	{
+		return !Stain.Turtle || Now - static_cast<double>(Stain.ServerTime) >= static_cast<double>(TNBeachGull::StainLife);
+	});
+	if (ShellStains.Num() != Before)
+	{
+		ForceNetUpdate();
+	}
+}
+
+void ATN_BeachGullZone::OnRep_ShellStains()
+{
+	if (!bHasScreen)
+	{
+		return;
+	}
+	const double Now = ServerNow(this);
+	TSet<uint16> Current;
+	for (const FTNBeachGullStain& Stain : ShellStains)
+	{
+		const uint16 Key = static_cast<uint16>((static_cast<uint16>(Stain.Serial) << 8) | Stain.Variant);
+		Current.Add(Key);
+		// Sin su tortuga todavía (aún no ha llegado a esta máquina): vuelve a llamarse cuando llegue.
+		if (!Stain.Turtle || ShownStainKeys.Contains(Key))
+		{
+			continue;
+		}
+		const float Age = FMath::Max(0.f, static_cast<float>(Now - static_cast<double>(Stain.ServerTime)));
+		if (Age < TNBeachGull::StainLife)
+		{
+			SpawnStain(Stain.Turtle, Stain.Serial, Stain.Variant, Age);
+		}
+		ShownStainKeys.Add(Key);
+	}
+	// Solo se recuerdan las que siguen en la lista (el Serial da la vuelta a los 256 ataques).
+	ShownStainKeys = ShownStainKeys.Intersect(Current);
+}
+
+void ATN_BeachGullZone::SpawnStain(ATortugaCharacter* InTurtle, uint8 Serial, int32 Variant, float Age)
 {
 	using namespace TNBeachGull;
-	if (!InTurtle)
+	if (!InTurtle || Age >= StainLife)
 	{
 		return;
 	}
@@ -1562,7 +1642,7 @@ void ATN_BeachGullZone::SpawnStain(ATortugaCharacter* InTurtle, int32 Variant)
 	if (!Mid || !PlaceStainDecal(Decal, InTurtle))
 	{
 		// Sin el material (falta ejecutar Scripts/create_poop_decal.py) o sin hueso: el pegote de siempre, pero pequeño y pegado.
-		SpawnSplat(FVector::ZeroVector, InTurtle, 0.6f, StainLife);
+		SpawnSplat(FVector::ZeroVector, InTurtle, 0.6f, StainLife - Age);
 		return;
 	}
 	// Si se acumulan, se va la más vieja.
@@ -1579,7 +1659,7 @@ void ATN_BeachGullZone::SpawnStain(ATortugaCharacter* InTurtle, int32 Variant)
 	static const FName SeedName(TEXT("Seed"));
 	static const FName FadeName(TEXT("Fade"));
 	// La misma forma en todas las máquinas: sale del ataque (su número de serie replicado) y de cuál de las manchadas es.
-	Mid->SetScalarParameterValue(SeedName, 1.f + 97.f * TNBeachKit::Hash01(static_cast<uint32>(Attack.Serial) * 131u + static_cast<uint32>(Variant) * 17u + 7u));
+	Mid->SetScalarParameterValue(SeedName, 1.f + 97.f * TNBeachKit::Hash01(static_cast<uint32>(Serial) * 131u + static_cast<uint32>(Variant) * 17u + 7u));
 	Mid->SetScalarParameterValue(FadeName, 1.f);
 	Decal->SetDecalMaterial(Mid);
 	Decal->DecalSize = FVector(StainHalfDepth, StainHalfSize, StainHalfSize);
@@ -1587,7 +1667,7 @@ void ATN_BeachGullZone::SpawnStain(ATortugaCharacter* InTurtle, int32 Variant)
 	Decal->RegisterComponent();
 	StainDecals.Add(Decal);
 	StainMids.Add(Mid);
-	StainBorn.Add(Clock);
+	StainBorn.Add(Clock - Age);
 }
 
 void ATN_BeachGullZone::TickStains()

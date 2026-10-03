@@ -338,13 +338,35 @@ ATN_BeachSearchSpot::ATN_BeachSearchSpot()
 	LootChance = TNBeachLoot::SearchLuck;
 	// Los pesos son los de la carrera (GetLootWeight): los del cooperativo, fuera.
 	LootWeights.Reset();
-	// A la escala de la playa (todo 28 veces más grande): chispitas desde más lejos y el anillo de dónde rebuscar, antes y
-	// más grande.
+	// A la escala de la playa (todo 28 veces más grande): chispitas desde más lejos. El anillo es el de siempre, fijo y
+	// centrado en el montículo de arena de su punto (GetMarkerAnchor); como el actor solo existe a menos de
+	// ProxySpawnDistance de alguna tortuga, se ve desde que aparece.
 	HintDistance = 3500.f;
-	MarkerDistance = 1800.f;
-	MarkerRadius = 105.f;
 	// Solo existe cerca de alguna tortuga (el registro lo crea y lo quita): a un cliente le basta con tenerlo cerca.
 	SetNetCullDistanceSquared(FMath::Square(TNBeachLoot::ProxyNetRelevance));
+}
+
+void ATN_BeachSearchSpot::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME_CONDITION(ATN_BeachSearchSpot, MoundIndex, COND_InitialOnly);
+}
+
+ETNSearchMarkerAnchor ATN_BeachSearchSpot::GetMarkerAnchor(FVector& OutGround, float& OutFootRadius) const
+{
+	if (MoundIndex == INDEX_NONE)
+	{
+		return ETNSearchMarkerAnchor::Footprint;
+	}
+	// El montículo sale de lo replicado del registro (mismo sitio y tamaño en todas las máquinas). Si el registro o ese
+	// montículo aún no han llegado aquí, sin anillo todavía (no sale uno en la huella para saltar luego).
+	if (!MoundRegistry.IsValid())
+	{
+		MoundRegistry = ATN_BeachSearchRegistry::Find(this);
+	}
+	const ATN_BeachSearchRegistry* Registry = MoundRegistry.Get();
+	return Registry && Registry->GetMoundFoot(MoundIndex, OutGround, OutFootRadius)
+		? ETNSearchMarkerAnchor::Point : ETNSearchMarkerAnchor::Pending;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -842,6 +864,9 @@ void UTN_BeachLootSubsystem::TickSearchProxies()
 		{
 			continue;
 		}
+		// Su montículo es el del mismo índice en el registro (BuildSearchRegistry los crea en el mismo orden); antes de
+		// SetupSpot, que despierta la réplica: así el índice sale en el primer envío y el anillo se centra en él (#214).
+		NewSpot->SetMoundIndex(i);
 		NewSpot->SetupSpot(Anchor.Radius, 0.f, TNBeachLoot::MoundSpotHeight, TNBeachLoot::SandDust());
 		SearchProxies[i] = NewSpot;
 	}

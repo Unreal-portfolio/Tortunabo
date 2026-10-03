@@ -67,12 +67,12 @@ def markdown(name: str, result: dict) -> str:
              f"- Variedad entre semillas: " + ", ".join(f"d{d}={v:.2f}" for d, v in sorted(s["variety"].items()))
              + f" (mínimo {spec.MIN_VARIETY})",
              f"- Aceptado por el banco: {'sí' if s['accepted'] else 'no'}", "",
-             "| Semilla | Dif. | Válido | Camino (m) | Camino/recta | Pend. >25° | Fuera del camino | Triáng. | s |",
-             "|---|---|---|---|---|---|---|---|---|"]
+             "| Semilla | Dif. | Válido | Camino (m) | Camino/recta | Pend. >25° | Saltos | Fuera del camino | Triáng. | s |",
+             "|---|---|---|---|---|---|---|---|---|---|"]
     for r in result["reports"]:
         lines.append(f"| {r['seed']} | {r['difficulty']} | {'sí' if r['valid'] else 'no'} | {_fmt(r['route_m'])} | "
-                     f"{_fmt(r['route_ratio'])} | {_fmt(r['steep_share'])} | {_fmt(r['off_route_share'])} | "
-                     f"{r['triangles']} | {r['gen_seconds']:.2f} |")
+                     f"{_fmt(r['route_ratio'])} | {_fmt(r['steep_share'])} | {_fmt(r['jumps_on_route'])} | "
+                     f"{_fmt(r['off_route_share'])} | {r['triangles']} | {r['gen_seconds']:.2f} |")
     return "\n".join(lines) + "\n"
 
 

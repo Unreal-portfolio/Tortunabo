@@ -12,6 +12,7 @@
 class AActor;
 class ATN_BeachElement;
 class ATN_BeachRaceGenerator;
+class ATN_BeachSearchRegistry;
 class UDataTable;
 class UInstancedStaticMeshComponent;
 class UStaticMeshComponent;
@@ -172,8 +173,13 @@ namespace TNBeachLoot
  * Decorado de la playa que se puede rebuscar: el ATN_ProcSearchSpot de siempre (mantener E, aro, «¡puf!» u «¡pof!»,
  * saltito del objeto, una vez para todas) con las reglas de la carrera: más suerte (TNBeachLoot::SearchLuck), los pesos
  * de TNBeachLoot::RaceWeight, polvo de arena y las pistas visuales a la escala de la playa (chispitas desde más lejos y
- * el anillo que marca dónde rebuscar, más grande). Lo crea UTN_BeachLootSubsystem en el montículo de su punto y con la huella
- * de su base (TNBeachLoot::FSearchAnchor): el aviso solo sale junto a un montículo (#254).
+ * el anillo fijo). Lo crea UTN_BeachLootSubsystem en el montículo de su punto y con la huella de su base
+ * (TNBeachLoot::FSearchAnchor): el aviso solo sale junto a un montículo (#254).
+ *
+ * Montículo propio: cada punto rebuscable tiene su montículo de arena que vibra (ATN_BeachSearchRegistry, mismo índice).
+ * El servidor le dice al actor qué índice es (SetMoundIndex, replicado una vez) y el anillo fijo se centra en ese
+ * montículo, a ras de su arena y algo mayor que él (GetMarkerAnchor). Sin índice (el cofre de la playa, que hereda de
+ * esta clase), el anillo abarca la huella como siempre.
  */
 UCLASS()
 class TORTUNABO_API ATN_BeachSearchSpot : public ATN_ProcSearchSpot
@@ -182,6 +188,11 @@ class TORTUNABO_API ATN_BeachSearchSpot : public ATN_ProcSearchSpot
 
 public:
 	ATN_BeachSearchSpot();
+
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+	/** Servidor, justo después de crearlo: el punto del registro (y del montículo) que es este actor. */
+	void SetMoundIndex(int32 InMoundIndex) { MoundIndex = InMoundIndex; }
 
 	/** Alguien lo está rebuscando ahora. */
 	bool IsBeingSearched() const { return GetSearchState().Searcher != nullptr; }
@@ -192,6 +203,9 @@ public:
 protected:
 	virtual float GetLootWeight(FName RowName, const FTN_InventoryItem& Row) const override;
 
+	/** El anillo fijo, en el montículo de este punto (Pending mientras el registro no lo tenga montado en esta máquina). */
+	virtual ETNSearchMarkerAnchor GetMarkerAnchor(FVector& OutGround, float& OutFootRadius) const override;
+
 	/**
 	 * Los pesos dependen del puesto de quien rebusca (TNRaceItems::RollLoot): a las de atrás les tocan los objetos que
 	 * hacen remontar (el pelícano taxi, el protector solar...) y a las de delante, lo que se lanza y lo defensivo. Suma los
@@ -201,6 +215,14 @@ protected:
 
 	/** De dónde sale lo que se encuentra aquí (un rebuscable de la playa; el cofre lo cambia por el suyo). */
 	virtual ETNRaceLootSource GetRaceLootSource() const { return ETNRaceLootSource::Search; }
+
+private:
+	/** Índice de su punto en el registro (y de su montículo); INDEX_NONE = sin montículo propio. Se replica una vez. */
+	UPROPERTY(Replicated)
+	int32 MoundIndex = INDEX_NONE;
+
+	/** El registro de este mundo, buscado la primera vez que hace falta (solo para el anillo; en máquinas con pantalla). */
+	mutable TWeakObjectPtr<ATN_BeachSearchRegistry> MoundRegistry;
 };
 
 /** Estado replicado de los puntos rebuscables de la ronda: cuántos hay y cuáles ya se han rebuscado (un bit por punto). */
@@ -328,6 +350,13 @@ public:
 
 	/** Montículos que tiemblan ahora en esta máquina (TN.Beach.Perf). */
 	int32 NumMoundAnims() const;
+
+	/**
+	 * El montículo del punto Index tal como está montado en esta máquina: el sitio de su base en el suelo (mundo) y el radio
+	 * de su base (cm, con tamaño y terrones). False si no hay pantalla o aún no está montado. Lo usa el anillo fijo de
+	 * ATN_BeachSearchSpot.
+	 */
+	bool GetMoundFoot(int32 Index, FVector& OutGround, float& OutRadius) const;
 
 	/** Distancia (cm) a una cámara local hasta la que tiembla un montículo, y cuántos a la vez como mucho. */
 	static constexpr float MoundAnimRange = 4500.f;

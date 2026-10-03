@@ -170,6 +170,18 @@ public:
 	/** Aviso pendiente para el menú principal (lo deja vacío al leerlo). */
 	FTNMenuNotice ConsumeMenuNotice();
 
+	/** Deja un aviso para el menú principal (lo enseña al volver a él); sustituye al que hubiera. */
+	void SetMenuNotice(const FTNMenuNotice& Notice) { PendingMenuNotice = Notice; }
+
+	/** Mapa del menú principal. */
+	const FString& GetMenuMapPath() const { return MenuMapPath; }
+
+	/** true si World es el del menú principal. */
+	bool IsInMenuWorld(const UWorld* World) const { return IsMenuWorld(World); }
+
+	/** Olvida que el servidor iba a viajar: tras un viaje fallido, un corte de conexión no es un ServerTravel que reconectar. */
+	void ClearPendingTravel() { bIsPendingTravel = false; }
+
 	/** Avisos de las salas (la pantalla de salas del menú los enseña). */
 	FTNOnRoomNotice OnRoomNotice;
 

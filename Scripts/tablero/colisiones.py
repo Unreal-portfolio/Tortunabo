@@ -7,7 +7,9 @@ cabezas), se vuelve a lo prudente: los ficheros en común.
 Cada par se convierte en una issue «Mezclar PR #a y #b: ficheros en común» con las instrucciones
 para que un Claude las mezcle, y se cierra sola cuando el par deja de chocar o una de las dos PR
 se fusiona o se cierra. Los binarios de Unreal no se mezclan: esa issue lleva `decision` para que
-un aprobador decida qué versión gana. La localización generada no se mezcla a mano: se regenera.
+un aprobador decida qué versión gana. La localización generada no se mezcla a mano: se regenera, y
+siempre igual (la PR que se fusione en segundo lugar recoge, une los `.po` y compila). Por eso un par
+que choca solo en localización no crea issue, y la que exista se cierra.
 """
 
 from __future__ import annotations
@@ -17,6 +19,8 @@ import re
 import subprocess
 from collections.abc import Callable, Iterable
 from itertools import combinations
+
+import memoria
 
 Gh = Callable[..., str]
 Conflicto = Callable[[int, int], "list[str] | None"]
@@ -28,6 +32,7 @@ EXTENSIONES_BINARIAS = (".uasset", ".umap")
 LOCALIZACION = "Content/Localization/"
 REF_PR = "refs/remotes/tablero-pr/{}"
 TITULO = re.compile(r"^Mezclar PR #(\d+) y #(\d+):")
+SOLO_LOCALIZACION = "Solo localización generada: la regenera la PR que se fusione en segundo lugar"
 
 
 def pares(ficheros_por_pr: dict[int, set[str]],
@@ -64,8 +69,19 @@ def hay_binarios(ficheros: list[str]) -> bool:
     return any(f.lower().endswith(EXTENSIONES_BINARIAS) for f in ficheros)
 
 
+def es_localizacion(fichero: str) -> bool:
+    return fichero.startswith(LOCALIZACION)
+
+
 def solo_localizacion(ficheros: list[str]) -> bool:
-    return bool(ficheros) and all(f.startswith(LOCALIZACION) for f in ficheros)
+    return bool(ficheros) and all(es_localizacion(f) for f in ficheros)
+
+
+def separar(en_conflicto: list[tuple[int, int, list[str]]]) -> tuple[list, list]:
+    """(pares con algún fichero que no es de localización, pares que chocan solo en localización)."""
+    con_codigo = [par for par in en_conflicto if not solo_localizacion(par[2])]
+    localizacion = [par for par in en_conflicto if solo_localizacion(par[2])]
+    return con_codigo, localizacion
 
 
 def etiquetas(ficheros: list[str]) -> list[str]:
@@ -73,8 +89,14 @@ def etiquetas(ficheros: list[str]) -> list[str]:
 
 
 def cuerpo(antigua: dict, reciente: dict, ficheros: list[str], integracion: str) -> str:
-    """Cuerpo de la issue: ficheros en conflicto e instrucciones para mezclar (o para decidir si hay binarios)."""
-    lista = "\n".join(f"- `{f}`" for f in ficheros)
+    """Cuerpo de la issue: ficheros en conflicto e instrucciones para mezclar (o para decidir si hay binarios).
+
+    Solo se listan los ficheros que no son de localización: esos se regeneran y se cuentan en una línea aparte.
+    """
+    codigo = [f for f in ficheros if not es_localizacion(f)]
+    lista = "\n".join(f"- `{f}`" for f in codigo)
+    if len(codigo) < len(ficheros):
+        lista += f"\n\nAdemás, {len(ficheros) - len(codigo)} ficheros de localización: se regeneran."
     cabecera = (f"Las PR #{antigua['number']} (`{antigua['headRefName']}`) y #{reciente['number']} "
                 f"(`{reciente['headRefName']}`) están abiertas contra `{integracion}` y chocan al mezclarse en:"
                 f"\n\n{lista}\n\n")
@@ -82,15 +104,6 @@ def cuerpo(antigua: dict, reciente: dict, ficheros: list[str], integracion: str)
         return cabecera + ("**No mezclar.** Hay `.uasset` o `.umap` en conflicto: son binarios y no se fusionan. "
                            "SkiTemplar o Mokius deciden qué versión gana (etiqueta `decision`); la otra PR rehace "
                            "su cambio sobre la versión elegida.")
-    if solo_localizacion(ficheros):
-        return cabecera + (
-            "Solo chocan los ficheros generados de la localización: **no se mezclan a mano**.\n"
-            f"1. Cuando #{antigua['number']} entre en `{integracion}`, rebasa #{reciente['number']} sobre "
-            f"`{integracion}` quedándote con su versión de esos ficheros.\n"
-            "2. Regenera: `Scripts\\localization_gather_export.bat`, traduce las entradas que falten en los "
-            "`Game.po` y `Scripts\\localization_import_compile.bat`.\n"
-            "3. Commitea `Game.manifest`, `.archive`, `.po` y `.locres` y actualiza la PR. Esta issue se cierra "
-            "sola cuando el par deja de chocar.")
     return cabecera + (
         "Instrucciones para Claude:\n"
         f"1. Rebasa la PR más reciente, #{reciente['number']}, sobre la rama de #{antigua['number']} "
@@ -114,8 +127,13 @@ def colisiones_abiertas(gh: Gh, repo: str) -> list[dict]:
     return json.loads(salida)
 
 
-def resueltas(abiertas: list[dict], prs: set[int], vigentes: set[tuple[int, int]]) -> list[tuple[int, str]]:
-    """Issues `colision` que ya se pueden cerrar, con el motivo: alguna PR cerrada o el par ya no choca."""
+def resueltas(abiertas: list[dict], prs: set[int], vigentes: set[tuple[int, int]],
+              localizacion: frozenset[tuple[int, int]] | set[tuple[int, int]] = frozenset()) -> list[tuple[int, str]]:
+    """Issues `colision` que ya se pueden cerrar, con el motivo.
+
+    Se cierran si alguna PR ya no está abierta, si el par choca solo en localización (`localizacion`)
+    o si ya no choca (no está en `vigentes`, los pares que necesitan issue).
+    """
     resultado = []
     for issue in abiertas:
         par = par_de_titulo(issue["title"])
@@ -124,9 +142,19 @@ def resueltas(abiertas: list[dict], prs: set[int], vigentes: set[tuple[int, int]
         fuera = [n for n in par if n not in prs]
         if fuera:
             resultado.append((issue["number"], f"la PR #{fuera[0]} ya no está abierta"))
+        elif par in localizacion:
+            resultado.append((issue["number"], SOLO_LOCALIZACION))
         elif par not in vigentes:
             resultado.append((issue["number"], f"las PR #{par[0]} y #{par[1]} ya se mezclan sin conflicto"))
     return resultado
+
+
+def texto_cierre(motivo: str) -> str:
+    """Comentario **Resumen** con el que se cierra una issue `colision` resuelta."""
+    if motivo == SOLO_LOCALIZACION:
+        return f"{memoria.CABECERA_RESUMEN}: {SOLO_LOCALIZACION} (`tablero.py colisiones`)."
+    return memoria.texto_resumen("dos PR abiertas chocaban al mezclarse",
+                                 f"ya no hace falta mezclarlas: {motivo} (`tablero.py colisiones`)")
 
 
 # --- git ------------------------------------------------------------------------------------------
@@ -141,12 +169,14 @@ def _git(*args: str) -> subprocess.CompletedProcess:
     return subprocess.run(["git", *args], capture_output=True, text=True, encoding="utf-8", cwd=_raiz())
 
 
-def traer_cabezas(numeros: Iterable[int]) -> bool:
-    """Descarga la cabeza de cada PR en REF_PR. Sin blobs: merge-tree solo pide los de los ficheros que chocan.
+def traer_cabezas(numeros: Iterable[int], ramas: Iterable[str] = ()) -> bool:
+    """Descarga la cabeza de cada PR en REF_PR y cada rama de `ramas` en origin/<rama>.
 
-    En un clon superficial (el puente) hace falta la historia para encontrar la base común.
+    Sin blobs: merge-tree solo pide los de los ficheros que chocan. En un clon superficial (el
+    puente) hace falta la historia para encontrar la base común. Es git: no gasta API de GitHub.
     """
     refspecs = [f"+refs/pull/{n}/head:{REF_PR.format(n)}" for n in numeros]
+    refspecs += [f"+refs/heads/{r}:refs/remotes/origin/{r}" for r in sorted(set(ramas))]
     if not refspecs:
         return True
     extra = ["--unshallow"] if _git("rev-parse", "--is-shallow-repository").stdout.strip() == "true" else []
@@ -156,7 +186,16 @@ def traer_cabezas(numeros: Iterable[int]) -> bool:
 
 def conflicto_git(a: int, b: int) -> list[str] | None:
     """Ficheros en conflicto al mezclar las cabezas de dos PR ([] si se mezclan solas, None si no se sabe)."""
-    proc = _git("merge-tree", "--write-tree", "--name-only", "--no-messages", REF_PR.format(a), REF_PR.format(b))
+    return _conflicto_refs(REF_PR.format(a), REF_PR.format(b))
+
+
+def conflicto_con_base(numero: int, base: str) -> list[str] | None:
+    """Ficheros en conflicto al mezclar la cabeza de una PR con origin/<base> (tras `traer_cabezas`)."""
+    return _conflicto_refs(f"refs/remotes/origin/{base}", REF_PR.format(numero))
+
+
+def _conflicto_refs(ref_a: str, ref_b: str) -> list[str] | None:
+    proc = _git("merge-tree", "--write-tree", "--name-only", "--no-messages", ref_a, ref_b)
     if proc.returncode == 0:
         return []
     ficheros = [linea for linea in proc.stdout.splitlines()[1:] if linea.strip()]

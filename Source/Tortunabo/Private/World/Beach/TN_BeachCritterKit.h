@@ -5,6 +5,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "GameFramework/Actor.h"
+#include "Art/TN_Art.h"
 
 /**
  * Utilidades de motor de los enemigos de la ronda 3 (ermitaño, pulpo, pulgas y tanque; las mallas están en
@@ -62,6 +63,17 @@ namespace TNBeachCritterKit
 	}
 
 	/**
+	 * Lo mismo, como pieza de arte Slot (Docs/Arte_Assets.md, TNArt::ApplyToComponent): con sustituto, la malla de arte va
+	 * de hija de la pieza y se mueve, se esconde y se enseña con ella. Pivote: el origen de la pieza.
+	 */
+	inline UStaticMeshComponent* AddPart(AActor* Owner, USceneComponent* Parent, UStaticMesh* Mesh, const FVector& RelLoc, bool bShadow, FName Slot)
+	{
+		UStaticMeshComponent* Comp = AddPart(Owner, Parent, Mesh, RelLoc, bShadow);
+		TNArt::ApplyToComponent(Comp, Slot);
+		return Comp;
+	}
+
+	/**
 	 * Instancias de Mesh (Count, escondidas a escala cero) enganchadas a Parent. Con bWorld, el componente queda en el
 	 * origen del mundo y las instancias se ponen en coordenadas de mundo; si no, en las de Parent.
 	 */
@@ -93,12 +105,20 @@ namespace TNBeachCritterKit
 		return Comp;
 	}
 
-	/** Escribe todas las instancias de una vez (en mundo o relativas al componente). */
+	/** Lo mismo, como pieza de arte Slot (TNArt::ApplyToInstances; WriteInstances les pone su ajuste). */
+	inline UInstancedStaticMeshComponent* AddInstances(AActor* Owner, USceneComponent* Parent, UStaticMesh* Mesh, int32 Count, bool bWorld, bool bShadow, FName Slot)
+	{
+		UInstancedStaticMeshComponent* Comp = AddInstances(Owner, Parent, Mesh, Count, bWorld, bShadow);
+		TNArt::ApplyToInstances(Comp, Slot);
+		return Comp;
+	}
+
+	/** Escribe todas las instancias de una vez (en mundo o relativas al componente), con el ajuste de su malla de arte si la tiene. */
 	inline void WriteInstances(UInstancedStaticMeshComponent* Comp, const TArray<FTransform>& Xf, bool bWorld)
 	{
 		if (Comp && Xf.Num() > 0 && Comp->GetInstanceCount() >= Xf.Num())
 		{
-			Comp->BatchUpdateInstancesTransforms(0, Xf, bWorld, true, false);
+			TNArt::UpdateInstances(Comp, 0, Xf, bWorld, true, false);
 		}
 	}
 

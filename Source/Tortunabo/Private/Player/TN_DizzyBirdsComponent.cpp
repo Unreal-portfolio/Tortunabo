@@ -1,4 +1,5 @@
 #include "Player/TN_DizzyBirdsComponent.h"
+#include "Core/TN_ProjectMaterials.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -239,8 +240,7 @@ namespace TNDizzyBirdsDetail
 
 	UMaterialInterface* VertexColorMaterial()
 	{
-		UMaterialInterface* Mat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Cosmetics/Materials/M_CosmeticVertexColor.M_CosmeticVertexColor"));
-		return Mat ? Mat : LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
+		return TNMaterials::VertexColor();
 	}
 
 	/** Rombo de caras planas (cuerpo y cabeza de los pájaros): Center, semiejes Rx (largo), Ry (ancho) y Rz (alto). */

@@ -1,5 +1,6 @@
 #include "World/ProcMap/TN_ProcEggNest.h"
 #include "World/ProcMap/TN_ProcMapActorUtils.h"
+#include "Art/TN_Art.h"
 #include "Game/TN_ProcMapGameMode.h"
 #include "Player/TortugaCharacter.h"
 #include "Components/SphereComponent.h"
@@ -9,6 +10,7 @@
 #include "Net/UnrealNetwork.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Engine/StaticMesh.h"
+#include "Engine/CollisionProfile.h"
 
 ATN_ProcEggNest::ATN_ProcEggNest()
 {
@@ -30,10 +32,11 @@ ATN_ProcEggNest::ATN_ProcEggNest()
 
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> Cylinder(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> Sphere(TEXT("/Engine/BasicShapes/Sphere.Sphere"));
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> Cone(TEXT("/Engine/BasicShapes/Cone.Cone"));
 
 	NestBase = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("NestBase"));
 	NestBase->SetupAttachment(Root);
-	NestBase->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	NestBase->SetCollisionProfileName(UCollisionProfile::BlockAll_ProfileName);
 	NestBase->SetRelativeScale3D(FVector(2.2f, 2.2f, 0.25f));
 	NestBase->SetRelativeLocation(FVector(0.f, 0.f, 10.f));
 	if (Cylinder.Succeeded()) { NestBase->SetStaticMesh(Cylinder.Object); }
@@ -52,6 +55,17 @@ ATN_ProcEggNest::ATN_ProcEggNest()
 		if (Sphere.Succeeded()) { Egg->SetStaticMesh(Sphere.Object); }
 		Eggs.Add(Egg);
 	}
+
+	// Colisión de los huevos: un cono invisible sobre la peana que los envuelve. Con una esfera por huevo, la tortuga
+	// podía quedarse encajada entre ellos sin suelo andable; la pendiente del cono la hace resbalar hasta la peana.
+	EggsCollision = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("EggsCollision"));
+	EggsCollision->SetupAttachment(Root);
+	EggsCollision->SetCollisionProfileName(UCollisionProfile::BlockAll_ProfileName);
+	EggsCollision->SetHiddenInGame(true);
+	EggsCollision->SetCastShadow(false);
+	EggsCollision->SetRelativeLocation(FVector(0.f, 0.f, 105.f));
+	EggsCollision->SetRelativeScale3D(FVector(1.7f, 1.7f, 1.65f));
+	if (Cone.Succeeded()) { EggsCollision->SetStaticMesh(Cone.Object); }
 }
 
 void ATN_ProcEggNest::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
@@ -74,9 +88,14 @@ void ATN_ProcEggNest::BeginPlay()
 		NestBase->SetStaticMesh(NestMeshOverride);
 		NestBase->SetRelativeScale3D(FVector(1.f));
 		for (UStaticMeshComponent* Egg : Eggs) { Egg->SetVisibility(false); }
+		// La malla definitiva trae su propia colisión.
+		EggsCollision->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	}
 	TNProcActors::Tint(NestBase, FLinearColor(0.35f, 0.24f, 0.12f));
 	ApplyVisual();
+	// Mallas de arte (Docs/Arte_Assets.md): van de hijas y heredan la escala de cada componente.
+	TNArt::ApplyToComponent(NestBase, TN_ART("ProcMap.Nest.Base"));
+	for (UStaticMeshComponent* Egg : Eggs) { TNArt::ApplyToComponent(Egg, TN_ART("ProcMap.Nest.Egg")); }
 }
 
 FTransform ATN_ProcEggNest::GetRespawnTransform(int32 Slot) const

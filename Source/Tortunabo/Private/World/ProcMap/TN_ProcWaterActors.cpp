@@ -1,5 +1,6 @@
 #include "World/ProcMap/TN_ProcWaterActors.h"
 #include "World/ProcMap/TN_ProcMapActorUtils.h"
+#include "Art/TN_Art.h"
 #include "Player/TortugaCharacter.h"
 #include "Components/BoxComponent.h"
 #include "Components/BrushComponent.h"
@@ -120,6 +121,8 @@ void ATN_ProcWaterCurrent::Setup(const FVector& Extent, const FVector& InDirecti
 	for (UStaticMeshComponent* Marker : Markers)
 	{
 		TNProcActors::Tint(Marker, FLinearColor(0.7f, 0.9f, 1.f));
+		// Malla de arte (Docs/Arte_Assets.md): hija del cono tumbado, con su escala; avanza con él.
+		TNArt::ApplyToComponent(Marker, TN_ART("ProcMap.Water.CurrentMarker"));
 	}
 }
 
@@ -180,6 +183,8 @@ void ATN_ProcWhirlpool::BeginPlay()
 	Disc->SetRelativeScale3D(FVector(Radius / 50.f, Radius / 50.f, 0.02f));
 	Disc->SetRelativeLocation(FVector(0.f, 0.f, 3.f));
 	TNProcActors::Tint(Disc, FLinearColor(0.02f, 0.12f, 0.25f));
+	// Malla de arte (Docs/Arte_Assets.md): hija del disco, con su escala; gira con él.
+	TNArt::ApplyToComponent(Disc, TN_ART("ProcMap.Water.WhirlpoolDisc"));
 }
 
 void ATN_ProcWhirlpool::Tick(float DeltaTime)
@@ -270,6 +275,9 @@ void ATN_ProcWaterPredator::BeginPlay()
 	PatrolAngle = FMath::FRand() * 6.28f;
 	TNProcActors::Tint(Fin, FLinearColor(0.25f, 0.28f, 0.32f));
 	TNProcActors::Tint(Body, FLinearColor(0.2f, 0.22f, 0.26f));
+	// Mallas de arte (Docs/Arte_Assets.md): hijas del cono y de la esfera, con su escala.
+	TNArt::ApplyToComponent(Fin, TN_ART("ProcMap.Water.PredatorFin"));
+	TNArt::ApplyToComponent(Body, TN_ART("ProcMap.Water.PredatorBody"));
 }
 
 ATortugaCharacter* ATN_ProcWaterPredator::FindSwimmerNear(const FVector& Where, float Range) const
@@ -395,6 +403,8 @@ void ATN_ProcWaterBouncer::OnRep_Variant()
 		Body->SetStaticMesh(VariantMesh);
 	}
 	TNProcActors::Tint(Body, VariantColor);
+	// Malla de arte (Docs/Arte_Assets.md): hija del cuerpo, con su escala; se balancea y se aplasta con él.
+	TNArt::ApplyToComponent(Body, TN_ART("ProcMap.Water.Jellyfish"));
 }
 
 void ATN_ProcWaterBouncer::Tick(float DeltaTime)

@@ -1,6 +1,9 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Core/TN_ProjectMaterials.h"
+#include "Art/TN_ArtMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Materials/MaterialInterface.h"
 #include "../../World/ProcMap/TN_ProcMapRuntimeMesh.h"
@@ -79,8 +82,7 @@ namespace TNPlaygroundKit
 	/** Material de color de vértice del proyecto (con el del motor de respaldo). */
 	inline UMaterialInterface* VertexColorMaterial()
 	{
-		UMaterialInterface* Mat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Cosmetics/Materials/M_CosmeticVertexColor.M_CosmeticVertexColor"));
-		return Mat ? Mat : LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
+		return TNMaterials::VertexColor();
 	}
 
 	/**
@@ -95,6 +97,27 @@ namespace TNPlaygroundKit
 			Mesh->SetFlags(RF_DuplicateTransient);
 		}
 		return Mesh;
+	}
+
+	/**
+	 * Arte sustituible (Docs/Arte_Assets.md): estira la malla de arte que TNArt::SetMesh dejó de hija de Comp. Las piezas del
+	 * parque cambian de medidas con sus propiedades (alto del poste, largo del túnel, tamaño de la medusa...) y su malla de
+	 * arte se modela con las medidas por defecto de la tabla: así sigue a cada copia. Sin sustituto no hay hija y no hace nada.
+	 */
+	inline void ScaleArt(const UStaticMeshComponent* Comp, const FVector& Scale)
+	{
+		if (!Comp)
+		{
+			return;
+		}
+		for (USceneComponent* Child : Comp->GetAttachChildren())
+		{
+			UTN_ArtMeshComponent* Art = Cast<UTN_ArtMeshComponent>(Child);
+			if (Art && Art->Group.IsNone() && IsValid(Art))
+			{
+				Art->SetRelativeScale3D(Scale);
+			}
+		}
 	}
 
 	// ─────────────────────────────────────────────────────────────────────────

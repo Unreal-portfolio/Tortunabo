@@ -1,5 +1,6 @@
 #include "World/ProcMap/TN_ProcTraversalActors.h"
 #include "World/ProcMap/TN_ProcMapActorUtils.h"
+#include "Art/TN_Art.h"
 #include "Player/TortugaCharacter.h"
 #include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -222,6 +223,12 @@ void ATN_ProcGeyser::BeginPlay()
 		FoamCapMesh->SetStaticMesh(CapMesh);
 		FoamBaseMesh->SetStaticMesh(RingMesh);
 		FoamBaseMesh->SetRelativeLocation(FVector(0.f, 0.f, 36.f));
+		// Mallas de arte (Docs/Arte_Assets.md), ya con la colisión y el sitio de cada componente: van de hijas y siguen al
+		// chorro y a la espuma cuando el Tick los estira y los mueve.
+		TNArt::ApplyToComponent(BaseMesh, TN_ART("ProcMap.Geyser.Mound"));
+		TNArt::ApplyToComponent(ColumnMesh, TN_ART("ProcMap.Geyser.Jet"));
+		TNArt::ApplyToComponent(FoamCapMesh, TN_ART("ProcMap.Geyser.FoamCap"));
+		TNArt::ApplyToComponent(FoamBaseMesh, TN_ART("ProcMap.Geyser.FoamRing"));
 	}
 	else
 	{

@@ -40,6 +40,7 @@ public:
 	ATN_StormVolume();
 
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void Tick(float DeltaTime) override;
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
@@ -50,6 +51,12 @@ public:
 	 * tormenta queda inmune al countdown (el temporizador no le cuenta).
 	 */
 	void ForceCheckPlayer(APlayerController* PC);
+
+	/**
+	 * Servidor: vuelve a la posición y el tamaño con que empezó la partida y quita las cuentas atrás de quien estaba
+	 * dentro. Lo usa Supervivencia al empezar cada nivel (#448): todos salen del mismo sitio.
+	 */
+	void ResetToInitialState();
 
 protected:
 	// ─── Componentes ─────────────────────────────────────────────────────────
@@ -169,4 +176,8 @@ private:
 
 	/** Conteo de pawns locales dentro (para toggle del post-process). */
 	int32 LocalPlayersInside = 0;
+
+	/** Posición y media extensión de la caja en BeginPlay (servidor), para ResetToInitialState. */
+	FVector InitialLocation = FVector::ZeroVector;
+	FVector InitialBoxHalfExtent = FVector::ZeroVector;
 };

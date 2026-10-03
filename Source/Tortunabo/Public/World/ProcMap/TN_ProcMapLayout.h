@@ -10,9 +10,10 @@
  * (TN_ProcMapTerrain.h) y el actor ATN_ProcMapGenerator.
  *
  * Espacio del mapa (local al generador, en cm):
- *   X ∈ [0, WorldSize]  → ancho
+ *   X ∈ [0, WorldSizeX] → ancho
  *   Y ∈ [0, WorldSize]  → avance: la salida está al sur (Y≈0) y la playa y el
  *                          mar abierto al norte (Y≈WorldSize y más allá)
+ *   En el Coop el mapa es cuadrado (WorldSizeX == WorldSize); Supervivencia lo pide alargado (#273).
  *   Z = 0               → nivel del mar (agua de todo el mapa)
  */
 
@@ -68,13 +69,18 @@ namespace TNProcMap
 	{
 		uint32 Seed = 1337;
 
+		/** Módulos en el avance (Y). */
 		int32 GridSize = 6;
+		/** Módulos a lo ancho (X); 0 = GridSize (mapa cuadrado, el del Coop). */
+		int32 GridSizeX = 0;
 		double ModuleSize = 40000.0;
 		/** Resolución del raster de módulos y biomas. */
 		double CellSize = 400.0;
 
 		/** Fracción de módulos únicos que recorre el camino principal. */
 		double Coverage = 0.78;
+		/** La ruta de módulos nunca vuelve a una fila más al sur (Supervivencia: el principal avanza hacia la meta). */
+		bool bMonotonicRoute = false;
 		int32 NumCrossings = 2;
 		int32 NumBranches = 12;
 		/** Bifurcaciones en carriles paralelos con puzles (2vs2). */
@@ -89,6 +95,8 @@ namespace TNProcMap
 		double NarrowChance = 0.22;
 		/** Longitud del camino dentro de un módulo / distancia recta entre portales. */
 		double Sinuosity = 1.8;
+		/** Escala de las medidas fijas del trazador dentro de un módulo (pasos, tramos rectos, márgenes); 1 = Coop. */
+		double WalkScale = 1.0;
 		double SampleSpacing = 400.0;
 
 		/** Huecos de salto (salto 2 m corriendo, dive 4 m). */
@@ -101,8 +109,12 @@ namespace TNProcMap
 		double MaxStepUp = 120.0;
 
 		double MaxPathSlope = 0.2;
+		/** Cota mínima del camino fuera de la playa final (cm; sin límite por defecto). */
+		double MinPathZ = -1e9;
 		/** Desnivel entre módulos por encima del cual hay géiser (subida) o tobogán (bajada). */
 		double SmoothTransitionMax = 900.0;
+		/** Fracción del rango de nivel de cada bioma que se usa (1 = todo; menos = módulos a alturas parecidas). */
+		double LevelSpread = 1.0;
 		double SlideAngleDeg = 55.0;
 		double ColossalHeightMin = 4000.0;
 		double ColossalHeightMax = 5500.0;
@@ -124,6 +136,10 @@ namespace TNProcMap
 		double WallHeight = 5500.0;
 		/** Distancia mínima del camino al borde del mapa. */
 		double MapEdgeClearance = 9000.0;
+		/** Margen extra solo en los bordes este y oeste (Supervivencia: el mapa es estrecho). */
+		double SideMargin = 0.0;
+		/** Biomas de agua (isletas y pasarelas) permitidos. */
+		bool bWetBiomes = true;
 		/** Distancia de la costa al borde norte del mapa (hacia dentro). */
 		double CoastInset = 6000.0;
 
@@ -866,7 +882,10 @@ namespace TNProcMap
 		/** Motivo de fallo o avisos (texto ASCII para el log). */
 		const char* FailReason = "";
 
+		/** Largo del mapa en el avance (Y). */
 		double WorldSize = 0.0;
+		/** Ancho del mapa (X); igual que WorldSize en un mapa cuadrado. */
+		double WorldSizeX = 0.0;
 		int32 RasterW = 0;
 		int32 RasterH = 0;
 		TArray<int16> ModuleOfCell;
@@ -908,6 +927,11 @@ namespace TNProcMap
 
 		// ── Consultas ───────────────────────────────────────────────────────
 
+		/** Módulos a lo ancho (X). */
+		int32 GridW() const { return Params.GridSizeX > 0 ? Params.GridSizeX : Params.GridSize; }
+		/** Lado de las rejillas cuadradas de consulta: cubre el mapa en los dos ejes. */
+		double MaxExtent() const { return FMath::Max(WorldSize, WorldSizeX); }
+
 		int32 CellIndex(int32 X, int32 Y) const { return Y * RasterW + X; }
 		bool CellInside(int32 X, int32 Y) const { return X >= 0 && Y >= 0 && X < RasterW && Y < RasterH; }
 
@@ -924,22 +948,23 @@ namespace TNProcMap
 
 		int32 ModuleAt(const FVector2D& P) const
 		{
-			if (P.X < 0.0 || P.Y < 0.0 || P.X >= WorldSize || P.Y >= WorldSize) { return INDEX_NONE; }
+			if (P.X < 0.0 || P.Y < 0.0 || P.X >= WorldSizeX || P.Y >= WorldSize) { return INDEX_NONE; }
 			const FIntPoint C = CellOf(P);
 			return ModuleOfCell[CellIndex(C.X, C.Y)];
 		}
 
 		double BorderDistAt(const FVector2D& P) const
 		{
-			if (P.X < 0.0 || P.Y < 0.0 || P.X >= WorldSize || P.Y >= WorldSize) { return 0.0; }
+			if (P.X < 0.0 || P.Y < 0.0 || P.X >= WorldSizeX || P.Y >= WorldSize) { return 0.0; }
 			const FIntPoint C = CellOf(P);
 			return BorderDist[CellIndex(C.X, C.Y)];
 		}
 
-		/** Y de la línea de costa (irregular) para una X dada. */
+		/** Y de la línea de costa (irregular) para una X dada. Ondula ±25 m; en módulos pequeños, a escala. */
 		double CoastY(double X) const
 		{
-			return WorldSize - Params.CoastInset + 2500.0 * Fbm1(Params.Seed ^ 0xC0A57u, X / 30000.0, 3);
+			const double Amp = 2500.0 * FMath::Min(1.0, Params.ModuleSize / 40000.0);
+			return WorldSize - Params.CoastInset + Amp * Fbm1(Params.Seed ^ 0xC0A57u, X / 30000.0, 3);
 		}
 
 		/** Distancia hacia dentro a la que está el muro del borde en un punto del perímetro. */

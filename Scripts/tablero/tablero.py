@@ -61,7 +61,7 @@ import objetos
 import peticiones
 import volcado
 from base import (CONFIG, ESTADOS, INTEGRACION, ORDEN_PRIORIDAD, ORDEN_TAMANO, REPO,
-                  ErrorTablero, cargar_proyecto, comentar, elegir_revisor, es_de, esta_fusionada, gh, git, issues_de_pr,
+                  ErrorTablero, cargar_proyecto, comentar, comprobar_campos, elegir_revisor, es_de, esta_fusionada, gh, git, issues_de_pr,
                   item_de_issue, poner_campo, prs_abiertas, prs_fusionadas, slug, usuario_actual,
                   vaciar_campo)
 
@@ -292,6 +292,11 @@ def cmd_nueva(args: argparse.Namespace) -> None:
         raise ErrorTablero(f"No se puede leer el cuerpo «{args.cuerpo}»: {exc}") from exc
     if defectos := auditoria.problemas_de_formato(args.titulo, cuerpo, set(etiquetas)):
         raise ErrorTablero("La issue no se crea: " + "; ".join(defectos) + ".")
+    # Los campos se comprueban antes de crear la issue: con un valor que no existe quedaría creada a medias.
+    proyecto = cargar_proyecto()
+    campos = {"Status": args.estado, "Prioridad": args.prioridad, "Tamaño": args.tamano, "Área": args.area, "Fase": args.fase,
+              "Editor": "Sin probar" if args.estado == "QA editor" else None}
+    comprobar_campos(proyecto, campos)
     crear = ["issue", "create", "--repo", REPO, "--title", args.titulo, "--body-file", args.cuerpo]
     for e in etiquetas:
         crear += ["--label", e]
@@ -299,9 +304,6 @@ def cmd_nueva(args: argparse.Namespace) -> None:
     numero = int(url.rstrip("/").rsplit("/", 1)[-1])
     if padre is not None:
         objetos.colgar(gh, REPO, numero, padre)
-    proyecto = cargar_proyecto()
-    campos = {"Status": args.estado, "Prioridad": args.prioridad, "Tamaño": args.tamano, "Área": args.area, "Fase": args.fase,
-              "Editor": "Sin probar" if args.estado == "QA editor" else None}
     for campo, valor in campos.items():
         if valor:
             poner_campo(proyecto, numero, campo, valor)
@@ -377,10 +379,12 @@ def reconciliar_bloqueos(proyecto: dict, cambios: list) -> None:
 
 def reconciliar_lotes(proyecto: dict, cambios: list, avisos: list) -> None:
     """Lotes abiertos: miembros listos → Validada; con la PR del lote en dev y todos cerrados, se cierra el lote."""
-    fusionadas = prs_fusionadas()
+    fusionadas, abiertas = prs_fusionadas(), prs_abiertas()
     for n, issue in proyecto["items"].items():
         if issue["state"] != "OPEN" or objetos.es_objeto(issue) or lotes.es_lote(issue) or not lotes.lotes_de(issue):
             continue
+        if esta_fusionada(n, fusionadas, abiertas):
+            continue  # la decide reconciliar_fusiones: pasarla a Validada aquí la dejaría cerrada en Validada (#436)
         destino, _ = flujo.estado_objetivo(issue["valores"].get("Status"), issue["valores"], False, en_lote=True)
         if destino == "Validada" and issue["valores"].get("Status") != "Validada":
             cambios.append((f"#{n} → Validada (aprobada y probada; espera al resto de su lote)",
@@ -407,17 +411,36 @@ def desbloquear(proyecto: dict, numero: int) -> None:
 
 def reconciliar_prs(proyecto: dict, cambios: list, avisos: list) -> None:
     abiertas = prs_abiertas()
+    conflictos = conflictos_con_base([p for p in abiertas if p["mergeable"] == "CONFLICTING"])
     for pr in abiertas:
         refs = issues_de_pr(pr)
         if pr["baseRefName"] != INTEGRACION:
             avisos.append(f"PR #{pr['number']} apunta a {pr['baseRefName']}, no a {INTEGRACION}")
         if pr["mergeable"] == "CONFLICTING":
-            avisos.append(f"PR #{pr['number']} ({pr['author']['login']}) tiene conflictos con {pr['baseRefName']}: rebase del autor")
+            arreglo = ("solo localización: regenerarla" if colisiones.solo_localizacion(conflictos.get(pr["number"]) or [])
+                       else "rebase del autor")
+            avisos.append(f"PR #{pr['number']} ({pr['author']['login']}) tiene conflictos con {pr['baseRefName']}: {arreglo}")
         if not refs:
             avisos.append(f"PR #{pr['number']} no cierra ninguna issue (falta «Closes #n» o rama tipo/<n>-slug)")
         for n in sorted(refs):
             reconciliar_pr_issue(proyecto, pr, n, cambios, avisos)
     reconciliar_fusiones(proyecto, abiertas, cambios, avisos)
+
+
+def conflictos_con_base(conflictivas: list[dict]) -> dict[int, list[str]]:
+    """Ficheros en conflicto de cada PR con su rama base, con `git merge-tree` (git, sin gastar API).
+
+    Solo las PR que GitHub ya marca CONFLICTING; si git no puede comprobarlo, la PR no aparece.
+    """
+    if not conflictivas or not colisiones.traer_cabezas([p["number"] for p in conflictivas],
+                                                        [p["baseRefName"] for p in conflictivas]):
+        return {}
+    resultado = {}
+    for pr in conflictivas:
+        ficheros = colisiones.conflicto_con_base(pr["number"], pr["baseRefName"])
+        if ficheros:
+            resultado[pr["number"]] = ficheros
+    return resultado
 
 
 def reconciliar_pr_issue(proyecto: dict, pr: dict, n: int, cambios: list, avisos: list) -> None:
@@ -510,7 +533,8 @@ def aplicar_estado(proyecto: dict, numero: int, valores: dict, fusionada: bool, 
     issue = proyecto["items"].get(numero, {})
     actual = issue.get("valores", {}).get("Status")
     estado, cerrar = flujo.estado_objetivo(actual, valores, fusionada, en_lote=bool(lotes.lotes_de(issue)), sin_pr=sin_pr)
-    if estado and estado != actual:
+    if estado and (estado != actual or cerrar):
+        # Al cerrar se fija aunque la foto ya lo diga: otro cambio del mismo `sync` puede haberlo movido (#436).
         poner_campo(proyecto, numero, "Status", estado)
     if cerrar and proyecto["items"].get(numero, {}).get("state") != "CLOSED":
         motivo = "Probada en el editor" if sin_pr else f"Fusionada en `{INTEGRACION}`, revisada y probada"

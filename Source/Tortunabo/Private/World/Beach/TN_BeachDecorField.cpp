@@ -7,6 +7,7 @@
 
 #include "World/Beach/TN_BeachDecorField.h"
 #include "TN_BeachDecorKit.h"
+#include "Art/TN_Art.h"
 #include "Core/TN_Log.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
@@ -46,6 +47,41 @@ namespace TNBeachDecorFieldDetail
 	FTransform HiddenXf(const FTransform& Rest)
 	{
 		return FTransform(FQuat::Identity, Rest.GetLocation() - FVector(0.0, 0.0, 50000.0), FVector(0.01));
+	}
+
+	/** Pieza de arte de un lote (Docs/Arte_Assets.md): su parte que se mueve, su pieza de tramo o su malla fija. */
+	FName SlotOf(const TNBeachDecorFieldTypes::FBatch& Batch)
+	{
+		if (Batch.bMoving)
+		{
+			return TNBeachDecorKit::MovingSlot(Batch.Element);
+		}
+		if (TNBeachProp::IsTiled(Batch.Element))
+		{
+			return TNBeachDecorKit::PieceSlot(Batch.Element, static_cast<int32>(Batch.Key & 0xFFu));
+		}
+		return TNBeachDecorKit::BodySlot(Batch.Element);
+	}
+
+	/**
+	 * Quita los gemelos de colisión que deja TNArt::ApplyToInstances con un sustituto de arte (TNArt::IsCollisionTwin) con la
+	 * malla generada Generated, o todos con nullptr. Sin sustitutos no hay ninguno.
+	 */
+	void DestroyArtTwins(AActor* Owner, const TArray<TObjectPtr<UInstancedStaticMeshComponent>>& Comps, const UStaticMesh* Generated)
+	{
+		TInlineComponentArray<UInstancedStaticMeshComponent*> All;
+		Owner->GetComponents(All);
+		for (UInstancedStaticMeshComponent* Ism : All)
+		{
+			if (!IsValid(Ism) || !TNArt::IsCollisionTwin(Ism) || Comps.Contains(Ism))
+			{
+				continue;
+			}
+			if (!Generated || Ism->GetStaticMesh() == Generated)
+			{
+				Ism->DestroyComponent();
+			}
+		}
 	}
 
 	/** Receta de la parte animada como la entiende TNBeachDecorKit::AnimPose. */
@@ -175,6 +211,8 @@ void ATN_BeachDecorField::ClearDecor()
 			Comp->ClearInstances();
 		}
 	}
+	// Los gemelos de colisión de las piezas de arte se rehacen con las instancias nuevas (SetupBatchComps).
+	TNBeachDecorFieldDetail::DestroyArtTwins(this, Comps, nullptr);
 	Items.Reset();
 	Batches.Reset();
 	BatchByKey.Reset();
@@ -371,6 +409,11 @@ void ATN_BeachDecorField::SetupBatchComps(int32 BatchIndex)
 
 	const int32 CompIndex = AcquireComp(Batch.Key, Batch.bMoving ? TNBeachDecorFieldDetail::KindMoving : TNBeachDecorFieldDetail::KindBody);
 	UInstancedStaticMeshComponent* Comp = Comps[CompIndex];
+	// Reutilizado con la malla de arte de una ronda anterior: vuelve a la generada sin sus materiales (TNArt la pone luego).
+	if (Comp->GetStaticMesh() && Comp->GetStaticMesh() != Batch.Mesh)
+	{
+		Comp->EmptyOverrideMaterials();
+	}
 	Comp->SetStaticMesh(Batch.Mesh);
 	Comp->SetCastShadow(bAlwaysShadow);
 	Comp->SetCullDistances(Cull > 0.f ? FMath::RoundToInt32(Cull * 0.85f) : 0, FMath::RoundToInt32(Cull));
@@ -380,6 +423,7 @@ void ATN_BeachDecorField::SetupBatchComps(int32 BatchIndex)
 		TNBeachDecorKit::SetupCollision(Comp, Batch.bCollision, Batch.bBlocksCamera);
 	}
 	Comp->AddInstances(Batch.Transforms, false, false, false);
+	TNArt::ApplyToInstances(Comp, TNBeachDecorFieldDetail::SlotOf(Batch));
 	Batch.Comp = CompIndex;
 
 	if (bNearShadow)
@@ -387,9 +431,15 @@ void ATN_BeachDecorField::SetupBatchComps(int32 BatchIndex)
 		const float ShadowCull = Cull > 0.f ? FMath::Min(Cull, ShadowNearDistance) : ShadowNearDistance;
 		const int32 TwinIndex = AcquireComp(Batch.Key, TNBeachDecorFieldDetail::KindTwin);
 		UInstancedStaticMeshComponent* Twin = Comps[TwinIndex];
+		if (Twin->GetStaticMesh() && Twin->GetStaticMesh() != Batch.Mesh)
+		{
+			Twin->EmptyOverrideMaterials();
+		}
 		Twin->SetStaticMesh(Batch.Mesh);
 		Twin->SetCullDistances(FMath::RoundToInt32(ShadowCull * 0.8f), FMath::RoundToInt32(ShadowCull));
 		Twin->AddInstances(Batch.Transforms, false, false, false);
+		// La sombra, de la misma malla que se ve.
+		TNArt::ApplyToInstances(Twin, TNBeachDecorFieldDetail::SlotOf(Batch));
 		Batch.TwinComp = TwinIndex;
 	}
 }
@@ -556,10 +606,30 @@ void ATN_BeachDecorField::RefillBatch(int32 BatchIndex)
 		{
 			continue;
 		}
+		// Con malla de arte (TNArt::ApplyToInstances): se rehace como al montarlo, con su ajuste y su gemelo de colisión.
+		const bool bArt = Comp->GetStaticMesh() != Batch.Mesh;
+		if (bArt)
+		{
+			const bool bBody = CompIndex == Batch.Comp && !Batch.bMoving;
+			if (bBody)
+			{
+				TNBeachDecorFieldDetail::DestroyArtTwins(this, Comps, Batch.Mesh);
+			}
+			Comp->EmptyOverrideMaterials();
+			Comp->SetStaticMesh(Batch.Mesh);
+			if (bBody)
+			{
+				TNBeachDecorKit::SetupCollision(Comp, Batch.bCollision, Batch.bBlocksCamera);
+			}
+		}
 		Comp->ClearInstances();
 		if (Keep.Num() > 0)
 		{
 			Comp->AddInstances(Keep, false, false, false);
+		}
+		if (bArt)
+		{
+			TNArt::ApplyToInstances(Comp, TNBeachDecorFieldDetail::SlotOf(Batch));
 		}
 	}
 }
@@ -737,9 +807,13 @@ void ATN_BeachDecorField::StartAnimator(int32 ItemIndex)
 		AnimatorPool[Slot] = Comp;
 	}
 	const TNBeachDecorFieldTypes::FAnimRecipe& Recipe = AnimRecipes[Item.AnimRecipe];
+	// El componente de la reserva cambia de receta: se quita la malla de arte de la anterior antes de prepararlo y se pone
+	// la de esta después (Docs/Arte_Assets.md). Sin sustitutos no hace nada.
+	TNArt::ApplyToComponent(Comp, NAME_None);
 	Comp->SetStaticMesh(Recipe.Mesh);
 	Comp->SetCastShadow(Recipe.bCastShadow);
 	Comp->SetVisibility(true);
+	TNArt::ApplyToComponent(Comp, TNBeachDecorKit::MovingSlot(Item.Element));
 	TNBeachDecorFieldTypes::FAnimator& Anim = Animators[Slot];
 	Anim.Item = ItemIndex;
 	Anim.PoolIndex = Slot;
@@ -751,7 +825,8 @@ void ATN_BeachDecorField::StartAnimator(int32 ItemIndex)
 	const TNBeachDecorFieldTypes::FBatch& Batch = Batches[Item.MovingBatch];
 	if (UInstancedStaticMeshComponent* Moving = Comps.IsValidIndex(Batch.Comp) ? Comps[Batch.Comp].Get() : nullptr)
 	{
-		Moving->UpdateInstanceTransform(Item.MovingInstance, TNBeachDecorFieldDetail::HiddenXf(Item.MovingRestXf), false, true, true);
+		// Con el ajuste de su malla de arte, si la tiene.
+		TNArt::UpdateInstances(Moving, Item.MovingInstance, { TNBeachDecorFieldDetail::HiddenXf(Item.MovingRestXf) }, false, true, true);
 	}
 }
 
@@ -770,7 +845,7 @@ void ATN_BeachDecorField::StopAnimator(int32 AnimatorIndex)
 		UInstancedStaticMeshComponent* Moving = Batch && Comps.IsValidIndex(Batch->Comp) ? Comps[Batch->Comp].Get() : nullptr;
 		if (IsValid(Moving) && Item.MovingInstance != INDEX_NONE)
 		{
-			Moving->UpdateInstanceTransform(Item.MovingInstance, Item.MovingRestXf, false, true, true);
+			TNArt::UpdateInstances(Moving, Item.MovingInstance, { Item.MovingRestXf }, false, true, true);
 		}
 	}
 	if (AnimatorPool.IsValidIndex(AnimatorIndex) && IsValid(AnimatorPool[AnimatorIndex]))

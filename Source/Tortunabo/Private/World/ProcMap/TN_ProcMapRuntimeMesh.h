@@ -22,6 +22,39 @@ namespace TNProcRuntimeMesh
 	}
 
 	/**
+	 * Densidad de UV del canal 0 (unidades de mundo por unidad de UV) calculada como la del motor
+	 * (FUVDensityAccumulator): media de sqrt(área / área UV) de cada triángulo ponderada por sqrt(área),
+	 * descartando el 10 % de cada extremo. 0 si ningún triángulo tiene área en mundo y en UV.
+	 */
+	inline float ComputeUVDensity(const TNProcMesh::FTNProcMeshBuffers& B)
+	{
+		struct FSample { float Density; float Weight; };
+		TArray<FSample> Samples;
+		Samples.Reserve(B.Tris.Num() / 3);
+		for (int32 t = 0; t + 2 < B.Tris.Num(); t += 3)
+		{
+			const int32 I0 = B.Tris[t], I1 = B.Tris[t + 1], I2 = B.Tris[t + 2];
+			const double Area = FVector::CrossProduct(B.Verts[I1] - B.Verts[I0], B.Verts[I2] - B.Verts[I0]).Size();
+			const FVector2D UV01 = B.UVs[I1] - B.UVs[I0];
+			const FVector2D UV02 = B.UVs[I2] - B.UVs[I0];
+			const double UVArea = FMath::Abs(UV01.X * UV02.Y - UV01.Y * UV02.X);
+			if (Area > UE_SMALL_NUMBER && UVArea > UE_SMALL_NUMBER)
+			{
+				Samples.Add({ static_cast<float>(FMath::Sqrt(Area / UVArea)), static_cast<float>(FMath::Sqrt(Area)) });
+			}
+		}
+		Samples.Sort([](const FSample& A, const FSample& C) { return A.Density < C.Density; });
+		const int32 Discard = FMath::FloorToInt(0.1f * static_cast<float>(Samples.Num()));
+		double Weighted = 0.0, Weight = 0.0;
+		for (int32 i = Discard; i < Samples.Num() - Discard; ++i)
+		{
+			Weighted += static_cast<double>(Samples[i].Density) * Samples[i].Weight;
+			Weight += Samples[i].Weight;
+		}
+		return Weight > UE_SMALL_NUMBER ? static_cast<float>(Weighted / Weight) : 0.f;
+	}
+
+	/**
 	 * Malla estática en ejecución a partir de unos buffers de caras planas (con una caja de colisión si se
 	 * pide). El alfa del color de vértice es el peso de balanceo del viento del material: Wind x (altura
 	 * relativa)^Exponent, 0 en la base (troncos, raíces) y Wind en lo más alto; con FixedAlpha >= 0, ese
@@ -84,7 +117,13 @@ namespace TNProcRuntimeMesh
 		// Fuera de toda duplicación (PIE, copiar y pegar): la copia saldría sin descripción de malla ("Bad
 		// MeshDescription" y Min LOD fuera de rango al empezar el PIE); cada actor la rehace en su BeginPlay/OnConstruction.
 		UStaticMesh* Mesh = NewObject<UStaticMesh>(Outer, NAME_None, RF_Transient | RF_DuplicateTransient);
-		Mesh->GetStaticMaterials().Add(FStaticMaterial(Material, SlotName));
+		// Datos de UV del streaming de texturas calculados aquí: sin datos de editor (build empaquetada)
+		// UStaticMesh::UpdateUVChannelData no hace nada y la malla quedaba sin ellos, con lo que saltaba el
+		// ensure de UStaticMesh::GetUVChannelData al registrarla en el streaming (#390).
+		FStaticMaterial StaticMaterial(Material, SlotName);
+		StaticMaterial.UVChannelData = FMeshUVChannelInfo(0.f);
+		StaticMaterial.UVChannelData.LocalUVDensities[0] = ComputeUVDensity(B);
+		Mesh->GetStaticMaterials().Add(StaticMaterial);
 		UStaticMesh::FBuildMeshDescriptionsParams Params;
 		Params.bMarkPackageDirty = false;
 		Params.bBuildSimpleCollision = bBoxCollision;
