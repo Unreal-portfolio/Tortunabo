@@ -131,7 +131,15 @@ traducciones ya hechas viven en los `.archive`/`.po` y se conservan al volver a 
   se ajusta al ancho del texto, se suscribe a `TNLanguage::OnApplied()` (en `BeginPlay`, y se quita en `EndPlay`).
 - **Textos que no se traducen a propósito**: registros (`UE_LOG`), comandos y variables de consola con su ayuda, `UMETA(DisplayName)`
   (solo el editor), avisos de los validadores de datos, previsualizaciones de desarrollo (`TN.Race.*` con nombres de mentira) y el
-  nombre de un asset que hace de reserva (`ActionLabel` de una acción sin nombre).
+  nombre de un asset que hace de reserva (`ActionLabel` de una acción sin nombre). Si acaban en un `FText`, van con
+  `INVTEXT`/`FText::AsCultureInvariant`, nunca con `FText::FromString`.
+- **Nombres de teclas y botones**: `UTN_GameSettingsSubsystem::KeyDisplayName(EKeys::…)` (ya traducidos en `TNKeys`), nunca el
+  nombre escrito a mano.
+- **La pipeline lo comprueba** (`.github/scripts/validar.py`, «Comprobaciones»): una línea nueva de `Source/` que crea un `FText`
+  desde un literal con letras (`FText::FromString(TEXT("…"))`, `FText::FromName`, también dentro de un `Printf` o de un `? :`)
+  para la PR con error. Una clave `NSLOCTEXT` nueva o con el texto cambiado que aún no está en `Game.manifest` sale como aviso:
+  hay que recogerla y traducirla antes de cerrar la issue. En local: `python .github/scripts/validar.py --base origin/dev`
+  (con `--todos`, revisa todo `Source/`).
 
 ## Traducir con Claude (por bloques, con glosario)
 

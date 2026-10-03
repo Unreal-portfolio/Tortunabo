@@ -413,20 +413,25 @@ ATN_BeachSandWorm* ATN_BeachSandWorm::EatTurtle(ACharacter* InTurtle)
 
 bool ATN_BeachSandWorm::IsBeingEaten(const ACharacter* InTurtle)
 {
+	return FindEating(InTurtle) != nullptr;
+}
+
+ATN_BeachSandWorm* ATN_BeachSandWorm::FindEating(const ACharacter* InTurtle)
+{
 	UWorld* World = InTurtle ? InTurtle->GetWorld() : nullptr;
 	if (!World)
 	{
-		return false;
+		return nullptr;
 	}
 	for (TActorIterator<ATN_BeachSandWorm> It(World); It; ++It)
 	{
-		const ATN_BeachSandWorm* Worm = *It;
+		ATN_BeachSandWorm* Worm = *It;
 		if (IsValid(Worm) && !Worm->IsActorBeingDestroyed() && !Worm->bReleasedLocal && Worm->Victim.Get() == InTurtle)
 		{
-			return true;
+			return Worm;
 		}
 	}
-	return false;
+	return nullptr;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1315,57 +1320,99 @@ APlayerController* ATN_BeachSandWorm::FindVictimLocalController() const
 	return nullptr;
 }
 
+bool ATN_BeachSandWorm::GetSpectatorView(const FVector& ViewFrom, FVector& OutLocation, FRotator& OutRotation)
+{
+	const UWorld* World = GetWorld();
+	if (!bHasScreen || bReleasedLocal || !World)
+	{
+		return false;
+	}
+	// TickCamera la sigue calculando mientras se pida (también sin la tortuga comida en esta máquina).
+	SpectatorAskedTime = World->GetTimeSeconds();
+	if (!bSceneCamInit)
+	{
+		InitSceneCamera(ViewFrom);
+	}
+	if (!bCameraReady)
+	{
+		return false;
+	}
+	OutLocation = CamLoc;
+	OutRotation = CamRot;
+	return true;
+}
+
+void ATN_BeachSandWorm::InitSceneCamera(const FVector& ViewFrom)
+{
+	// Sale de la cámara que la pide hacia un lado del gusano: el arco se ve de perfil y el eructo viene un poco hacia aquí.
+	const FVector Ground = GetGround();
+	FVector ToCam = (ViewFrom - Ground).GetSafeNormal2D();
+	if (ToCam.IsNearlyZero())
+	{
+		ToCam = -GetArcDir();
+	}
+	FVector Perp = GetSideDir();
+	if (FVector::DotProduct(Perp, ToCam) < 0.0)
+	{
+		Perp = -Perp;
+	}
+	CamDir = (Perp * 0.8 + GetArcDir() * 0.35 + ToCam * 0.2).GetSafeNormal2D();
+	if (CamDir.IsNearlyZero())
+	{
+		CamDir = Perp;
+	}
+	CamDist = TNSandWorm::CamWarnDist;
+	CamHeight = TNSandWorm::CamWarnHeight;
+	CamLook = Ground + FVector::UpVector * 60.0;
+	bSceneCamInit = true;
+}
+
 void ATN_BeachSandWorm::TickCamera(float Tau, float DeltaSeconds)
 {
-	if (bReleasedLocal || bCameraGaveUp || Tau < 0.f)
+	if (bReleasedLocal || Tau < 0.f)
 	{
 		return;
 	}
 	const FVector Ground = GetGround();
 	const FVector Up = FVector::UpVector;
-	if (!bCameraTaken)
+	// La tortuga comida de esta máquina: su cámara pasa a ver la escena (una vez).
+	if (!bCameraTaken && !bCameraGaveUp)
 	{
 		// En VR la cámara no se la lleva el gusano: se sigue en primera persona (una cámara ajena marea).
 		if (TNVR::KeepFirstPersonView())
 		{
 			bCameraGaveUp = true;
-			return;
 		}
-		APlayerController* Taker = FindVictimLocalController();
-		if (!Taker || !Taker->PlayerCameraManager)
+		else if (APlayerController* Taker = FindVictimLocalController(); Taker && Taker->PlayerCameraManager)
 		{
-			return;
+			if (!bSceneCamInit)
+			{
+				InitSceneCamera(Taker->PlayerCameraManager->GetCameraLocation());
+			}
+			CameraPC = Taker;
+			bCameraTaken = true;
+			Taker->SetViewTargetWithBlend(this, TNSandWorm::CamBlend, VTBlend_Cubic);
 		}
-		// Sale de su cámara hacia un lado del gusano: el arco se ve de perfil y el eructo viene un poco hacia aquí.
-		FVector ToCam = (Taker->PlayerCameraManager->GetCameraLocation() - Ground).GetSafeNormal2D();
-		if (ToCam.IsNearlyZero())
-		{
-			ToCam = -GetArcDir();
-		}
-		FVector Perp = GetSideDir();
-		if (FVector::DotProduct(Perp, ToCam) < 0.0)
-		{
-			Perp = -Perp;
-		}
-		CamDir = (Perp * 0.8 + GetArcDir() * 0.35 + ToCam * 0.2).GetSafeNormal2D();
-		if (CamDir.IsNearlyZero())
-		{
-			CamDir = Perp;
-		}
-		CamDist = TNSandWorm::CamWarnDist;
-		CamHeight = TNSandWorm::CamWarnHeight;
-		CamLook = Ground + Up * 60.0;
-		CameraPC = Taker;
-		bCameraTaken = true;
-		Taker->SetViewTargetWithBlend(this, TNSandWorm::CamBlend, VTBlend_Cubic);
 	}
-	APlayerController* PC = CameraPC.Get();
-	if (!PC || PC->GetViewTarget() != this)
+	if (bCameraTaken)
 	{
-		// Otra cosa se ha llevado la cámara (el fantasma, el podio...): no se le pelea.
-		bCameraTaken = false;
-		bCameraGaveUp = true;
+		APlayerController* PC = CameraPC.Get();
+		if (!PC || PC->GetViewTarget() != this)
+		{
+			// Otra cosa se ha llevado la cámara (el fantasma, el podio...): no se le pelea.
+			bCameraTaken = false;
+			bCameraGaveUp = true;
+		}
+	}
+	// Un espectador de esta máquina que sigue a la comida mira la escena desde aquí también (GetSpectatorView).
+	const bool bSpectated = GetWorld() && GetWorld()->GetTimeSeconds() - SpectatorAskedTime < 0.5;
+	if (!bCameraTaken && !bSpectated)
+	{
 		bCameraReady = false;
+		return;
+	}
+	if (!bSceneCamInit)
+	{
 		return;
 	}
 	const bool bWarn = Tau < TNSandWorm::WarnEnd;

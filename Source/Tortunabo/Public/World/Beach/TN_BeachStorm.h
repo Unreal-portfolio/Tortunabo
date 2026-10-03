@@ -35,12 +35,16 @@ class ATortugaCharacter;
  * pisotones de los bañistas no suenan). Nadie se puede quedar detrás del frente: a
  * quien se queda detrás (también si una gaviota la suelta ahí) un bañista le da una patada que la lleva hasta KickAhead
  * (20 m) por delante del frente. El sitio lo resuelve el servidor antes de patear (arena abierta de verdad, cabe de pie,
- * fuera del agua; TNBeach::FindOpenSandSpot) y la patada acaba ahí sí o sí: en bola por el aire si el arco está libre
- * (y, si no llega, atascada, hundida o detrás del frente, se la pone en el sitio) o de un salto de teletransporte con
- * polvo si no lo está. Mientras vuela la tormenta se la reserva (TNBeach::ClaimTurtle: ni la red de seguridad, ni los
- * enemigos, ni las trampas la tocan) y al aterrizar tiene KickGraceSeconds sin patadas. No se patea a quien mueve otra
- * cosa (enemigo, gusano, brazos, derribo, bola de aturdida, lanzamiento, red de seguridad). Dentro, la imagen se cierra
- * (niebla y tinte de arena) y la tortuga tose (UTN_StormCoughComponent).
+ * fuera del agua; TNBeach::FindOpenSandSpot) y la patada siempre se ve (TN_BeachStormKick.h): en bola por el aire con
+ * el primer arco libre (por delante, a los lados, más cerca —KickShortAhead— o alrededor; tres vuelos cada uno) y, si no
+ * hay ninguno (una pared delante, un sitio estrecho, nadando o muy lejos), la bola vuela igual atravesando lo que haya
+ * (ATN_ShellBody::SetPassThrough) y vuelve a chocar al bajar sobre su sitio. Si no llega (atascada, hundida, lejos o
+ * detrás del frente), otra patada visible la lleva desde donde está; solo sin bola posible, o tras varias que no llegan,
+ * se la pone en su sitio sin vuelo. Mientras vuela la tormenta se la reserva (TNBeach::ClaimTurtle: ni la red de
+ * seguridad, ni los enemigos, ni las trampas la tocan) y al aterrizar tiene KickGraceSeconds sin patadas. No se patea a
+ * quien mueve otra cosa (enemigo, gusano, brazos, derribo, bola de aturdida, lanzamiento, red de seguridad) ni a quien
+ * es invulnerable por un objeto de la carrera (se la vuelve a mirar en un segundo). Dentro, la imagen se cierra (niebla
+ * y tinte de arena) y la tortuga tose (UTN_StormCoughComponent).
  *
  * Marco: el del propio actor. Su X local es la dirección de la carrera (hacia el mar), su Y local el ancho (centro en
  * Y = 0) y su Z, el suelo de referencia. El frente es la recta X local = GetFrontDistance().
@@ -194,6 +198,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Storm", meta = (ClampMin = "0.0"))
 	float KickAhead = 2000.f;
 
+	/** Sin arco libre hasta KickAhead, se prueba una patada más corta hasta aquí por delante del frente (cm). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Storm", meta = (ClampMin = "0.0"))
+	float KickShortAhead = 900.f;
+
 	/** Detrás del frente más que KickSlack (cm) durante KickDelay (s): patada. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Storm", meta = (ClampMin = "0.0"))
 	float KickSlack = 100.f;
@@ -215,11 +223,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Storm", meta = (ClampMin = "0.0"))
 	float KickGraceSeconds = 3.f;
 
-	/** Más lejos que esto (cm, en planta) no se vuela: salto de teletransporte con polvo al sitio. */
+	/** Más lejos que esto (cm, en planta) no se busca arco libre: la bola vuela atravesando lo que haya. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Storm", meta = (ClampMin = "500.0"))
 	float KickMaxFlightDistance = 4500.f;
 
-	/** Al acabar el vuelo, más lejos que esto (cm, en planta) del sitio resuelto: se la pone en el sitio. */
+	/** Al acabar el vuelo, más lejos que esto (cm, en planta) del sitio resuelto: otra patada hasta él. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Storm", meta = (ClampMin = "100.0"))
 	float KickLandTolerance = 700.f;
 
@@ -228,7 +236,7 @@ protected:
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastKick(ATortugaCharacter* Victim, FVector_NetQuantize10 KickAt);
 
-	/** Todas las máquinas: la tortuga de la patada aparece en At (salto de teletransporte o puesta en su sitio): polvo y golpe. */
+	/** Todas las máquinas: la tortuga de la patada aparece en At (puesta en su sitio sin vuelo, último recurso): polvo y golpe. */
 	UFUNCTION(NetMulticast, Unreliable)
 	void MulticastKickLand(FVector_NetQuantize10 At);
 
@@ -280,6 +288,10 @@ private:
 		/** Desde cuándo apenas se mueve (s) y cada cuánto se mira si se ha hundido en el terreno. */
 		float StuckTime = 0.f;
 		float DepthTimer = 0.f;
+		/** La bola atraviesa lo que haya hasta bajar sobre su sitio (sin arco libre). */
+		bool bPassThrough = false;
+		/** Patadas de más que lleva (desde donde se quedó la bola que no llegó). */
+		int32 Hops = 0;
 	};
 
 	/** Cuánto lleva cada tortuga detrás del frente (s). */
@@ -445,12 +457,26 @@ private:
 	/** Servidor: patea a quien se ha quedado detrás del frente. */
 	void ServerCheck();
 	/**
-	 * Servidor: la patada a Turtle. Resuelve el sitio por delante del frente y, si el arco hasta él está libre, la lanza
-	 * en bola (se vigila en ServerTickFlights); si no, salto de teletransporte. false si no hay sitio.
+	 * Servidor: la patada a Turtle. Resuelve el sitio por delante del frente y la lanza en bola (se vigila en
+	 * ServerTickFlights) con el primer arco libre o, sin ninguno, atravesando lo que haya. false si no hay sitio o no puede
+	 * ir en bola ahora (se vuelve a mirar en KickRetrySeconds).
 	 */
 	bool KickTurtle(ATortugaCharacter* Turtle, float Front, float Speed);
-	/** Servidor: vigila las patadas en vuelo; la que no llega (atascada, hundida, en el agua, detrás del frente), a su sitio. */
+	/**
+	 * Servidor: mete a Turtle en su bola (aturdida lo que dura el vuelo y un poco más) lanzada de From a Target (la cápsula
+	 * de pie en su sitio) en Flight segundos, con la pierna del bañista, y la vigila. Con bPassThrough la bola atraviesa lo
+	 * que haya hasta bajar sobre su sitio. false si no ha podido ir en bola (no se ha lanzado nada).
+	 */
+	bool LaunchKick(ATortugaCharacter* Turtle, const FVector& From, const FVector& Target, float Flight, bool bPassThrough, int32 Hops);
+	/** Servidor: vigila las patadas en vuelo; la que no llega (atascada, hundida, en el agua, detrás del frente), otra patada. */
 	void ServerTickFlights(float DeltaSeconds);
+	/**
+	 * Servidor: la bola de Turtle no ha llegado a Target (Why): otra patada visible desde donde está, atravesando lo que
+	 * haya; tras TNBeachStormKick::MaxHops, o sin bola posible, se la pone en su sitio (PlaceKicked).
+	 */
+	void RetryKick(ATortugaCharacter* Turtle, const FVector& Target, int32 Hops, const TCHAR* Why);
+	/** Servidor: true si la caja de la bola de Turtle está metida en algo que para a una bola (sin contar las tortugas). */
+	bool IsKickBallBlocked(const ATortugaCharacter* Turtle) const;
 	/** Servidor: pone a Turtle en Target (teletransporte limpio, polvo), le da la gracia y suelta la reserva. */
 	void PlaceKicked(ATortugaCharacter* Turtle, const FTransform& Target, const TCHAR* Why);
 	/** Servidor: acaba la patada de Turtle (suelta la reserva y le da la gracia). */

@@ -1,3 +1,5 @@
+> **Obsoleto** (2026-10-02): plan de implementación ya ejecutado; el diseño vigente está en `Docs/Diseno_Terreno_CaminoPrimero.md`.
+
 # Terreno «camino primero» v2 — plan de implementación
 
 > **Para agentes:** SUB-SKILL: superpowers:executing-plans (ejecución nativa). Pasos con casillas `- [ ]`.
@@ -8,7 +10,7 @@
 
 **Stack:** Python 3 + numpy/scipy/scikit-image (vía `uv run --with ...`), pytest, Unreal 5.6 C++.
 
-**Spec:** `Docs/2026-09-26-Terreno-CaminoPrimero-v2-Design.md`
+**Spec:** `Docs/Diseno_Terreno_CaminoPrimero.md` (ampliación v2)
 
 ## Restricciones globales
 
