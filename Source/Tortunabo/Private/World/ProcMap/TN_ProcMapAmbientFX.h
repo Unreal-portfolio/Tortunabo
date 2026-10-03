@@ -375,7 +375,7 @@ namespace TNAmbientFX
 			{
 				for (FParticle& P : E.Particles) { P.bAlive = false; }
 				for (FTransform& T : E.Xf) { T.SetScale3D(FVector::ZeroVector); }
-				ISM->BatchUpdateInstancesTransforms(0, E.Xf, true, true, false);
+				ISM->BatchUpdateInstancesTransforms(0, E.Xf, true, false, false);
 				E.bAwake = false;
 			}
 			return;
@@ -427,7 +427,8 @@ namespace TNAmbientFX
 			}
 			E.Xf[i] = FTransform(Rot, P.P, FVector(Size, Size, D.Shape == EShape::Drop ? Size * 1.6f : Size));
 		}
-		ISM->BatchUpdateInstancesTransforms(0, E.Xf, true, true, false);
+		// Cada fotograma, sin MarkRenderStateDirty: TransformChanged ya actualiza instancias y límites al final del fotograma sin rehacer el proxy (#566).
+		ISM->BatchUpdateInstancesTransforms(0, E.Xf, true, false, false);
 	}
 
 	inline void TickFlock(FFlock& F, float Dt)
@@ -446,7 +447,8 @@ namespace TNAmbientFX
 			const FRotator Rot(0.f, FMath::RadiansToDegrees(FMath::Atan2(Fwd.Y, Fwd.X)), -18.f * Sgn);
 			F.Xf[b] = FTransform(Rot, P, FVector(F.Size));
 		}
-		ISM->BatchUpdateInstancesTransforms(0, F.Xf, true, true, false);
+		// Cada fotograma, sin MarkRenderStateDirty: TransformChanged ya actualiza instancias y límites al final del fotograma sin rehacer el proxy (#566).
+		ISM->BatchUpdateInstancesTransforms(0, F.Xf, true, false, false);
 	}
 
 	/** Mueve todos los efectos de Owner (llamar desde su Tick). */
