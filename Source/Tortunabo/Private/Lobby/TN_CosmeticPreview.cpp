@@ -18,16 +18,17 @@
 #include "Materials/MaterialInterface.h"
 #include "UObject/ConstructorHelpers.h"
 #include "../World/ProcMap/TN_ProcMapRuntimeMesh.h"
+#include "../Vehicles/TN_BuggyArt.h"
 
 namespace TNPreviewDetail
 {
 	/** Donde vive el escaparate: muy alto, lejos de todo. */
 	const FVector StageLocation(0.0, 0.0, 60000.0);
 	constexpr float TurtleScale = 2.5f;
-	/** El buggy de 4,9 m en la peana, como un juguete de 1,8 m; con la tortuga al volante a su altura de asiento. */
+	/** El buggy de 4,2 m en la peana, como un juguete de 1,5 m; con la tortuga al volante, de pie sobre el cojín. */
 	constexpr float BuggyScale = 0.36f;
 	constexpr float SeatedTurtleHeightCm = 90.f;
-	/** Equipo del escaparate: iris azules y banderín azul. */
+	/** Equipo del escaparate: el de serie con su skin y su color, y en las tortugas, iris y banderín de ese color. */
 	constexpr int32 BuggyPreviewTeam = 1;
 	const FVector TurtleCamPos(430.f, 0.f, 112.f);
 	const FVector TurtleCamFocus(0.f, 0.f, 80.f);
@@ -248,9 +249,10 @@ void ATN_CosmeticPreview::ApplyMode(bool bBuggy)
 	BuggyRoot->SetVisibility(bBuggy, true);
 	if (bBuggy)
 	{
-		// La tortuga del jugador va al volante, a la altura de las del Rally.
+		// La tortuga del jugador va al volante, de pie sobre el cojín de la conductora (igual en todos los modelos): la
+		// cabeza queda donde la lleva la tortuga sentada del Rally.
 		Turtle->AttachToComponent(BuggyRoot, FAttachmentTransformRules::KeepRelativeTransform);
-		Turtle->SetRelativeLocationAndRotation(ATN_Buggy::DriverSeatLocal, FRotator(0.f, -90.f, 0.f));
+		Turtle->SetRelativeLocationAndRotation(FVector(ATN_Buggy::DriverSeatLocal.X - 4.f, 0.f, TNBuggyArt::Frame::DriverCushionZ), FRotator(0.f, -90.f, 0.f));
 		const USkeletalMesh* TurtleMesh = Turtle->GetSkeletalMeshAsset();
 		const float Height = TurtleMesh ? static_cast<float>(TurtleMesh->GetBounds().BoxExtent.Z) * 2.f : 0.f;
 		Turtle->SetRelativeScale3D(FVector(Height > KINDA_SMALL_NUMBER ? SeatedTurtleHeightCm / Height : 1.f));

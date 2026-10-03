@@ -54,6 +54,8 @@ public:
 #if !UE_BUILD_SHIPPING
 	/** Pruebas (TN.Buggy.Photos): captura el escaparate, girado Yaw grados, en un PNG de Size píxeles. */
 	bool DebugSavePhoto(const FString& File, int32 Size, float Yaw);
+	/** Pruebas: alguna pieza del buggy del escaparate aún precarga sus PSO (se vería con el material por defecto). */
+	bool DebugIsBuggyPrecaching() const;
 #endif
 
 	/** Pose: saludo al elegir algo; con bCelebrate, el grito de alegría de una compra. Luego vuelve a la espera. */

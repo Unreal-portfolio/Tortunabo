@@ -8,6 +8,7 @@
 #if !UE_BUILD_SHIPPING
 
 #include "Vehicles/TN_BuggyCosmetics.h"
+#include "Components/PrimitiveComponent.h"
 #include "Components/SceneCaptureComponent2D.h"
 #include "Containers/Ticker.h"
 #include "Engine/Engine.h"
@@ -70,6 +71,18 @@ bool ATN_CosmeticPreview::DebugSavePhoto(const FString& File, int32 Size, float 
 	return FFileHelper::SaveArrayToFile(Png, *File);
 }
 
+bool ATN_CosmeticPreview::DebugIsBuggyPrecaching() const
+{
+	TArray<UPrimitiveComponent*> Parts;
+	BuggyPrimitives(Parts);
+	bool bPrecaching = false;
+	for (UPrimitiveComponent* Part : Parts)
+	{
+		bPrecaching |= Part && Part->IsVisible() && Part->CheckPSOPrecachingAndBoostPriority(EPSOPrecachePriority::Highest);
+	}
+	return bPrecaching;
+}
+
 namespace TNBuggyPhotosDetail
 {
 	struct FShot
@@ -92,20 +105,23 @@ namespace TNBuggyPhotosDetail
 			S.Name = Name;
 			Shots.Add(S);
 		};
-		const TArray<FName> ModelIds = { NAME_None, FName(TEXT("BuggyModel_Caiman")), FName(TEXT("BuggyModel_Laud")) };
-		const TCHAR* ModelNames[] = { TEXT("clasico"), TEXT("caiman"), TEXT("laud") };
-		const FName Signature[] = { NAME_None, FName(TEXT("BuggyPaint_Alga")), FName(TEXT("BuggyPaint_Llamas")) };
+		const TArray<FName> ModelIds = { NAME_None, FName(TEXT("BuggyModel_Clasico")), FName(TEXT("BuggyModel_Caiman")), FName(TEXT("BuggyModel_Laud")) };
+		const TCHAR* ModelNames[] = { TEXT("serie"), TEXT("clasico"), TEXT("caiman"), TEXT("laud") };
+		const FName Signature[] = { FName(TEXT("BuggyPaint_Llamas")), FName(TEXT("BuggyPaint_Coral")), FName(TEXT("BuggyPaint_Alga")),
+			FName(TEXT("BuggyPaint_Carreras")) };
 		for (int32 m = 0; m < ModelIds.Num(); ++m)
 		{
-			Add(ModelIds[m], NAME_None, 35.f, FString::Printf(TEXT("modelo_%s_serie_frente"), ModelNames[m]));
-			Add(ModelIds[m], NAME_None, 150.f, FString::Printf(TEXT("modelo_%s_serie_detras"), ModelNames[m]));
-			Add(ModelIds[m], NAME_None, -90.f, FString::Printf(TEXT("modelo_%s_serie_lado"), ModelNames[m]));
+			Add(ModelIds[m], NAME_None, 35.f, FString::Printf(TEXT("modelo_%s_frente"), ModelNames[m]));
+			Add(ModelIds[m], NAME_None, 150.f, FString::Printf(TEXT("modelo_%s_detras"), ModelNames[m]));
+			Add(ModelIds[m], NAME_None, -90.f, FString::Printf(TEXT("modelo_%s_lado"), ModelNames[m]));
 			Add(ModelIds[m], Signature[m], 20.f, FString::Printf(TEXT("modelo_%s_%s"), ModelNames[m], *Signature[m].ToString().Replace(TEXT("BuggyPaint_"), TEXT(""))));
 		}
+		// Las pinturas, en el de serie (sus zonas de Art/Source) y en el clásico (las de las tortugas).
 		for (const FTNBuggyPaintInfo& Paint : Paints())
 		{
 			const FString PaintName = Paint.Id.IsNone() ? FString(TEXT("Serie")) : Paint.Id.ToString().Replace(TEXT("BuggyPaint_"), TEXT(""));
-			Add(NAME_None, Paint.Id, 55.f, FString::Printf(TEXT("pintura_%s"), *PaintName));
+			Add(NAME_None, Paint.Id, 55.f, FString::Printf(TEXT("pintura_serie_%s"), *PaintName));
+			Add(ModelIds[1], Paint.Id, 55.f, FString::Printf(TEXT("pintura_clasico_%s"), *PaintName));
 		}
 		return Shots;
 	}
@@ -123,7 +139,9 @@ static FAutoConsoleCommandWithWorldAndArgs GTNBuggyPhotosCommand(
 		// Cada 0,25 s una foto; antes, la espera en pasos negativos.
 		TSharedRef<int32> Step = MakeShared<int32>(-FMath::CeilToInt(Wait / 0.25f) - 1);
 		TSharedRef<TArray<TNBuggyPhotosDetail::FShot>> Shots = MakeShared<TArray<TNBuggyPhotosDetail::FShot>>(TNBuggyPhotosDetail::Plan());
-		FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([Dir, Size, Step, Shots](float) -> bool
+		// Pasos desde que se viste cada foto (-1 = aún sin vestir): una pieza nueva sale gris mientras precarga sus PSO.
+		TSharedRef<int32> Settle = MakeShared<int32>(-1);
+		FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([Dir, Size, Step, Shots, Settle](float) -> bool
 		{
 			UWorld* World = nullptr;
 			for (const FWorldContext& Context : GEngine->GetWorldContexts())
@@ -155,10 +173,21 @@ static FAutoConsoleCommandWithWorldAndArgs GTNBuggyPhotosCommand(
 				return false;
 			}
 			const TNBuggyPhotosDetail::FShot& Shot = (*Shots)[I];
-			Stage->SetBuggyLook(Shot.Look);
+			int32& Settled = Settle.Get();
+			if (Settled < 0)
+			{
+				Stage->SetBuggyLook(Shot.Look);
 #if WITH_EDITOR
-			if (GShaderCompilingManager) { GShaderCompilingManager->FinishAllCompilation(); }
+				if (GShaderCompilingManager) { GShaderCompilingManager->FinishAllCompilation(); }
 #endif
+				Settled = 0;
+				return true;
+			}
+			if (Stage->DebugIsBuggyPrecaching() && ++Settled < 60)
+			{
+				return true;
+			}
+			Settled = -1;
 			const FString File = Dir / (Shot.Name + TEXT(".png"));
 			const bool bOk = Stage->DebugSavePhoto(File, Size, Shot.Yaw);
 			UE_LOG(LogTNBuggyPhotos, Display, TEXT("[BuggyPhotos] %s %s"), bOk ? TEXT("ok") : TEXT("FALLO"), *File);
