@@ -317,6 +317,10 @@ private:
 	 * si no ha cambiado (salvo bForce).
 	 */
 	void RefreshBuggyLook(bool bForce);
+	/** El de serie con la pintura de serie: la carrocería y los neumáticos llevan la skin del equipo de ApplyTint. */
+	bool UsesTeamSkin() const;
+	/** Escape del modelo puesto (cm, espacio de la carrocería): de ahí salen la llama y el sonido del turbo. */
+	FVector GetExhaustLocal() const;
 
 	// ── Modelo (TN_Buggy_Visuals.cpp) ──────────────────────────────────────────
 	/** Mallas, sockets y posiciones de reposo de los neumáticos según los assets de Rally|Assets. */

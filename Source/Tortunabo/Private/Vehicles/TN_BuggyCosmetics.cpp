@@ -45,9 +45,12 @@ namespace TNBuggyCosmetics
 	{
 		using namespace TNBuggyCosmeticsDetail;
 		static const TArray<FTNBuggyModelInfo> List = {
-			Model(nullptr, ETNBuggyBodyStyle::Classic, 0,
+			Model(nullptr, ETNBuggyBodyStyle::Stock, 0,
+				NSLOCTEXT("Tortunabo", "BuggyModelStock", "Buggy de Serie"),
+				NSLOCTEXT("Tortunabo", "BuggyModelStockDesc", "El buggy oficial del Rally: chasis de tubos, pontones con dorsal y el color de tu equipo. Gratis y a prueba de cocos.")),
+			Model(TEXT("Clasico"), ETNBuggyBodyStyle::Classic, 900,
 				NSLOCTEXT("Tortunabo", "BuggyModelClassic", "Buggy Clásico"),
-				NSLOCTEXT("Tortunabo", "BuggyModelClassicDesc", "El original: caparazón de placas, aletas por guardabarros y unos ojos que alumbran la pista.")),
+				NSLOCTEXT("Tortunabo", "BuggyModelClassicDesc", "Un buggy que es una tortuga: caparazón de placas, aletas por guardabarros y unos ojos que alumbran la pista.")),
 			Model(TEXT("Caiman"), ETNBuggyBodyStyle::Offroad, 1200,
 				NSLOCTEXT("Tortunabo", "BuggyModelCaiman", "Caimán Todoterreno"),
 				NSLOCTEXT("Tortunabo", "BuggyModelCaimanDesc", "Como la tortuga caimán: placas con pinchos, pico de hierro y un tubo de buceo por si toca cruzar un río.")),
@@ -64,8 +67,8 @@ namespace TNBuggyCosmetics
 		using P = ETNBuggyPattern;
 		static const TArray<FTNBuggyPaintInfo> List = {
 			Paint(nullptr, 0,
-				NSLOCTEXT("Tortunabo", "BuggyPaintSerie", "Verde de serie"),
-				NSLOCTEXT("Tortunabo", "BuggyPaintSerieDesc", "El verde tortuga original: no se raya, no se pela y combina con todo."),
+				NSLOCTEXT("Tortunabo", "BuggyPaintSerie", "Pintura de serie"),
+				NSLOCTEXT("Tortunabo", "BuggyPaintSerieDesc", "La de fábrica: el buggy de serie lleva el color de tu equipo y las tortugas, su verde natural."),
 				0x2F7A3F, 0x58B75A, 0x9ED36A, 0x1F5424, P::Plain),
 			Paint(TEXT("Coral"), 300,
 				NSLOCTEXT("Tortunabo", "BuggyPaintCoral", "Coral Bravo"),
@@ -254,18 +257,6 @@ namespace TNBuggyCosmetics
 			if (IsKnownBuggyId(Id)) { OutKnown.Add(Id); }
 		}
 		return true;
-	}
-
-	FTN_BuggyLook LookForTeam(int32 TeamIndex)
-	{
-		FTN_BuggyLook Out;
-		if (TeamIndex < 0) { return Out; }
-		const TArray<FTNBuggyModelInfo>& ModelList = Models();
-		const TArray<FTNBuggyPaintInfo>& PaintList = Paints();
-		Out.ModelId = ModelList[TeamIndex % ModelList.Num()].Id;
-		// Saltos de 5 (primo con el número de pinturas): equipos seguidos con pinturas bien distintas.
-		Out.PaintId = PaintList[(TeamIndex * 5 + 1) % PaintList.Num()].Id;
-		return Out;
 	}
 
 	FString LookKey(const FTN_BuggyLook& Look)

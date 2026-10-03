@@ -27,11 +27,13 @@ bool FTNBuggyLookCatalogTest::RunTest(const FString& Parameters)
 	using namespace TNBuggyCosmetics;
 	const TArray<FTNBuggyModelInfo>& ModelList = Models();
 	const TArray<FTNBuggyPaintInfo>& PaintList = Paints();
-	TestTrue(TEXT("Al menos tres modelos (el de serie y dos variantes)"), ModelList.Num() >= 3);
+	TestTrue(TEXT("El de serie y las tres tortugas"), ModelList.Num() >= 4);
 	TestTrue(TEXT("Un buen montón de pinturas"), PaintList.Num() >= 15);
 	TestEqual(TEXT("El primer modelo es el de serie"), ModelList[0].Id, FName(NAME_None));
 	TestEqual(TEXT("La primera pintura es la de serie"), PaintList[0].Id, FName(NAME_None));
 	TestEqual(TEXT("El de serie es gratis"), ModelList[0].Price, 0);
+	TestTrue(TEXT("El de serie es el buggy de Art/Source"), ModelList[0].Style == ETNBuggyBodyStyle::Stock);
+	TestTrue(TEXT("Resolver NAME_None da el de Art/Source"), ResolveModel(NAME_None).Style == ETNBuggyBodyStyle::Stock);
 	TestEqual(TEXT("La de serie es gratis"), PaintList[0].Price, 0);
 
 	TSet<FName> Ids;
@@ -133,16 +135,9 @@ bool FTNBuggyLookValidationTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Lista válida"), FilterKnownIds({ Caiman, Fake, NAME_None, Lava, FName(TEXT("Helmet_Gold")) }, MaxUnlocked, Known));
 	TestEqual(TEXT("Solo quedan los del catálogo"), Known.Num(), 2);
 
-	TSet<FString> TeamLooks;
-	for (int32 Team = 0; Team < 8; ++Team)
-	{
-		const FTN_BuggyLook TeamLook = LookForTeam(Team);
-		TestTrue(FString::Printf(TEXT("Equipo %d: aspecto del catálogo"), Team), FindModel(TeamLook.ModelId) && FindPaint(TeamLook.PaintId));
-		TestTrue(FString::Printf(TEXT("Equipo %d: siempre el mismo"), Team), LookForTeam(Team) == TeamLook);
-		TeamLooks.Add(LookKey(TeamLook));
-	}
-	TestEqual(TEXT("Ocho equipos, ocho buggies distintos"), TeamLooks.Num(), 8);
-	TestTrue(TEXT("Sin equipo: el de serie"), LookForTeam(INDEX_NONE) == FTN_BuggyLook());
+	const FName Classic(TEXT("BuggyModel_Clasico"));
+	TestTrue(TEXT("La tortuga clásica se vende"), FindModel(Classic) && PriceOf(ETNCosmeticCategory::BuggyModel, Classic) > 0);
+	TestNotEqual(TEXT("Clave distinta para cada aspecto"), LookKey(FTN_BuggyLook()), LookKey(Clean));
 	return true;
 }
 

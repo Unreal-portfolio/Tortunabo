@@ -1,5 +1,7 @@
-// Arte del buggy del Rally (#297): ver TN_BuggyArt.h. Espacio del chasis de SKM_Offroad en cm: X hacia delante, Y a la
-// derecha, Z arriba, el suelo en Z = 0. La conductora va a la izquierda (Y < 0) y la artillera de pie sobre el lomo.
+// Arte del buggy del Rally (#297): ver TN_BuggyArt.h. Espacio del chasis en cm: X hacia delante, Y a la derecha, Z
+// arriba, el suelo en Z = 0. Las tortugas se sientan como en el buggy de serie (sockets de SM_TN_BuggyBody): la conductora
+// en el centro de la bañera y la artillera en un sillín sobre el lomo, con los pies en un hueco del caparazón, y la
+// torreta (TNBuggyTurretMesh) se sujeta a las barandillas de la cabina.
 
 #include "TN_BuggyArt.h"
 #include "TN_BuggyArtKit.h"
@@ -20,8 +22,20 @@ namespace TNBuggyArtDetail
 	const TCHAR* const PaintMaterialPath = TEXT("/Game/Vehicles/Buggy/M_BuggyPaint.M_BuggyPaint");
 	const TCHAR* const VertexColorMaterialPath = TEXT("/Game/Cosmetics/Materials/M_CosmeticVertexColor.M_CosmeticVertexColor");
 
-	/** Altura del suelo de la bañera (cm). */
-	constexpr double FloorZ = 49.0;
+	// El buggy de serie (Art/Source/Vehicles/Buggy importado por Scripts/tools/import_buggy_rally.py): las rutas de ATN_Buggy.
+	const TCHAR* const StockBodyPath = TEXT("/Game/Art/Source/Vehicles/Buggy/export/SM_TN_BuggyBody.SM_TN_BuggyBody");
+	const TCHAR* const StockTirePath = TEXT("/Game/Art/Source/Vehicles/Buggy/export/SM_TN_BuggyTire.SM_TN_BuggyTire");
+	const TCHAR* const StockSkinPaths[] = {
+		TEXT("/Game/Art/Source/Vehicles/Buggy/export/MI_TN_Buggy_Mar.MI_TN_Buggy_Mar"),
+		TEXT("/Game/Art/Source/Vehicles/Buggy/export/MI_TN_Buggy_Alga.MI_TN_Buggy_Alga"),
+		TEXT("/Game/Art/Source/Vehicles/Buggy/export/MI_TN_Buggy_Medusa.MI_TN_Buggy_Medusa"),
+	};
+
+	/** Suelo de la bañera (cm): donde apoya los pies la conductora. */
+	constexpr double FloorZ = Frame::DriverFloorZ;
+
+	/** Antena del buggy de serie: en la esquina trasera izquierda del parachoques, lejos de la torreta y de los tirantes. */
+	const FVector StockAntennaMount(-198.0, -58.0, 63.0);
 
 	inline double Smooth(double A, double B, double X)
 	{
@@ -52,13 +66,23 @@ namespace TNBuggyArtDetail
 		double Cx = -70.0;
 		double A = 145.0;
 		double B = 110.0;
-		double Z0 = 64.0;
-		double H = 58.0;
+		/** Lo más alto queda por debajo del cojín de la artillera (Frame::GunnerCushionZ), que va sentada encima. */
+		double Z0 = 62.0;
+		double H = 44.0;
 		double K = 0.62;
 		/** Escotadura de la cabina: desde NotchX hacia delante, |Y| <= NotchHalfY, esquinas de radio NotchCorner. */
-		double NotchX = -6.0;
+		double NotchX = -14.0;
 		double NotchHalfY = 68.0;
 		double NotchCorner = 16.0;
+		/**
+		 * Hueco de los pies de la artillera, detrás de la cabina: desde WellX hacia delante, |Y| <= WellHalfY, con el suelo
+		 * a Frame::GunnerFloorZ (las piernas bajan del sillín hacia delante, como en el de serie).
+		 */
+		double WellX = -64.0;
+		double WellHalfY = 30.0;
+		double WellCorner = 10.0;
+		/** Borde de la escotadura alargado por delante, para PushOutOfNotch (lo rellena Finish). */
+		TArray<FVector2D> Edge;
 
 		double R2(double X, double Y) const
 		{
@@ -89,13 +113,19 @@ namespace TNBuggyArtDetail
 			return FVector(X, Y, Height(X, Y)) + Normal(X, Y) * Lift;
 		}
 
-		/** Distancia con signo a la escotadura (negativa dentro). */
+		/** Distancia con signo a una franja abierta hacia +X (desde X0, |Y| <= HalfY) con las esquinas de atrás redondeadas. */
+		static double SlotSdf(double X, double Y, double X0, double HalfY, double Corner)
+		{
+			const double Px = (X0 + Corner) - X;
+			const double Py = FMath::Abs(Y) - (HalfY - Corner);
+			const double Outside = FVector2D(FMath::Max(Px, 0.0), FMath::Max(Py, 0.0)).Size();
+			return Outside + FMath::Min(FMath::Max(Px, Py), 0.0) - Corner;
+		}
+
+		/** Distancia con signo a la escotadura con el hueco de la artillera (negativa dentro). */
 		double NotchSdf(double X, double Y) const
 		{
-			const double Px = (NotchX + NotchCorner) - X;
-			const double Py = FMath::Abs(Y) - (NotchHalfY - NotchCorner);
-			const double Outside = FVector2D(FMath::Max(Px, 0.0), FMath::Max(Py, 0.0)).Size();
-			return Outside + FMath::Min(FMath::Max(Px, Py), 0.0) - NotchCorner;
+			return FMath::Min(SlotSdf(X, Y, NotchX, NotchHalfY, NotchCorner), SlotSdf(X, Y, WellX, WellHalfY, WellCorner));
 		}
 
 		bool InNotch(double X, double Y, double Margin) const { return NotchSdf(X, Y) < Margin; }
@@ -103,19 +133,24 @@ namespace TNBuggyArtDetail
 		/** Un punto dentro de la escotadura pasa a su borde (el más cercano); fuera, no se toca. */
 		FVector2D PushOutOfNotch(const FVector2D& P) const
 		{
-			if (NotchSdf(P.X, P.Y) >= 0.0) { return P; }
-			const double Sy = P.Y >= 0.0 ? 1.0 : -1.0;
-			const double CornerX = NotchX + NotchCorner;
-			const double CornerY = NotchHalfY - NotchCorner;
+			if (NotchSdf(P.X, P.Y) >= 0.0 || Edge.Num() < 2) { return P; }
 			FVector2D Best = P;
 			double BestD = TNumericLimits<double>::Max();
-			const auto Try = [&](const FVector2D& Q) { const double D = FVector2D::DistSquared(P, Q); if (D < BestD) { BestD = D; Best = Q; } };
-			if (P.X >= CornerX) { Try(FVector2D(P.X, Sy * NotchHalfY)); }
-			if (FMath::Abs(P.Y) <= CornerY) { Try(FVector2D(NotchX, P.Y)); }
-			const FVector2D Corner(CornerX, Sy * CornerY);
-			const FVector2D Dir = (P - Corner).GetSafeNormal();
-			Try(Corner + (Dir.IsNearlyZero() ? FVector2D(-1.0, Sy) .GetSafeNormal() : Dir) * NotchCorner);
+			for (int32 i = 0; i + 1 < Edge.Num(); ++i)
+			{
+				const FVector2D Q = FMath::ClosestPointOnSegment2D(P, Edge[i], Edge[i + 1]);
+				const double D = FVector2D::DistSquared(P, Q);
+				if (D < BestD) { BestD = D; Best = Q; }
+			}
 			return Best;
+		}
+
+		/** Prepara Edge: el borde de la escotadura con los dos extremos alargados más allá del morro de la cúpula. */
+		void Finish()
+		{
+			Edge = NotchPath(2.0);
+			Edge.Insert(FVector2D(Cx + A + 40.0, -NotchHalfY), 0);
+			Edge.Add(FVector2D(Cx + A + 40.0, NotchHalfY));
 		}
 
 		FVector2D Ellipse(double Theta, double Scale) const
@@ -130,31 +165,42 @@ namespace TNBuggyArtDetail
 			return Cx + A * FMath::Sqrt(FMath::Max(0.0, 1.0 - V * V));
 		}
 
-		/** Borde de la escotadura de delante-izquierda a delante-derecha (XY), cada unos Step cm. */
+		/**
+		 * Borde de la escotadura de delante-izquierda a delante-derecha (XY), cada unos Step cm, rodeando el hueco de la
+		 * artillera; el interior queda a la derecha del sentido de avance.
+		 */
 		TArray<FVector2D> NotchPath(double Step) const
 		{
 			TArray<FVector2D> Out;
 			const double CornerX = NotchX + NotchCorner;
 			const double CornerY = NotchHalfY - NotchCorner;
+			const double WellCornerX = WellX + WellCorner;
+			const double WellCornerY = WellHalfY - WellCorner;
 			const double XRim = RimXAtNotchSide();
 			const auto Line = [&Out, Step](const FVector2D& From, const FVector2D& To)
 			{
 				const int32 N = FMath::Max(1, FMath::CeilToInt(FVector2D::Distance(From, To) / Step));
 				for (int32 i = 0; i < N; ++i) { Out.Add(FMath::Lerp(From, To, static_cast<double>(i) / N)); }
 			};
-			const auto Arc = [&Out, this](const FVector2D& C, double From, double To)
+			const auto Arc = [&Out](const FVector2D& C, double Radius, double From, double To)
 			{
 				constexpr int32 N = 6;
 				for (int32 i = 0; i < N; ++i)
 				{
 					const double A0 = FMath::DegreesToRadians(FMath::Lerp(From, To, static_cast<double>(i) / N));
-					Out.Add(C + FVector2D(FMath::Cos(A0), FMath::Sin(A0)) * NotchCorner);
+					Out.Add(C + FVector2D(FMath::Cos(A0), FMath::Sin(A0)) * Radius);
 				}
 			};
 			Line(FVector2D(XRim, -NotchHalfY), FVector2D(CornerX, -NotchHalfY));
-			Arc(FVector2D(CornerX, -CornerY), -90.0, -180.0);
-			Line(FVector2D(NotchX, -CornerY), FVector2D(NotchX, CornerY));
-			Arc(FVector2D(CornerX, CornerY), 180.0, 90.0);
+			Arc(FVector2D(CornerX, -CornerY), NotchCorner, -90.0, -180.0);
+			Line(FVector2D(NotchX, -CornerY), FVector2D(NotchX, -WellHalfY));
+			Line(FVector2D(NotchX, -WellHalfY), FVector2D(WellCornerX, -WellHalfY));
+			Arc(FVector2D(WellCornerX, -WellCornerY), WellCorner, -90.0, -180.0);
+			Line(FVector2D(WellX, -WellCornerY), FVector2D(WellX, WellCornerY));
+			Arc(FVector2D(WellCornerX, WellCornerY), WellCorner, 180.0, 90.0);
+			Line(FVector2D(WellCornerX, WellHalfY), FVector2D(NotchX, WellHalfY));
+			Line(FVector2D(NotchX, WellHalfY), FVector2D(NotchX, CornerY));
+			Arc(FVector2D(CornerX, CornerY), NotchCorner, 180.0, 90.0);
 			Line(FVector2D(CornerX, NotchHalfY), FVector2D(XRim, NotchHalfY));
 			Out.Add(FVector2D(XRim, NotchHalfY));
 			return Out;
@@ -175,16 +221,17 @@ namespace TNBuggyArtDetail
 		switch (Style)
 		{
 		case ETNBuggyBodyStyle::Offroad:
-			// Más ancho y cuadrado; la misma altura bajo la artillera (que va de pie a Z 127,4).
-			D.Cx = -72.0; D.A = 148.0; D.B = 114.0; D.Z0 = 68.0; D.H = 54.0; D.K = 0.5;
+			// Más ancho y cuadrado, a la misma altura bajo el sillín de la artillera.
+			D.Cx = -72.0; D.A = 148.0; D.B = 114.0; D.Z0 = 64.0; D.H = 42.0; D.K = 0.5;
 			break;
 		case ETNBuggyBodyStyle::Racer:
-			// Bajo y largo: la artillera va en una torreta (PodZ) encima.
-			D.Cx = -66.0; D.A = 152.0; D.B = 108.0; D.Z0 = 58.0; D.H = 46.0; D.K = 0.75;
+			// Bajo y largo: el sillín de la artillera va sobre una torreta.
+			D.Cx = -66.0; D.A = 152.0; D.B = 108.0; D.Z0 = 58.0; D.H = 44.0; D.K = 0.75;
 			break;
 		default:
 			break;
 		}
+		D.Finish();
 		return D;
 	}
 
@@ -201,18 +248,29 @@ namespace TNBuggyArtDetail
 		return Poly;
 	}
 
-	/** Recorta una placa para que no entre en la escotadura: por detrás o por el lado, según dónde esté su centro. */
+	/**
+	 * Recorta una placa para que no entre en la escotadura ni en el hueco de la artillera: cada franja la deja atrás por
+	 * el lado del que la placa queda más fuera (por detrás o por un costado).
+	 */
 	TArray<FVector2D> ClipOutOfNotch(TArray<FVector2D> Poly, const FDome& D, const FVector2D& Center, double Margin)
 	{
-		if (FMath::Abs(Center.Y) <= D.NotchHalfY)
+		const auto ClipSlot = [&Poly, &Center, Margin](double X0, double HalfY)
 		{
-			return ClipHalfPlane(Poly, FVector2D(D.NotchX - Margin, 0.0), FVector2D(-1.0, 0.0));
-		}
-		if (Center.X > D.NotchX - D.NotchCorner)
-		{
-			const double Sy = Center.Y > 0.0 ? 1.0 : -1.0;
-			return ClipHalfPlane(Poly, FVector2D(0.0, Sy * (D.NotchHalfY + Margin)), FVector2D(0.0, Sy));
-		}
+			if (Poly.Num() < 3) { return; }
+			const double Behind = X0 - Center.X;
+			const double Side = FMath::Abs(Center.Y) - HalfY;
+			if (Behind >= Side)
+			{
+				Poly = ClipHalfPlane(Poly, FVector2D(X0 - Margin, 0.0), FVector2D(-1.0, 0.0));
+			}
+			else
+			{
+				const double Sy = Center.Y >= 0.0 ? 1.0 : -1.0;
+				Poly = ClipHalfPlane(Poly, FVector2D(0.0, Sy * (HalfY + Margin)), FVector2D(0.0, Sy));
+			}
+		};
+		ClipSlot(D.NotchX, D.NotchHalfY);
+		ClipSlot(D.WellX, D.WellHalfY);
 		return Poly;
 	}
 
@@ -303,7 +361,8 @@ namespace TNBuggyArtDetail
 			B.AddQuad(Rim0, Rim1, Lip1, Lip0, Out + FVector::UpVector, Base(0.82f));
 			B.AddQuad(Lip0, Lip1, Bot1, Bot0, Out - FVector::UpVector * 0.3, Base(0.68f));
 		}
-		// Escotadura: paredes hasta el suelo de la bañera y acolchado de cuero en el borde.
+		// Escotadura: paredes hasta el suelo de la bañera (en el hueco de la artillera, hasta su reposapiés) y acolchado de
+		// cuero en el borde.
 		const TArray<FVector2D> Path = D.NotchPath(7.0);
 		TArray<FVector> Coaming;
 		for (int32 k = 0; k < Path.Num(); ++k)
@@ -313,8 +372,9 @@ namespace TNBuggyArtDetail
 			if (k + 1 < Path.Num())
 			{
 				const FVector Top1(Path[k + 1].X, Path[k + 1].Y, D.Height(Path[k + 1].X, Path[k + 1].Y));
-				const FVector Inside = FVector(D.NotchX + 70.0, 0.0, Top.Z) - (Top + Top1) * 0.5;
-				B.AddQuad(Top, Top1, FVector(Top1.X, Top1.Y, FloorZ), FVector(Top.X, Top.Y, FloorZ), FVector(Inside.X, Inside.Y, 0.0), Base(0.5f));
+				const FVector2D Dir = (Path[k + 1] - Path[k]).GetSafeNormal();
+				const double Bottom = (Path[k].X + Path[k + 1].X) * 0.5 < D.NotchX - 0.5 ? Frame::GunnerFloorZ : FloorZ;
+				B.AddQuad(Top, Top1, FVector(Top1.X, Top1.Y, Bottom), FVector(Top.X, Top.Y, Bottom), FVector(Dir.Y, -Dir.X, 0.0), Base(0.5f));
 			}
 		}
 		AddTube(B, Coaming, 5.0, 8, Matte(0x5C3B24));
@@ -331,11 +391,11 @@ namespace TNBuggyArtDetail
 		{
 			for (int32 j = -4; j <= 4; ++j)
 			{
-				const double Xc = Frame::GunnerSeat.X + i * DX;
+				const double Xc = Frame::GunnerHip.X + i * DX;
 				const double Yc = j * DY + ((i & 1) ? DY * 0.5 : 0.0);
 				if (D.R2(Xc, Yc) > 0.80 * 0.80 || D.InNotch(Xc, Yc, 10.0)) { continue; }
 				// Bajo el sillín de la artillera no hay placa: lo tapa el cojín.
-				if (FVector2D::Distance(FVector2D(Xc, Yc), FVector2D(Frame::GunnerSeat.X, Frame::GunnerSeat.Y)) < 22.0) { continue; }
+				if (FVector2D::Distance(FVector2D(Xc, Yc), FVector2D(Frame::GunnerHip.X, Frame::GunnerHip.Y)) < 22.0) { continue; }
 				TArray<FVector2D> Poly;
 				for (int32 k = 0; k < 6; ++k)
 				{
@@ -352,9 +412,9 @@ namespace TNBuggyArtDetail
 				double Crown = 2.2;
 				if (bSpiky)
 				{
-					// Tortuga caimán: tres quillas de pinchos; lisa donde pisa la artillera.
+					// Tortuga caimán: tres quillas de pinchos; lisa bajo la artillera y el aro de su torreta.
 					const bool bKeel = FMath::Abs(Yc) < 10.0 || FMath::Abs(FMath::Abs(Yc) - DY) < 10.0;
-					const bool bUnderGunner = FMath::Abs(Xc - Frame::GunnerSeat.X) < 40.0 && FMath::Abs(Yc) < 40.0;
+					const bool bUnderGunner = FVector2D::Distance(FVector2D(Xc, Yc), FVector2D(Frame::GunnerHip.X, Frame::GunnerHip.Y)) < 60.0;
 					Crown = bUnderGunner ? 1.5 : (bKeel ? 17.0 : 9.0);
 				}
 				AddRaisedPlate(B, D, Poly, 4.5, 3.0, Crown, Plate(Tone), Plate(Tone * 0.72f), 2);
@@ -378,7 +438,7 @@ namespace TNBuggyArtDetail
 		}
 	}
 
-	/** Tortuga laúd: siete crestas a lo largo del caparazón. */
+	/** Tortuga laúd: siete crestas a lo largo del caparazón, cortadas por la cabina y por la torreta de la artillera. */
 	void AddRidges(FTNProcMeshBuffers& B, const FDome& D)
 	{
 		const double Ys[] = { 0.0, 30.0, -30.0, 58.0, -58.0, 84.0, -84.0 };
@@ -389,24 +449,6 @@ namespace TNBuggyArtDetail
 			TArray<FVector> L;
 			TArray<FVector> T;
 			TArray<FVector> R;
-			for (double X = D.Cx - D.A; X <= D.Cx + D.A; X += 8.0)
-			{
-				if (D.R2(X, Y0) > 0.95 * 0.95 || D.InNotch(X, Y0, 8.0) || (FMath::Abs(Y0) <= D.NotchHalfY && X > D.NotchX - 8.0))
-				{
-					if (T.Num() > 0) { break; }
-					continue;
-				}
-				// La torreta de la artillera ocupa el lomo: la cresta central se corta debajo.
-				if (Y0 == 0.0 && FMath::Abs(X - Frame::GunnerSeat.X) < 34.0)
-				{
-					if (T.Num() > 1) { break; }
-					L.Reset(); T.Reset(); R.Reset();
-					continue;
-				}
-				L.Add(D.At(X, Y0 - Half, 0.3));
-				T.Add(D.At(X, Y0, Height));
-				R.Add(D.At(X, Y0 + Half, 0.3));
-			}
 			const auto Emit = [&B](const TArray<FVector>& Ls, const TArray<FVector>& Ts, const TArray<FVector>& Rs)
 			{
 				for (int32 k = 0; k + 1 < Ts.Num(); ++k)
@@ -422,37 +464,48 @@ namespace TNBuggyArtDetail
 					B.AddTri(Ls[E], Ts[E], Rs[E], Ts[E] - Ts[E - 1], Plate(0.7f));
 				}
 			};
-			Emit(L, T, R);
-			// Delante de la torreta, la cresta central sigue hasta la cabina.
-			if (Y0 == 0.0)
+			for (double X = D.Cx - D.A; X <= D.Cx + D.A; X += 8.0)
 			{
-				TArray<FVector> L2, T2, R2;
-				for (double X = Frame::GunnerSeat.X + 34.0; X <= D.NotchX - 8.0; X += 8.0)
+				const bool bOff = D.R2(X, Y0) > 0.95 * 0.95 || D.InNotch(X, Y0, 8.0)
+					|| FVector2D::Distance(FVector2D(X, Y0), FVector2D(Frame::GunnerHip.X, Frame::GunnerHip.Y)) < 36.0;
+				if (bOff)
 				{
-					L2.Add(D.At(X, -Half, 0.3));
-					T2.Add(D.At(X, 0.0, Height));
-					R2.Add(D.At(X, Half, 0.3));
+					Emit(L, T, R);
+					L.Reset(); T.Reset(); R.Reset();
+					continue;
 				}
-				Emit(L2, T2, R2);
+				L.Add(D.At(X, Y0 - Half, 0.3));
+				T.Add(D.At(X, Y0, Height));
+				R.Add(D.At(X, Y0 + Half, 0.3));
 			}
+			Emit(L, T, R);
 		}
 	}
 
-	/** Sillín de la artillera en lo alto del lomo (y, en el bólido, la torreta que lo sube a su altura). */
+	/**
+	 * Sillín y respaldo de la artillera a la altura del de serie (en el bólido, sobre su torreta). El sillín baja hasta el
+	 * reposapiés: por delante es el frente del asiento.
+	 */
 	void AddGunnerSaddle(FTNProcMeshBuffers& B, const FDome& D, bool bPod)
 	{
-		const FVector Seat = Frame::GunnerSeat;
-		const double DomeZ = D.Height(Seat.X, Seat.Y);
+		const FVector Hip = Frame::GunnerHip;
+		const double Top = Frame::GunnerCushionZ;
+		const double DomeZ = D.Height(Hip.X, Hip.Y);
+		const double Bottom = Frame::GunnerFloorZ - 1.0;
 		if (bPod)
 		{
-			AddLathe(B, FVector(Seat.X, Seat.Y, DomeZ - 6.0), FVector::UpVector,
-				{ FVector2D(0.0, 33.0), FVector2D(6.0, 31.0), FVector2D(Seat.Z - DomeZ - 2.0, 27.0) }, 14, Metal(0x3A3F47), false, true);
-			AddLathe(B, FVector(Seat.X, Seat.Y, DomeZ + 4.0), FVector::UpVector, { FVector2D(0.0, 33.6), FVector2D(3.0, 33.6) }, 14, Skin(0.85f), false, false);
+			AddLathe(B, FVector(Hip.X, Hip.Y, Bottom), FVector::UpVector,
+				{ FVector2D(0.0, 27.0), FVector2D(DomeZ - Bottom + 2.0, 26.5), FVector2D(Top - Bottom - 8.0, 26.0) }, 14, Metal(0x3A3F47), false, true);
+			AddLathe(B, FVector(Hip.X, Hip.Y, DomeZ + 3.0), FVector::UpVector, { FVector2D(0.0, 27.4), FVector2D(3.0, 27.4) }, 14, Skin(0.85f), false, false);
 		}
-		const double Bottom = FMath::Min(DomeZ, Seat.Z - 9.0) - 2.0;
-		AddLathe(B, FVector(Seat.X, Seat.Y, Bottom), FVector::UpVector,
-			{ FVector2D(0.0, 24.0), FVector2D(Seat.Z - Bottom - 3.0, 25.0), FVector2D(Seat.Z - Bottom + 0.2, 22.0) }, 14, Matte(0xE8D2A8), false, true);
-		AddLathe(B, FVector(Seat.X, Seat.Y, Seat.Z - 6.5), FVector::UpVector, { FVector2D(0.0, 25.4), FVector2D(2.2, 25.4) }, 14, Matte(0x7A4A2A), false, false);
+		AddLathe(B, FVector(Hip.X, Hip.Y, Bottom), FVector::UpVector,
+			{ FVector2D(0.0, 24.0), FVector2D(Top - Bottom - 3.0, 25.0), FVector2D(Top - Bottom + 0.2, 22.0) }, 14, Matte(0xE8D2A8), false, true);
+		AddLathe(B, FVector(Hip.X, Hip.Y, Top - 6.5), FVector::UpVector, { FVector2D(0.0, 25.4), FVector2D(2.2, 25.4) }, 14, Matte(0x7A4A2A), false, false);
+		// Respaldo detrás del caparazón de la tortuga sentada, por dentro del carro de la torreta, y su soporte.
+		const FVector Up = FVector(-0.22, 0.0, 1.0).GetSafeNormal();
+		const FVector Fwd = FVector(1.0, 0.0, 0.22).GetSafeNormal();
+		AddOBox(B, FVector(Hip.X - 25.5, Hip.Y, Top + 14.0), Fwd * 3.5, FVector(0.0, 21.0, 0.0), Up * 14.5, Matte(0xE8D2A8));
+		AddOBox(B, FVector(Hip.X - 30.0, Hip.Y, Top + 2.0), Fwd * 1.6, FVector(0.0, 5.0, 0.0), Up * 13.0, Matte(0x7A4A2A));
 	}
 
 	FTNProcMeshBuffers BuildShell(ETNBuggyBodyStyle Style)
@@ -488,11 +541,13 @@ namespace TNBuggyArtDetail
 		return 74.0 + 4.0 * FMath::Sin(PI * FMath::Clamp((X - StartX) / (122.0 - StartX), 0.0, 1.0));
 	}
 
-	/** Timón de barco como volante, mirando a la conductora. */
+	/** Timón de barco como volante, donde el de serie tiene el suyo, mirando a la conductora. */
 	void AddHelm(FTNProcMeshBuffers& B)
 	{
-		const FVector Hub(70.0, Frame::DriverSeat.Y, 104.0);
-		const FVector Axis = FVector(-1.0, 0.0, 0.55).GetSafeNormal();
+		const FVector Hub = Frame::Helm;
+		// Columna hacia el salpicadero, como la de build_buggy.py: el timón queda perpendicular a ella.
+		const FVector ColumnBase(97.0, 0.0, 98.0);
+		const FVector Axis = (Hub - ColumnBase).GetSafeNormal();
 		const FVector U = FVector(0.0, 1.0, 0.0);
 		const FVector V = FVector::CrossProduct(Axis, U).GetSafeNormal();
 		constexpr double Ring = 16.0;
@@ -511,7 +566,7 @@ namespace TNBuggyArtDetail
 			AddTube(B, { Hub + Dir * (Ring + 1.0), Hub + Dir * (Ring + 6.5) }, { 1.9, 1.5 }, 6, Matte(0x9A5B2B));
 		}
 		AddLathe(B, Hub - Axis * 2.0, Axis, { FVector2D(0.0, 4.5), FVector2D(3.5, 4.0), FVector2D(4.5, 2.0) }, 10, Metal(0xD4A84A));
-		B.AddBeam(Hub + Axis * 1.0, FVector(96.0, Frame::DriverSeat.Y, 84.0), 2.0, Metal(0x3A3F47));
+		B.AddBeam(Hub + Axis * 1.0, ColumnBase, 2.0, Metal(0x3A3F47));
 	}
 
 	void AddCoconuts(FTNProcMeshBuffers& B, const FVector& At)
@@ -565,27 +620,60 @@ namespace TNBuggyArtDetail
 			B.AddQuad(FVector(X, -72.0, FloorZ), FVector(X1, -72.0, FloorZ), FVector(X1, 72.0, FloorZ), FVector(X, 72.0, FloorZ), FVector::UpVector,
 				Matte(FMath::RoundToInt(X / 16.0) % 2 ? 0x30353D : 0x363C45));
 		}
-		// Asiento de la conductora: cojín, respaldo y orejeras de cuero crema.
-		const FVector Seat = Frame::DriverSeat;
-		AddOBox(B, FVector(Seat.X - 1.0, Seat.Y, 57.0), FVector(21.0, 0.0, 0.0), FVector(0.0, 22.0, 0.0), FVector(0.0, 0.0, 6.0), Matte(0xEAD7B0));
+		// Asiento de la conductora como el de serie: pedestal, cojín bajo la cadera, respaldo detrás de su caparazón y orejeras.
+		const FVector Hip = Frame::DriverHip;
+		const double Cushion = Frame::DriverCushionZ;
+		const double BackX = Hip.X - 20.7;
+		const double PedestalTop = Cushion - 10.0;
+		AddOBox(B, FVector(Hip.X, 0.0, (FloorZ + PedestalTop) * 0.5), FVector(15.0, 0.0, 0.0), FVector(0.0, 17.0, 0.0),
+			FVector(0.0, 0.0, (PedestalTop - FloorZ) * 0.5), Metal(0x3A3F47));
+		AddOBox(B, FVector((BackX + Hip.X + 22.0) * 0.5, 0.0, Cushion - 5.0), FVector((Hip.X + 22.0 - BackX) * 0.5, 0.0, 0.0), FVector(0.0, 24.0, 0.0),
+			FVector(0.0, 0.0, 5.0), Matte(0xEAD7B0));
 		const FVector BackUp = FVector(-0.18, 0.0, 1.0).GetSafeNormal();
 		const FVector BackFwd = FVector(1.0, 0.0, 0.18).GetSafeNormal();
-		AddOBox(B, FVector(Seat.X - 25.0, Seat.Y, 86.0), BackFwd * 5.0, FVector(0.0, 22.0, 0.0), BackUp * 27.0, Matte(0xEAD7B0));
+		AddOBox(B, FVector(BackX - 4.5, 0.0, Cushion + 16.0), BackFwd * 4.0, FVector(0.0, 24.0, 0.0), BackUp * 21.0, Matte(0xEAD7B0));
 		for (const double S : { -1.0, 1.0 })
 		{
-			AddOBox(B, FVector(Seat.X - 21.0, Seat.Y + S * 22.0, 80.0), BackFwd * 7.0, FVector(0.0, 3.0, 0.0), BackUp * 18.0, Matte(0xC9A97A));
+			AddOBox(B, FVector(BackX - 1.0, S * 25.0, Cushion + 10.0), BackFwd * 6.0, FVector(0.0, 3.0, 0.0), BackUp * 14.0, Matte(0xC9A97A));
 		}
 		AddHelm(B);
-		// Salpicadero con dos relojes.
-		AddOBox(B, FVector(100.0, 0.0, 84.0), FVector(5.0, 0.0, 0.0), FVector(0.0, 64.0, 0.0), FVector(0.0, 0.0, 9.0), Matte(0x2B2F36));
-		for (const double Y : { -50.0, -22.0 })
+		// Salpicadero con dos relojes, delante del timón.
+		AddOBox(B, FVector(102.0, 0.0, 93.0), FVector(5.0, 0.0, 0.0), FVector(0.0, 60.0, 0.0), FVector(0.0, 0.0, 8.0), Matte(0x2B2F36));
+		for (const double Y : { -38.0, 38.0 })
 		{
-			AddDisc(B, FVector(94.8, Y, 87.0), FVector(-1.0, 0.0, 0.0), 6.0, 12, Metal(0xC9CED6));
-			AddDisc(B, FVector(94.6, Y, 87.0), FVector(-1.0, 0.0, 0.0), 4.8, 12, Light(0xFFF2D4));
-			B.AddBeam(FVector(94.4, Y, 87.0), FVector(94.4, Y + 3.0, 90.0), 0.5, Matte(0xD9432F));
+			AddDisc(B, FVector(96.8, Y, 95.0), FVector(-1.0, 0.0, 0.0), 6.0, 12, Metal(0xC9CED6));
+			AddDisc(B, FVector(96.6, Y, 95.0), FVector(-1.0, 0.0, 0.0), 4.8, 12, Light(0xFFF2D4));
+			B.AddBeam(FVector(96.4, Y, 95.0), FVector(96.4, Y + 3.0, 98.0), 0.5, Matte(0xD9432F));
 		}
-		// Munición de cocos en el sitio de al lado.
-		AddCoconuts(B, FVector(36.0, 36.0, 59.0));
+		// Munición de cocos al lado del asiento.
+		AddCoconuts(B, FVector(30.0, 46.0, FloorZ + 10.0));
+		// Reposapiés de la artillera: el suelo del hueco del caparazón, con su frente hacia la conductora.
+		const double FootZ = Frame::GunnerFloorZ;
+		const double FootY = D.WellHalfY + 2.0;
+		B.AddQuad(FVector(D.WellX - 2.0, -FootY, FootZ), FVector(D.NotchX, -FootY, FootZ), FVector(D.NotchX, FootY, FootZ), FVector(D.WellX - 2.0, FootY, FootZ),
+			FVector::UpVector, Matte(0x363C45));
+		B.AddQuad(FVector(D.NotchX, -FootY, FloorZ), FVector(D.NotchX, FootY, FloorZ), FVector(D.NotchX, FootY, FootZ), FVector(D.NotchX, -FootY, FootZ),
+			FVector(1.0, 0.0, 0.0), Base(0.55f));
+		for (const double X : { D.WellX + 14.0, D.WellX + 30.0 })
+		{
+			AddOBox(B, FVector(X, 0.0, FootZ + 0.8), FVector(4.0, 0.0, 0.0), FVector(0.0, D.WellHalfY - 4.0, 0.0), FVector(0.0, 0.0, 0.8), Matte(0x2A2F36));
+		}
+		// Barandillas de la artillera, como las del de serie: el aro de la torreta se sujeta a ellas. Postes de delante desde
+		// el suelo de la bañera, de detrás desde el lomo, travesaño detrás de la cabeza de la conductora y pomos de latón.
+		const FLinearColor Brass = Metal(0xC9A04A);
+		constexpr double RailR = 2.8;
+		for (const double S : { -1.0, 1.0 })
+		{
+			const double Y = Frame::RailY * S;
+			AddTube(B, { FVector(Frame::RailFrontX, Y, Frame::RailZ), FVector(Frame::RailBackX, Y, Frame::RailZ) }, RailR, 8, Brass);
+			AddTube(B, { FVector(Frame::RailFrontX, Y, FloorZ), FVector(Frame::RailFrontX, Y, Frame::RailZ) }, RailR, 8, Brass);
+			AddTube(B, { FVector(Frame::RailBackX, Y, D.Height(Frame::RailBackX, Y) - 2.0), FVector(Frame::RailBackX, Y, Frame::RailZ) }, RailR, 8, Brass);
+			for (const double X : { Frame::RailFrontX, Frame::RailBackX })
+			{
+				AddEllipsoid(B, FVector(X, Y, Frame::RailZ + 3.0), FVector(4.2, 0.0, 0.0), FVector(0.0, 4.2, 0.0), FVector(0.0, 0.0, 4.2), 4, 8, Brass);
+			}
+		}
+		AddTube(B, { FVector(Frame::RailFrontX, -Frame::RailY, Frame::RailZ), FVector(Frame::RailFrontX, Frame::RailY, Frame::RailZ) }, RailR, 8, Brass);
 		return B;
 	}
 
@@ -614,21 +702,21 @@ namespace TNBuggyArtDetail
 		switch (Style)
 		{
 		case ETNBuggyBodyStyle::Offroad:
-			S.NeckC = FVector(104.0, 0.0, 76.0); S.NeckAx = FVector(52.0, 46.0, 30.0);
+			S.NeckC = FVector(126.0, 0.0, 76.0); S.NeckAx = FVector(44.0, 46.0, 30.0);
 			S.HeadC = FVector(182.0, 0.0, 90.0); S.HeadAx = FVector(62.0, 54.0, 38.0); S.Segs = 10;
 			S.EyeC = FVector(214.0, -29.0, 116.0); S.EyeR = 16.0;
 			// Ceño: el párpado tapa más por dentro (hacia la nariz).
 			S.LidAxis = FVector(0.35, 0.55, 1.0); S.LidAngle = 64.0;
 			break;
 		case ETNBuggyBodyStyle::Racer:
-			S.NeckC = FVector(108.0, 0.0, 68.0); S.NeckAx = FVector(54.0, 40.0, 20.0);
+			S.NeckC = FVector(128.0, 0.0, 68.0); S.NeckAx = FVector(44.0, 40.0, 20.0);
 			S.HeadC = FVector(186.0, 0.0, 74.0); S.HeadAx = FVector(64.0, 46.0, 26.0); S.Segs = 16;
 			S.EyeC = FVector(216.0, -23.0, 94.0); S.EyeR = 14.0;
 			// Mirada de concentración: párpados a media asta, inclinados hacia dentro.
 			S.LidAxis = FVector(0.45, 0.3, 1.0); S.LidAngle = 56.0;
 			break;
 		default:
-			S.NeckC = FVector(102.0, 0.0, 72.0); S.NeckAx = FVector(50.0, 42.0, 26.0);
+			S.NeckC = FVector(124.0, 0.0, 72.0); S.NeckAx = FVector(42.0, 42.0, 26.0);
 			S.HeadC = FVector(180.0, 0.0, 86.0); S.HeadAx = FVector(60.0, 50.0, 37.0); S.Segs = 16;
 			S.EyeC = FVector(212.0, -27.0, 113.0); S.EyeR = 18.5;
 			S.LidAxis = FVector(-0.2, 0.0, 1.0); S.LidAngle = 60.0;
@@ -960,7 +1048,7 @@ namespace TNBuggyArtDetail
 		{
 			// Rueda de repuesto atornillada al lomo, mirando atrás.
 			FTNProcMeshBuffers Spare = BuildPiece(ETNBuggyBodyStyle::Offroad, EPiece::Wheel);
-			const FTransform Xf(FRotator(0.0, 90.0, 0.0), FVector(-226.0, 0.0, 98.0), FVector(0.76));
+			const FTransform Xf(FRotator(0.0, -90.0, 0.0), FVector(-226.0, 0.0, 98.0), FVector(0.76));
 			Append(B, Spare, Xf);
 			AddOBox(B, FVector(-210.0, 0.0, 98.0), FVector(9.0, 0.0, 0.0), FVector(0.0, 8.0, 0.0), FVector(0.0, 0.0, 8.0), Strut);
 		}
@@ -1097,7 +1185,7 @@ namespace TNBuggyArtDetail
 
 	// ─────────────────────────────────────────────────────────────────────────────
 	// Rueda: neumático con tacos y llanta con tapacubos de estrella de mar, beadlock o turbina de nautilo.
-	// Eje en Y y la cara de fuera en +Y (las ruedas izquierdas del buggy van giradas 180 grados).
+	// Eje en Y y la cara de fuera en -Y, como SM_TN_BuggyTire (ATN_Buggy gira 180 grados los neumáticos derechos).
 	// ─────────────────────────────────────────────────────────────────────────────
 
 	inline FVector Radial(double T, double R, double Angle)
@@ -1122,7 +1210,8 @@ namespace TNBuggyArtDetail
 		}
 	}
 
-	FTNProcMeshBuffers BuildWheel(ETNBuggyBodyStyle Style)
+	/** Rueda con la cara de fuera en +Y; BuildWheel la gira. */
+	FTNProcMeshBuffers BuildWheelOutwardY(ETNBuggyBodyStyle Style)
 	{
 		FTNProcMeshBuffers B;
 		constexpr int32 Segs = 28;
@@ -1237,39 +1326,16 @@ namespace TNBuggyArtDetail
 		return B;
 	}
 
-	// ─────────────────────────────────────────────────────────────────────────────
-	// Cañón de la torreta (a lo largo de +X desde el pivote) y antena con banderín del equipo
-	// ─────────────────────────────────────────────────────────────────────────────
-
-	FTNProcMeshBuffers BuildCannon(ETNBuggyBodyStyle Style)
+	FTNProcMeshBuffers BuildWheel(ETNBuggyBodyStyle Style)
 	{
 		FTNProcMeshBuffers B;
-		const FLinearColor Body = Style == ETNBuggyBodyStyle::Offroad ? Metal(0x4A4F57)
-			: (Style == ETNBuggyBodyStyle::Racer ? Metal(0xD0D6DE) : Metal(0xC08A3E));
-		const TArray<FVector2D> Profile = { FVector2D(0.0, 3.0), FVector2D(2.0, 5.5), FVector2D(6.0, 5.5), FVector2D(8.0, 9.0), FVector2D(10.0, 12.0),
-			FVector2D(22.0, 12.5), FVector2D(24.0, 13.2), FVector2D(28.0, 13.2), FVector2D(30.0, 12.2), FVector2D(110.0, 9.6), FVector2D(113.0, 11.0),
-			FVector2D(118.0, 11.0), FVector2D(120.0, 10.2), FVector2D(132.0, 10.6), FVector2D(136.0, 12.4), FVector2D(140.0, 12.4) };
-		AddLathe(B, FVector::ZeroVector, FVector(1.0, 0.0, 0.0), Profile, 14, Body, true, false);
-		// Boca: corona y ánima oscura.
-		const FVector Muzzle(140.0, 0.0, 0.0);
-		const FVector U(0.0, 1.0, 0.0);
-		const FVector V(0.0, 0.0, 1.0);
-		for (int32 s = 0; s < 14; ++s)
-		{
-			const double A0 = 2.0 * PI * s / 14.0;
-			const double A1 = 2.0 * PI * (s + 1) / 14.0;
-			const auto P = [&](double R, double A) { return Muzzle + (U * FMath::Cos(A) + V * FMath::Sin(A)) * R; };
-			B.AddQuad(P(6.0, A0), P(6.0, A1), P(12.4, A1), P(12.4, A0), FVector(1.0, 0.0, 0.0), Shade(Body, 0.85f));
-		}
-		AddDisc(B, Muzzle - FVector(0.5, 0.0, 0.0), FVector(1.0, 0.0, 0.0), 6.0, 14, Matte(0x0E0E10));
-		// Franja pintada y muñones.
-		AddLathe(B, FVector(98.0, 0.0, 0.0), FVector(1.0, 0.0, 0.0), { FVector2D(0.0, 10.3), FVector2D(6.0, 10.1) }, 14, SkinPlain(0.95f), false, false);
-		for (const double S : { -1.0, 1.0 })
-		{
-			AddLathe(B, FVector(40.0, 11.0 * S, 0.0), FVector(0.0, S, 0.0), { FVector2D(0.0, 3.6), FVector2D(6.0, 3.6) }, 8, Shade(Body, 0.8f), false, true);
-		}
+		Append(B, BuildWheelOutwardY(Style), FTransform(FRotator(0.0, 180.0, 0.0)));
 		return B;
 	}
+
+	// ─────────────────────────────────────────────────────────────────────────────
+	// Antena con banderín del equipo
+	// ─────────────────────────────────────────────────────────────────────────────
 
 	FTNProcMeshBuffers BuildAntenna()
 	{
@@ -1297,24 +1363,11 @@ namespace TNBuggyArtDetail
 		return B;
 	}
 
-	/** Poste giratorio del cañón (como los falconetes de los barcos) del sillín al pivote de la torreta. */
-	FTNProcMeshBuffers BuildTurretPost(ETNBuggyBodyStyle Style)
-	{
-		FTNProcMeshBuffers B;
-		const FVector Seat = Frame::GunnerSeat;
-		const FLinearColor Iron = Metal(Style == ETNBuggyBodyStyle::Racer ? 0x5A6068 : 0x3A3F47);
-		const FLinearColor Joint = Style == ETNBuggyBodyStyle::Offroad ? Metal(0x4A4F57) : (Style == ETNBuggyBodyStyle::Racer ? Metal(0xD0D6DE) : Metal(0xC08A3E));
-		AddLathe(B, FVector(Seat.X, Seat.Y, Seat.Z - 0.5), FVector::UpVector, { FVector2D(0.0, 13.0), FVector2D(2.5, 12.0), FVector2D(4.0, 6.0) }, 12, Iron, false, true);
-		AddLathe(B, FVector(Seat.X, Seat.Y, Seat.Z + 3.0), FVector::UpVector,
-			{ FVector2D(0.0, 4.2), FVector2D(Frame::TurretPivotZ - Seat.Z - 17.0, 3.6), FVector2D(Frame::TurretPivotZ - Seat.Z - 13.0, 5.0) }, 10, Iron, false, true);
-		AddEllipsoid(B, FVector(Seat.X, Seat.Y, Frame::TurretPivotZ - 6.0), FVector(8.5, 0.0, 0.0), FVector(0.0, 8.5, 0.0), FVector(0.0, 0.0, 8.5), 5, 10, Joint);
-		return B;
-	}
-
 	const TCHAR* ModelName(ETNBuggyBodyStyle Style)
 	{
 		switch (Style)
 		{
+		case ETNBuggyBodyStyle::Stock: return TEXT("Serie");
 		case ETNBuggyBodyStyle::Offroad: return TEXT("Caiman");
 		case ETNBuggyBodyStyle::Racer: return TEXT("Laud");
 		default: return TEXT("Clasico");
@@ -1334,9 +1387,7 @@ namespace TNBuggyArtDetail
 		case EPiece::Rear: return TEXT("Rear");
 		case EPiece::Extras: return TEXT("Extras");
 		case EPiece::Wheel: return TEXT("Wheel");
-		case EPiece::Cannon: return TEXT("Cannon");
 		case EPiece::Antenna: return TEXT("Antenna");
-		case EPiece::TurretPost: return TEXT("TurretPost");
 		default: return TEXT("Unknown");
 		}
 	}
@@ -1353,6 +1404,11 @@ namespace TNBuggyArt
 
 	FTNProcMeshBuffers BuildPiece(ETNBuggyBodyStyle Style, EPiece Piece)
 	{
+		// El de serie es SM_TN_BuggyBody: solo lleva la antena (con una pintura de la tienda).
+		if (Style == ETNBuggyBodyStyle::Stock && Piece != EPiece::Antenna)
+		{
+			return FTNProcMeshBuffers();
+		}
 		switch (Piece)
 		{
 		case EPiece::Chassis: return BuildChassis(Style);
@@ -1364,16 +1420,18 @@ namespace TNBuggyArt
 		case EPiece::Rear: return BuildRear(Style);
 		case EPiece::Extras: return BuildExtras(Style);
 		case EPiece::Wheel: return BuildWheel(Style);
-		case EPiece::Cannon: return BuildCannon(Style);
 		case EPiece::Antenna: return BuildAntenna();
-		case EPiece::TurretPost: return BuildTurretPost(Style);
 		default: return FTNProcMeshBuffers();
 		}
 	}
 
 	FVector AntennaMount(ETNBuggyBodyStyle Style)
 	{
-		// En la punta de la aleta trasera izquierda: fuera del barrido del cañón de la torreta.
+		if (Style == ETNBuggyBodyStyle::Stock)
+		{
+			return StockAntennaMount;
+		}
+		// En la punta de la aleta trasera izquierda: lejos de la torreta.
 		FFenderSpec Front;
 		FFenderSpec Rear;
 		FendersFor(Style, Front, Rear);
@@ -1384,6 +1442,18 @@ namespace TNBuggyArt
 		FenderStation(Rear, T, C, Dir, Drop);
 		const double Y = (Table5(Rear.YIn, T) + Table5(Rear.YOut, T)) * 0.5 + 6.0;
 		return C + FVector(0.0, -Y, 0.0) + Dir * (Rear.Thick + Rear.Bulge - Drop * 0.35 - 1.0);
+	}
+
+	FVector ExhaustLocal(ETNBuggyBodyStyle Style, const FVector& Default)
+	{
+		if (Style == ETNBuggyBodyStyle::Stock || Style == ETNBuggyBodyStyle::Count)
+		{
+			return Default;
+		}
+		// La punta de la cola (BuildTail): en el clásico y el caimán, la boca del escape cromado.
+		const FDome D = DomeFor(Style);
+		const double X0 = D.Cx - D.A + 14.0;
+		return Style == ETNBuggyBodyStyle::Racer ? FVector(X0 - 46.0, 0.0, 63.5) : FVector(X0 - 49.0, 0.0, 72.0);
 	}
 
 	void BakePaint(FTNProcMeshBuffers& Buffers, const FTNBuggyPaintInfo& Paint, const FLinearColor& TeamColor)
@@ -1447,9 +1517,12 @@ namespace TNBuggyArt
 		return Mesh;
 	}
 
-	void ApplyPaint(UMaterialInstanceDynamic* MID, const FTNBuggyPaintInfo& Paint, const FLinearColor& TeamColor)
+	void ApplyPaint(UMaterialInstanceDynamic* MID, const FTNBuggyPaintInfo& Paint, const FLinearColor& TeamColor, bool bStockZones)
 	{
 		if (!MID) { return; }
+		// Zonas de M_TN_BuggyZones en el de serie; sus luces brillan como en su material (LightEmissive 2).
+		MID->SetScalarParameterValue(TEXT("ZoneScheme"), bStockZones ? 1.f : 0.f);
+		MID->SetScalarParameterValue(TEXT("LightGlow"), bStockZones ? 2.f : 0.9f);
 		MID->SetVectorParameterValue(TEXT("BaseColor"), Paint.Base);
 		MID->SetVectorParameterValue(TEXT("PlateColor"), Paint.Plates);
 		MID->SetVectorParameterValue(TEXT("AccentColor"), Paint.Accent);
@@ -1459,5 +1532,24 @@ namespace TNBuggyArt
 		MID->SetScalarParameterValue(TEXT("PatternScale"), Paint.PatternScale);
 		MID->SetScalarParameterValue(TEXT("Shine"), Paint.Shine);
 		MID->SetScalarParameterValue(TEXT("Glow"), Paint.Glow);
+	}
+
+	namespace Stock
+	{
+		UStaticMesh* BodyMesh()
+		{
+			return LoadObject<UStaticMesh>(nullptr, StockBodyPath);
+		}
+
+		UStaticMesh* TireMesh()
+		{
+			return LoadObject<UStaticMesh>(nullptr, StockTirePath);
+		}
+
+		UMaterialInterface* Skin(int32 TeamIndex)
+		{
+			const int32 Index = TeamIndex >= 0 ? TeamIndex % UE_ARRAY_COUNT(StockSkinPaths) : 0;
+			return LoadObject<UMaterialInterface>(nullptr, StockSkinPaths[Index]);
+		}
 	}
 }

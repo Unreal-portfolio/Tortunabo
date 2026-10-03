@@ -3,13 +3,19 @@
 Se ejecuta dentro del editor o sin interfaz:
     UnrealEditor-Win64-DebugGame-Cmd.exe <uproject> -run=pythonscript -script=<repo>/Scripts/build_buggy_paint.py -unattended -nullrhi
 
-Las mallas del buggy se construyen en C++ (Source/Tortunabo/Private/Vehicles/TN_BuggyArt.cpp) y llevan en el color de
-vértice qué es cada cara: el alfa es la zona (en octavos) y el RGB, las máscaras o el color.
+Pinta dos clases de malla, según ZoneScheme:
+  - 0: las carrocerías de tortuga, construidas en C++ (Source/Tortunabo/Private/Vehicles/TN_BuggyArt.cpp), que llevan en
+    el color de vértice qué es cada cara: el alfa es la zona (en octavos) y el RGB, las máscaras o el color.
+  - 1: el buggy de serie de Art/Source (SM_TN_BuggyBody y SM_TN_BuggyTire), con las zonas de M_TN_BuggyZones: el RGB marca
+    pintura (1,0,0), detalle (0,1,0), chasis (0,0,0), neumático (0,0,1) o luz (1,1,1) y el alfa es el sombreado. La
+    pintura lleva PlateColor y el dibujo; el detalle, AccentColor; el chasis y las barras, BaseColor con un punto de metal;
+    el neumático es goma y las luces brillan con LightGlow, como en su material.
+Zonas de las tortugas (ZoneScheme 0):
   - Zona pintura (alfa 1): R = carrocería (BaseColor), G = placas del caparazón (PlateColor), B = piel de la tortuga:
     cabeza, aletas y cola (AccentColor). El valor de la máscara es el sombreado de la cara. El dibujo (Pattern,
     PatternColor, PatternScale) va sobre la carrocería y las placas (las franjas y las llamas, también sobre la piel);
     Shine es el brillo metálico y Glow, la luz propia del dibujo.
-  - Zona pintura sin dibujo (alfa 0,875): igual, sin dibujo (llantas, franja del cañón).
+  - Zona pintura sin dibujo (alfa 0,875): igual, sin dibujo (llantas).
   - Zona equipo (alfa 0,75): TeamColor por el R (iris de los ojos y banderín).
   - Zona luz (alfa 0,5): el RGB es el color y brilla con LightGlow (ojos-faro, pilotos, relojes).
   - Zona metal (alfa 0,25) y mate (alfa 0): el RGB es el color lineal.
@@ -94,8 +100,9 @@ def custom_node(material, code, inputs, output_type, x, y, description, extra_ou
 
 
 BUGGY_PAINT_HLSL = r"""
-// VC: color de vértice (A = zona). P y N: posición y normal locales de la malla del buggy (cm).
-// Zona en octavos: 8 pintura, 7 pintura sin dibujo, 6 equipo, 4 luz, 2 metal, 0 mate.
+// VC: color de vértice. P y N: posición y normal locales de la malla del buggy (cm). Scheme 0 (tortugas): A = zona en
+// octavos (8 pintura, 7 pintura sin dibujo, 6 equipo, 4 luz, 2 metal, 0 mate). Scheme 1 (buggy de serie): RGB = zona de
+// M_TN_BuggyZones y A = sombreado.
 float Code = round(VC.a * 8.0);
 float3 AN = abs(N);
 // Proyección del dibujo: desde arriba casi todo el lomo (menos costuras entre caras), de lado o de frente el resto.
@@ -208,6 +215,42 @@ else if (Mode == 10)
     Pat = smoothstep(0.15, 0.3, Nz);
 }
 
+Spec = 0.5;
+if (Scheme > 0.5)
+{
+    float StockShade = VC.a;
+    bool bLight = VC.r > 0.5 && VC.g > 0.5 && VC.b > 0.5;
+    bool bRubber = !bLight && VC.b > 0.5;
+    bool bDetail = !bLight && !bRubber && VC.g > 0.5;
+    bool bPaintZone = !bLight && !bRubber && !bDetail && VC.r > 0.5;
+    float3 LightTint = float3(1.0, 0.855, 0.319);
+    Metal = 0.0;
+    Rough = 0.7;
+    Spec = 0.25;
+    Emis = float3(0.0, 0.0, 0.0);
+    if (bLight)
+    {
+        Rough = 0.25;
+        Emis = LightTint * LightGlow;
+        return LightTint * StockShade;
+    }
+    if (bRubber)
+    {
+        // Goma: especular bajo, como M_TN_BuggyZones (con 0,5 sale azulada al reflejar el cielo).
+        Rough = 0.85;
+        Spec = 0.15;
+        return float3(0.024, 0.021, 0.033) * StockShade;
+    }
+    float OnStock = bPaintZone ? 1.0 : 0.0;
+    float3 ZoneCol = bPaintZone ? PlateColor : (bDetail ? AccentColor : BaseColor);
+    bool bPainted = bPaintZone || bDetail;
+    Metal = bPainted ? Shine * 0.9 : lerp(0.35, 0.9, Shine);
+    Rough = bPainted ? lerp(0.62, 0.16, Shine) : lerp(0.45, 0.2, Shine);
+    float StockTwinkle = 0.8 + 0.2 * sin(TimeS * 2.3 + Q.x * 1.7 + Q.y);
+    Emis = Pat * OnStock * Glow * PatternColor * Heat * StockTwinkle * StockShade;
+    return lerp(ZoneCol * lerp(1.0, Relief, OnStock), PatternColor * Heat, Pat * OnStock) * StockShade;
+}
+
 float3 Col = VC.rgb;
 Metal = 0.0;
 Rough = 0.72;
@@ -278,15 +321,18 @@ def build_buggy_paint_material():
         ("Glow", scalar(m, "Glow", 0.0, -1250, 920)),
         ("LightGlow", scalar(m, "LightGlow", 0.9, -1250, 1000)),
         ("TimeS", expr(m, unreal.MaterialExpressionTime, -1250, 1080)),
+        ("Scheme", scalar(m, "ZoneScheme", 0.0, -1250, 1160)),
     ]
     custom = custom_node(m, BUGGY_PAINT_HLSL, inputs, unreal.CustomMaterialOutputType.CMOT_FLOAT3, -700, 200, "BuggyPaint",
                          extra_outputs=[("Metal", unreal.CustomMaterialOutputType.CMOT_FLOAT1),
                                         ("Rough", unreal.CustomMaterialOutputType.CMOT_FLOAT1),
-                                        ("Emis", unreal.CustomMaterialOutputType.CMOT_FLOAT3)])
+                                        ("Emis", unreal.CustomMaterialOutputType.CMOT_FLOAT3),
+                                        ("Spec", unreal.CustomMaterialOutputType.CMOT_FLOAT1)])
     mel.connect_material_property(custom, "", unreal.MaterialProperty.MP_BASE_COLOR)
     mel.connect_material_property(custom, "Metal", unreal.MaterialProperty.MP_METALLIC)
     mel.connect_material_property(custom, "Rough", unreal.MaterialProperty.MP_ROUGHNESS)
     mel.connect_material_property(custom, "Emis", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+    mel.connect_material_property(custom, "Spec", unreal.MaterialProperty.MP_SPECULAR)
     mel.recompile_material(m)
     asset_lib.save_loaded_asset(m)
     unreal.log(f"[Buggy] {FOLDER}/{NAME} listo.")

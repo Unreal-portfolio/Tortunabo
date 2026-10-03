@@ -1,13 +1,18 @@
 #include "Vehicles/TN_BuggyLookComponent.h"
+#include "Vehicles/TN_Buggy.h"
 #include "Vehicles/TN_BuggyCosmetics.h"
 #include "Vehicles/TN_BuggyMath.h"
+#include "Vehicles/TN_BuggyTurretComponent.h"
 #include "TN_BuggyArt.h"
+#include "TN_BuggyTurretMesh.h"
+#include "World/ProcMap/TN_ProcMapRuntimeMesh.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
+#include "UObject/Package.h"
 
 namespace TNBuggyLookDetail
 {
@@ -19,6 +24,9 @@ namespace TNBuggyLookDetail
 	constexpr float MaxLeanDeg = 15.f;
 	constexpr float Spring = 70.f;
 	constexpr float Damping = 6.5f;
+
+	/** Material de color de vértice de la torreta del escaparate (el mismo que usa ATN_Buggy). */
+	const TCHAR* const VertexColorMaterialPath = TEXT("/Game/Cosmetics/Materials/M_CosmeticVertexColor.M_CosmeticVertexColor");
 
 	const TCHAR* PieceComponentName(int32 Index)
 	{
@@ -35,17 +43,16 @@ UTN_BuggyLookComponent::UTN_BuggyLookComponent()
 	SetIsReplicatedByDefault(false);
 }
 
-void UTN_BuggyLookComponent::UseExternalWheels(const TArray<UStaticMeshComponent*>& InWheels)
+void UTN_BuggyLookComponent::UseVehicleParts(UStaticMeshComponent* InBody, const TArray<UStaticMeshComponent*>& InTires)
 {
-	bExternalWheels = true;
+	bVehicleParts = true;
+	StockBody = InBody;
 	Wheels.Reset();
-	for (UStaticMeshComponent* Wheel : InWheels) { Wheels.Add(Wheel); }
-}
-
-void UTN_BuggyLookComponent::UseExternalCannon(UStaticMeshComponent* InCannon)
-{
-	Cannon = InCannon;
-	bExternalCannon = InCannon != nullptr;
+	for (UStaticMeshComponent* Tire : InTires)
+	{
+		Wheels.Add(Tire);
+		if (Tire && !StockTireMesh) { StockTireMesh = Tire->GetStaticMesh(); }
+	}
 }
 
 void UTN_BuggyLookComponent::SetStudio(const FLightingChannels& Channels)
@@ -54,14 +61,7 @@ void UTN_BuggyLookComponent::SetStudio(const FLightingChannels& Channels)
 	StudioChannels = Channels;
 	TArray<UPrimitiveComponent*> Parts;
 	GetPrimitives(Parts);
-	if (Cannon) { Parts.AddUnique(Cannon); }
 	for (UPrimitiveComponent* Part : Parts) { if (UStaticMeshComponent* Mesh = Cast<UStaticMeshComponent>(Part)) { SetupPart(Mesh); } }
-}
-
-void UTN_BuggyLookComponent::SetGunnerSeated(bool bSeated)
-{
-	bGunnerSeated = bSeated;
-	if (TurretPost) { TurretPost->SetVisibility(!bGunnerSeated && TurretPost->GetStaticMesh() != nullptr); }
 }
 
 void UTN_BuggyLookComponent::SetupPart(UStaticMeshComponent* Part) const
@@ -97,93 +97,147 @@ void UTN_BuggyLookComponent::EnsureParts()
 	{
 		BodyPieces.Add(MakePart(TNBuggyLookDetail::PieceComponentName(i), this));
 	}
-	if (!bExternalWheels)
+	if (!bVehicleParts)
 	{
-		// Las cuatro ruedas en su sitio, las izquierdas giradas para que la llanta mire afuera.
+		// Escaparate: el buggy de serie entero, con sus ruedas (las derechas giradas, como en ATN_Buggy) y su torreta.
+		StockBody = MakePart(TEXT("BuggyStockBody"), this);
+		StockBody->SetStaticMesh(Stock::BodyMesh());
+		StockTireMesh = Stock::TireMesh();
 		const FVector Spots[] = { Frame::FrontWheel * FVector(1.0, -1.0, 1.0), Frame::FrontWheel, Frame::RearWheel * FVector(1.0, -1.0, 1.0), Frame::RearWheel };
 		for (int32 i = 0; i < 4; ++i)
 		{
 			UStaticMeshComponent* Wheel = MakePart(TEXT("BuggyWheel"), this);
-			Wheel->SetRelativeLocationAndRotation(Spots[i], FRotator(0.0, Spots[i].Y < 0.0 ? 180.0 : 0.0, 0.0));
+			Wheel->SetRelativeLocationAndRotation(Spots[i], FRotator(0.0, i % 2 == 1 ? 180.0 : 0.0, 0.0));
 			Wheels.Add(Wheel);
 		}
-	}
-	if (!Cannon)
-	{
-		// Escaparate: sin artillera, el cañón en su poste, un poco levantado.
-		Cannon = MakePart(TEXT("BuggyCannon"), this);
-		Cannon->SetRelativeLocationAndRotation(FVector(Frame::GunnerSeat.X, Frame::GunnerSeat.Y, Frame::TurretPivotZ), FRotator(6.0, 0.0, 0.0));
+		BuildStudioTurret();
 	}
 	AntennaPivot = NewObject<USceneComponent>(GetOwner() ? static_cast<UObject*>(GetOwner()) : static_cast<UObject*>(this),
 		MakeUniqueObjectName(GetOwner(), USceneComponent::StaticClass(), TEXT("BuggyAntennaPivot")), RF_Transient);
 	AntennaPivot->SetupAttachment(this);
 	if (IsRegistered()) { AntennaPivot->RegisterComponent(); }
 	Antenna = MakePart(TEXT("BuggyAntenna"), AntennaPivot);
-	TurretPost = MakePart(TEXT("BuggyTurretPost"), this);
 }
 
-void UTN_BuggyLookComponent::ApplyLook(const FTN_BuggyLook& InLook, int32 InTeamIndex, bool bForce)
+void UTN_BuggyLookComponent::BuildStudioTurret()
+{
+	UMaterialInterface* VertexColor = LoadObject<UMaterialInterface>(nullptr, TNBuggyLookDetail::VertexColorMaterialPath, nullptr, LOAD_NoWarn);
+	if (!VertexColor) { return; }
+	using FBuild = void (*)(TNProcMesh::FTNProcMeshBuffers&);
+	const FBuild Builders[] = { &TNBuggyTurretMesh::BuildRing, &TNBuggyTurretMesh::BuildMount, &TNBuggyTurretMesh::BuildGun, &TNBuggyTurretMesh::BuildBarrel };
+	const FVector Pivot = ATN_Buggy::GunnerSeatLocal + FVector(0.0, 0.0, UTN_BuggyTurretComponent::PivotAboveSeatCm);
+	for (const FBuild Build : Builders)
+	{
+		TNProcMesh::FTNProcMeshBuffers Buffers;
+		Build(Buffers);
+		UStaticMeshComponent* Part = MakePart(TEXT("BuggyTurret"), this);
+		Part->SetRelativeLocation(Pivot);
+		Part->SetStaticMesh(TNProcRuntimeMesh::MakeStaticMesh(GetTransientPackage(), Buffers, VertexColor));
+		TurretParts.Add(Part);
+	}
+}
+
+bool UTN_BuggyLookComponent::ApplyLook(const FTN_BuggyLook& InLook, int32 InTeamIndex, bool bForce)
 {
 	using namespace TNBuggyArt;
-	if (GetNetMode() == NM_DedicatedServer) { return; }
+	if (GetNetMode() == NM_DedicatedServer) { return false; }
 	const FTN_BuggyLook Clean = TNBuggyCosmetics::Sanitize(InLook);
 	const FString Key = FString::Printf(TEXT("%s|%d"), *TNBuggyCosmetics::LookKey(Clean), InTeamIndex);
-	if (!bForce && Key == AppliedKey) { return; }
+	if (!bForce && Key == AppliedKey) { return false; }
 	EnsureParts();
 
 	const FTNBuggyModelInfo& Model = TNBuggyCosmetics::ResolveModel(Clean.ModelId);
 	const FTNBuggyPaintInfo& Paint = TNBuggyCosmetics::ResolvePaint(Clean.PaintId);
+	const bool bStock = Model.Style == ETNBuggyBodyStyle::Stock;
 	const FLinearColor TeamColor = TNBuggy::TeamColor(InTeamIndex);
 	UMaterialInterface* PaintMat = PaintMaterial();
-	// Sin M_BuggyPaint: mallas con la pintura horneada en el color de vértice (sin dibujo ni color de equipo).
-	const FTNBuggyPaintInfo* Bake = PaintMat ? nullptr : &Paint;
 	if (PaintMat)
 	{
 		if (!PaintMID || PaintMID->Parent != PaintMat) { PaintMID = UMaterialInstanceDynamic::Create(PaintMat, this); }
 		ApplyPaint(PaintMID, Paint, TeamColor);
 	}
-	const auto SetPiece = [this, &Model, Bake](UStaticMeshComponent* Part, EPiece Piece)
+	// Sin M_BuggyPaint: tortugas con la pintura horneada en el color de vértice y el de serie con la skin del equipo.
+	const FTNBuggyPaintInfo* Bake = PaintMat ? nullptr : &Paint;
+	bUsesTeamSkin = bStock && (Clean.PaintId.IsNone() || !PaintMat);
+
+	const auto SetPiece = [this, &Model, Bake](UStaticMeshComponent* Part, EPiece Piece, bool bShow)
 	{
 		if (!Part) { return; }
-		UStaticMesh* Mesh = GetPieceMesh(Model.Style, Piece, Bake);
+		UStaticMesh* Mesh = bShow ? GetPieceMesh(Model.Style, Piece, Bake) : nullptr;
 		Part->SetStaticMesh(Mesh);
 		Part->SetVisibility(Mesh != nullptr);
 		if (Mesh) { Part->SetMaterial(0, PaintMID && !Bake ? static_cast<UMaterialInterface*>(PaintMID) : nullptr); }
 	};
-	for (int32 i = 0; i < BodyPieces.Num(); ++i) { SetPiece(BodyPieces[i], static_cast<EPiece>(i)); }
-	for (UStaticMeshComponent* Wheel : Wheels) { SetPiece(Wheel, EPiece::Wheel); }
-	if (Cannon)
+	for (int32 i = 0; i < BodyPieces.Num(); ++i) { SetPiece(BodyPieces[i], static_cast<EPiece>(i), !bStock); }
+
+	if (bStock)
 	{
-		SetPiece(Cannon, EPiece::Cannon);
-		// El cilindro provisional iba escalado y tumbado: la malla del cañón ya está hecha a lo largo de +X desde el pivote.
-		if (bExternalCannon) { Cannon->SetRelativeTransform(FTransform::Identity); }
+		// El de serie: su carrocería y sus neumáticos, con la skin del equipo (la de ATN_Buggy o la del escaparate) o la
+		// pintura de la tienda con sus zonas.
+		UMaterialInterface* StockMat = nullptr;
+		if (!bUsesTeamSkin)
+		{
+			if (!StockPaintMID || StockPaintMID->Parent != PaintMat) { StockPaintMID = UMaterialInstanceDynamic::Create(PaintMat, this); }
+			ApplyPaint(StockPaintMID, Paint, TeamColor, true);
+			StockMat = StockPaintMID;
+		}
+		else if (!bVehicleParts)
+		{
+			UMaterialInterface* Skin = Stock::Skin(InTeamIndex);
+			if (Skin && (!StudioSkinMID || StudioSkinMID->Parent != Skin)) { StudioSkinMID = UMaterialInstanceDynamic::Create(Skin, this); }
+			if (StudioSkinMID && InTeamIndex >= 0) { StudioSkinMID->SetVectorParameterValue(ATN_Buggy::TintParameterName, TeamColor); }
+			StockMat = StudioSkinMID;
+		}
+		if (StockBody)
+		{
+			StockBody->SetVisibility(true);
+			if (StockMat) { StockBody->SetMaterial(0, StockMat); }
+		}
+		for (UStaticMeshComponent* Wheel : Wheels)
+		{
+			if (!Wheel) { continue; }
+			Wheel->SetStaticMesh(StockTireMesh);
+			if (StockMat) { Wheel->SetMaterial(0, StockMat); }
+		}
 	}
-	SetPiece(Antenna, EPiece::Antenna);
-	SetPiece(TurretPost, EPiece::TurretPost);
-	SetGunnerSeated(bGunnerSeated);
+	else
+	{
+		// Una tortuga: la carrocería de serie se esconde (sus sockets siguen sentando a las tortugas) y las ruedas son las suyas.
+		if (StockBody) { StockBody->SetVisibility(false); }
+		for (UStaticMeshComponent* Wheel : Wheels) { SetPiece(Wheel, EPiece::Wheel, true); }
+	}
+	// La antena con el banderín del equipo: en las tortugas siempre; en el de serie, si la pintura tapa el color del equipo.
+	SetPiece(Antenna, EPiece::Antenna, !bUsesTeamSkin);
 	if (AntennaPivot) { AntennaPivot->SetRelativeLocation(AntennaMount(Model.Style)); }
 
 	Look = Clean;
 	TeamIndex = InTeamIndex;
 	AppliedKey = Key;
+	AppliedStyle = static_cast<uint8>(Model.Style);
+	return true;
+}
+
+FVector UTN_BuggyLookComponent::GetExhaustLocal(const FVector& Default) const
+{
+	return TNBuggyArt::ExhaustLocal(static_cast<ETNBuggyBodyStyle>(AppliedStyle), Default);
 }
 
 void UTN_BuggyLookComponent::GetPrimitives(TArray<UPrimitiveComponent*>& Out) const
 {
 	for (UStaticMeshComponent* Part : BodyPieces) { if (Part) { Out.Add(Part); } }
-	if (!bExternalWheels)
+	if (!bVehicleParts)
 	{
+		if (StockBody) { Out.Add(StockBody); }
 		for (UStaticMeshComponent* Wheel : Wheels) { if (Wheel) { Out.Add(Wheel); } }
 	}
-	if (Cannon && !bExternalCannon) { Out.Add(Cannon); }
+	for (UStaticMeshComponent* Part : TurretParts) { if (Part) { Out.Add(Part); } }
 	if (Antenna) { Out.Add(Antenna); }
-	if (TurretPost) { Out.Add(TurretPost); }
 }
 
 void UTN_BuggyLookComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-	if (!AntennaPivot || !Antenna || GetNetMode() == NM_DedicatedServer) { return; }
+	if (!AntennaPivot || !Antenna || !Antenna->IsVisible() || GetNetMode() == NM_DedicatedServer) { return; }
 	if (!bStudio && !Antenna->WasRecentlyRendered(0.5f))
 	{
 		bHasLastLocation = false;

@@ -142,19 +142,20 @@ void ATN_Buggy::RefreshBoostEffects()
 		}
 		return;
 	}
-	// Sujetos a la carrocería: la llama sigue al escape. Se destruyen solos al desactivarse.
+	// Sujetos a la carrocería: la llama sigue al escape (el del modelo de la tienda). Se destruyen solos al desactivarse.
+	const FVector Exhaust = GetExhaustLocal();
 	if (BoostEffect)
 	{
-		BoostEffectComponent = UNiagaraFunctionLibrary::SpawnSystemAttached(BoostEffect, Body, NAME_None, BoostEffectOffset,
+		BoostEffectComponent = UNiagaraFunctionLibrary::SpawnSystemAttached(BoostEffect, Body, NAME_None, Exhaust,
 			FRotator(0.f, 180.f, 0.f), EAttachLocation::KeepRelativeOffset, true);
 	}
 	if (BoostStartSound)
 	{
-		UGameplayStatics::SpawnSoundAttached(BoostStartSound, Body, NAME_None, BoostEffectOffset, EAttachLocation::KeepRelativeOffset, true);
+		UGameplayStatics::SpawnSoundAttached(BoostStartSound, Body, NAME_None, Exhaust, EAttachLocation::KeepRelativeOffset, true);
 	}
 	if (BoostSound)
 	{
-		BoostSoundComponent = UGameplayStatics::SpawnSoundAttached(BoostSound, Body, NAME_None, BoostEffectOffset,
+		BoostSoundComponent = UGameplayStatics::SpawnSoundAttached(BoostSound, Body, NAME_None, Exhaust,
 			EAttachLocation::KeepRelativeOffset, true);
 	}
 }

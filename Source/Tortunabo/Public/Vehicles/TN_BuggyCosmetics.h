@@ -29,9 +29,11 @@ enum class ETNBuggyPattern : uint8
 	Count
 };
 
-/** Carrocería de cada modelo (TNBuggyArt la construye en C++). */
+/** Carrocería de cada modelo: la de serie es SM_TN_BuggyBody (Art/Source, #290); las de tortuga, TNBuggyArt en C++. */
 enum class ETNBuggyBodyStyle : uint8
 {
+	/** El buggy de serie de Art/Source: chasis de tubos y pontones, con la skin de su equipo o una pintura de la tienda. */
+	Stock,
 	/** Tortuga común: caparazón de placas hexagonales, aletas, ojos grandes, cola de escape y alerón de vieira. */
 	Classic,
 	/** Tortuga caimán: placas con pinchos, pico de hierro, barra de luces, tubo de buceo y rueda de repuesto. */
@@ -46,7 +48,7 @@ struct FTNBuggyModelInfo
 {
 	/** NAME_None = el de serie. */
 	FName Id;
-	ETNBuggyBodyStyle Style = ETNBuggyBodyStyle::Classic;
+	ETNBuggyBodyStyle Style = ETNBuggyBodyStyle::Stock;
 	/** Conchas (0 = gratis). */
 	int32 Price = 0;
 	FText Name;
@@ -128,9 +130,6 @@ namespace TNBuggyCosmetics
 	 * (cliente manipulado); true y OutKnown sustituido en otro caso.
 	 */
 	TORTUNABO_API bool FilterKnownIds(const TArray<FName>& Ids, int32 MaxIds, TSet<FName>& OutKnown);
-
-	/** Aspecto de un buggy sin conductora (IA o vacío): uno distinto por equipo, para lucir el catálogo. */
-	TORTUNABO_API FTN_BuggyLook LookForTeam(int32 TeamIndex);
 
 	/** Clave estable de un aspecto (para no repetir el trabajo de aplicarlo). */
 	TORTUNABO_API FString LookKey(const FTN_BuggyLook& Look);
