@@ -77,7 +77,7 @@ public:
 	TSubclassOf<ATN_RallyAIController> AIControllerClass;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Rally")
-	FName DefaultVariant = TEXT("I03R_tortuga_magna");
+	FName DefaultVariant = TEXT("E01B_espana_rally");
 
 	/** Vueltas por defecto en circuito (?Laps= y luego el laps del manifest mandan); en punto a punto siempre 1. */
 	UPROPERTY(EditDefaultsOnly, Category = "Rally", meta = (ClampMin = "1", ClampMax = "9"))

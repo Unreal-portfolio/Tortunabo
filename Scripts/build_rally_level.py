@@ -11,7 +11,7 @@ Contenido:
 - Sol, SkyAtmosphere, SkyLight y agua de LVL_Demo01, tal cual: se abre LVL_Demo01 y se guarda como LVL_Rally
   sin guardar nunca LVL_Demo01.
 - Niebla (ExponentialHeightFog) con los ajustes y la posición de la de LVL_TestMap (LVL_Demo01 no tiene).
-- ATN_MapVariantLoader con I03R_tortuga_magna (la carrera cambia de variante con ?Variant=...), un ATN_RallyTrack y un
+- ATN_MapVariantLoader con E01B_espana_rally (la carrera cambia de variante con ?Variant=...), un ATN_RallyTrack y un
   PlayerStart en la salida de la variante.
 - WorldSettings: GameMode override = ATN_RallyGameMode.
 
@@ -26,7 +26,7 @@ import unreal
 RALLY_LEVEL = "/Game/Maps/Rally/LVL_Rally"
 LIGHT_SOURCE = "/Game/Maps/Run/LVL_Demo01"
 FOG_SOURCE = "/Game/Maps/Run/LVL_TestMap"
-VARIANT = "I03R_tortuga_magna"
+VARIANT = "E01B_espana_rally"
 PLAYER_START_LIFT_UU = 150.0
 
 FOG_PROPERTIES = (
