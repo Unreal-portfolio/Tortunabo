@@ -1,4 +1,5 @@
 #include "Player/TN_TurtleAnimInstance.h"
+#include "Art/TN_TurtleArt.h"
 #include "Player/TortugaCharacter.h"
 #include "Player/TN_CarryComponent.h"
 #include "Player/TN_InventoryComponent.h"
@@ -1084,9 +1085,10 @@ bool FTNTurtleAnimProxy::Evaluate(FPoseContext& Output)
 void UTN_TurtleAnimInstance::NativeInitializeAnimation()
 {
 	Super::NativeInitializeAnimation();
-	IdleAnim = LoadObject<UAnimSequence>(nullptr, TEXT("/Game/Animations/Character/TortugaDemo/Anim/Old_Man_Idle.Old_Man_Idle"));
-	WalkAnim = LoadObject<UAnimSequence>(nullptr, TEXT("/Game/Animations/Character/TortugaDemo/Anim/Walking.Walking"));
-	CheerAnim = LoadObject<UAnimSequence>(nullptr, TEXT("/Game/Animations/Character/TortugaDemo/Anim/Yelling.Yelling"));
+	// Clips de la tortuga de los ajustes de arte (UTN_ArtSettings, «Tortuga|Animaciones»): con otro esqueleto, se cambian allí.
+	IdleAnim = TNTurtleArt::GetClip(ETNTurtleClip::Idle);
+	WalkAnim = TNTurtleArt::GetClip(ETNTurtleClip::Walk);
+	CheerAnim = TNTurtleArt::GetClip(ETNTurtleClip::Cheer);
 	if (const APawn* Owner = TryGetPawnOwner()) { PrevYaw = Owner->GetActorRotation().Yaw; }
 }
 
@@ -1402,6 +1404,18 @@ void UTN_TurtleAnimInstance::PlayThrow(bool bBothFlippers)
 {
 	bPendingThrow = true;
 	bPendingThrowBoth = bBothFlippers;
+}
+
+bool UTN_TurtleAnimInstance::SnapOutOfShellPose()
+{
+	if (Frame.ShellW <= 0.f)
+	{
+		return false;
+	}
+	Frame.ShellW = 0.f;
+	// La evaluación lee la copia del proxy (la de NativeUpdateAnimation llega en el siguiente, y con la pausa no llega).
+	GetProxyOnGameThread<FTNTurtleAnimProxy>().Frame.ShellW = 0.f;
+	return true;
 }
 
 void UTN_TurtleAnimInstance::BeginGetUp(const TArray<FTransform>& LocalPose, float Seconds)

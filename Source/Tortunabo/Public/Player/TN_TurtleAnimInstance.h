@@ -155,6 +155,14 @@ public:
 	void BeginGetUp(const TArray<FTransform>& LocalPose, float Seconds);
 
 	/**
+	 * Saca ya la pose del caparazón (cabeza y patas fuera), sin el paso suave de siempre, también en la evaluación. Lo usa el
+	 * derribo justo antes de pausar las animaciones del ragdoll (#251): la escala de los huesos del ragdoll sale de la
+	 * animación y, con la pausa, la cabeza y las patas se quedaban medio metidas en la concha hasta levantarse. true si
+	 * estaba algo metida (entonces hay que volver a evaluar la pose).
+	 */
+	bool SnapOutOfShellPose();
+
+	/**
 	 * Pose de celebración del podio (modo carrera) encima de todo lo demás: Trofeo, Decepcionada o Pataleta (ver
 	 * ETNTurtleCelebration); None la quita. Al cambiar de una a otra, la anterior sale antes de que entre la nueva. Sirve
 	 * para cualquier malla de tortuga con esta animación, con personaje o sin él (el podio, ATN_RacePodiumStage).

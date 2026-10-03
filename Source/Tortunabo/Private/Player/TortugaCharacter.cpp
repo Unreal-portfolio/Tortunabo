@@ -12,6 +12,7 @@
 #include "Components/PostProcessComponent.h"
 #include "Player/TN_InventoryComponent.h"
 #include "Core/TN_CosmeticLook.h"
+#include "Art/TN_TurtleArt.h"
 #include "Player/TN_ShellBody.h"
 #include "Player/TN_ShellComponent.h"
 #include "Player/TN_ShellImpactFXComponent.h"
@@ -27,6 +28,7 @@
 #include "Player/TN_TurtleFoleyComponent.h"
 #include "Player/TN_TurtleMovementComponent.h"
 #include "World/TN_InteractableBase.h"
+#include "World/Beach/TN_BeachTrampoline.h"
 #include "GameFramework/PlayerState.h"
 #include "Components/SceneComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -305,6 +307,10 @@ void ATortugaCharacter::BeginPlay()
 	}
 
 	CacheDefaultSkelMeshMaterials();
+
+	// Piezas de Arte de la tortuga (caparazón, casco de serie, ojos, lengua) aunque no llegue a vestirse con los cosméticos
+	// de un jugador (las tortugas de práctica del tutorial no tienen PlayerState). Al vestirse se vuelven a poner.
+	TNTurtleArt::ApplyPieces(GetMesh(), HelmetMeshComp && HelmetMeshComp->GetStaticMesh());
 
 	StartCosmeticRetryTimer();
 
@@ -1593,6 +1599,11 @@ void ATortugaCharacter::TickFallRules(float /*DeltaTime*/)
 	}
 	if (FallApexZ - Z > AutoShellFallHeight)
 	{
+		// Sobre un trampolín, sin bola: rebota como tortuga en el mismo paso aquí y en el cliente dueño (#21).
+		if (TNTrampolineRules::HoldsAutoShell(ATN_BeachTrampoline::DropOntoTrampoline(*this, TNTrampolineRules::AutoShellLookDown)))
+		{
+			return;
+		}
 		bAutoShelledThisFall = true;
 		if (!IsInShell())
 		{

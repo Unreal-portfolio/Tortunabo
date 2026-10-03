@@ -6,6 +6,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "Lobby/TN_TutorialCourse.h"
+#include "Core/TN_ProjectMaterials.h"
 #include "Lobby/TN_TutorialFauna.h"
 #include "TN_TutorialLayout.h"
 #include "TN_TutorialTexts.h"
@@ -55,10 +56,6 @@ namespace TNTutorialBuildDetail
 		return Mat ? Mat : Fallback;
 	}
 
-	UMaterialInterface* DebugVertexMaterial()
-	{
-		return LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
-	}
 
 	void BiomeColors(const UTN_ProcMapSettings* Settings, ETNProcBiome Biome, FLinearColor& Ground, FLinearColor& Path, FLinearColor& Rock, FLinearColor& Bed)
 	{
@@ -516,7 +513,7 @@ void ATN_TutorialCourse::BuildIsland(int32 Part)
 	Log.End(IslandPiece);
 
 	UMaterialInterface* TerrainMat = Settings && Settings->TerrainMaterial ? Settings->TerrainMaterial.Get()
-		: LoadMat(TEXT("/Game/ProcMap/Materials/M_ProcTerrain.M_ProcTerrain"), DebugVertexMaterial());
+		: LoadMat(TEXT("/Game/ProcMap/Materials/M_ProcTerrain.M_ProcTerrain"), TNMaterials::VertexColor());
 	UProceduralMeshComponent* Mesh = NewMeshComponent(Part == 0 ? TEXT("IslandA") : TEXT("IslandB"), true);
 	// Dato de primitiva 0 = 1: M_ProcTerrain pone el relieve por normales y la textura del camino (como las teselas del mapa).
 	Mesh->SetCustomPrimitiveDataFloat(0, 1.f);
@@ -695,7 +692,7 @@ void ATN_TutorialCourse::BuildWater()
 
 	const UTN_ProcMapSettings* Settings = ProcSettings();
 	UMaterialInterface* Mat = LoadMat(TEXT("/Game/ProcMap/Materials/MI_ProcSeaAnim.MI_ProcSeaAnim"),
-		Settings && Settings->WaterMaterial ? Settings->WaterMaterial.Get() : DebugVertexMaterial());
+		Settings && Settings->WaterMaterial ? Settings->WaterMaterial.Get() : TNMaterials::VertexColor());
 	WaterMesh = NewMeshComponent(TEXT("Water"), false);
 	WaterMesh->SetCastShadow(false);
 	const TArray<FProcMeshTangent> NoTangents;
@@ -749,7 +746,7 @@ void ATN_TutorialCourse::BuildCascade()
 	{
 		Front.Normals[v] = FVector(1.0, 0.0, 0.25).GetSafeNormal();
 	}
-	UMaterialInterface* Mat = LoadMat(TEXT("/Game/ProcMap/Materials/M_ProcCascade.M_ProcCascade"), DebugVertexMaterial());
+	UMaterialInterface* Mat = LoadMat(TEXT("/Game/ProcMap/Materials/M_ProcCascade.M_ProcCascade"), TNMaterials::VertexColor());
 	CascadeMesh = NewMeshComponent(TEXT("Cascade"), false);
 	CascadeMesh->SetCastShadow(false);
 	const TArray<FProcMeshTangent> NoTangents;
@@ -805,7 +802,7 @@ void ATN_TutorialCourse::BuildClouds()
 		const FVector C(Dims::LipX + 120.0 + 260.0 * FMath::Cos(A), CorridorCenter(Dims::LipX) + 300.0 * FMath::Sin(A), -Frac * Dims::Height);
 		AddCluster(C, 280.0 + 40.0 * k, 0.7f - 0.07f * k);
 	}
-	UMaterialInterface* Mat = LoadMat(TEXT("/Game/ProcMap/Materials/M_ProcFXCloud.M_ProcFXCloud"), DebugVertexMaterial());
+	UMaterialInterface* Mat = LoadMat(TEXT("/Game/ProcMap/Materials/M_ProcFXCloud.M_ProcFXCloud"), TNMaterials::VertexColor());
 	CloudMesh = NewMeshComponent(TEXT("Clouds"), false);
 	CloudMesh->SetCastShadow(false);
 	TNArt::UploadSection(CloudMesh, 0, Clouds, false, Mat, &Log);
@@ -878,7 +875,7 @@ void ATN_TutorialCourse::BuildFlora()
 	}
 
 	UMaterialInterface* Material = Settings && Settings->FoliageMaterial ? Settings->FoliageMaterial.Get()
-		: LoadMat(TEXT("/Game/ProcMap/Materials/M_ProcFoliage.M_ProcFoliage"), DebugVertexMaterial());
+		: LoadMat(TEXT("/Game/ProcMap/Materials/M_ProcFoliage.M_ProcFoliage"), TNMaterials::VertexColor());
 	int32 Total = 0;
 	for (TPair<int32, TArray<FTransform>>& Entry : ByMesh)
 	{

@@ -61,7 +61,7 @@ import objetos
 import peticiones
 import volcado
 from base import (CONFIG, ESTADOS, INTEGRACION, ORDEN_PRIORIDAD, ORDEN_TAMANO, REPO,
-                  ErrorTablero, cargar_proyecto, comentar, elegir_revisor, es_de, esta_fusionada, gh, git, issues_de_pr,
+                  ErrorTablero, cargar_proyecto, comentar, comprobar_campos, elegir_revisor, es_de, esta_fusionada, gh, git, issues_de_pr,
                   item_de_issue, poner_campo, prs_abiertas, prs_fusionadas, slug, usuario_actual,
                   vaciar_campo)
 
@@ -292,6 +292,11 @@ def cmd_nueva(args: argparse.Namespace) -> None:
         raise ErrorTablero(f"No se puede leer el cuerpo «{args.cuerpo}»: {exc}") from exc
     if defectos := auditoria.problemas_de_formato(args.titulo, cuerpo, set(etiquetas)):
         raise ErrorTablero("La issue no se crea: " + "; ".join(defectos) + ".")
+    # Los campos se comprueban antes de crear la issue: con un valor que no existe quedaría creada a medias.
+    proyecto = cargar_proyecto()
+    campos = {"Status": args.estado, "Prioridad": args.prioridad, "Tamaño": args.tamano, "Área": args.area, "Fase": args.fase,
+              "Editor": "Sin probar" if args.estado == "QA editor" else None}
+    comprobar_campos(proyecto, campos)
     crear = ["issue", "create", "--repo", REPO, "--title", args.titulo, "--body-file", args.cuerpo]
     for e in etiquetas:
         crear += ["--label", e]
@@ -299,9 +304,6 @@ def cmd_nueva(args: argparse.Namespace) -> None:
     numero = int(url.rstrip("/").rsplit("/", 1)[-1])
     if padre is not None:
         objetos.colgar(gh, REPO, numero, padre)
-    proyecto = cargar_proyecto()
-    campos = {"Status": args.estado, "Prioridad": args.prioridad, "Tamaño": args.tamano, "Área": args.area, "Fase": args.fase,
-              "Editor": "Sin probar" if args.estado == "QA editor" else None}
     for campo, valor in campos.items():
         if valor:
             poner_campo(proyecto, numero, campo, valor)
