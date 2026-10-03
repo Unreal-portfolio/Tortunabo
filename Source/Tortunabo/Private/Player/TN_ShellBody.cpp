@@ -47,7 +47,7 @@ namespace TNShellBodyDetail
 	constexpr float CliffSkip = 1000.f;
 
 	TAutoConsoleVariable<int32> CVarShellDebug(TEXT("TN.Shell.Debug"), UE_BUILD_SHIPPING ? 0 : 1,
-		TEXT("Instrumento de la bola del caparazón (todas las máquinas): 1 = avisa en el registro («[Caparazón] TN.Shell.Debug») cuando la caja gira cerca de su tope durante 0,4 s (torbellino), cuando su parte de abajo queda más de 25 cm bajo el terreno de la playa o cuando su velocidad salta más de 9 m/s en un paso fuera de un lanzamiento, con sus últimos choques (quién la empuja) y, en los clientes, el desfase con el servidor; 0 = apagado (por defecto en Shipping)."));
+		TEXT("Instrumento de la bola del caparazón (todas las máquinas): 1 = avisa en el registro («[Caparazón] TN.Shell.Debug») cuando la caja gira cerca de su tope durante 0,4 s (torbellino), cuando su parte de abajo queda más de 25 cm bajo el terreno de la playa o cuando sale empujada a más de 9 m/s en un paso (lo que no es frenar un choque) fuera de un lanzamiento, con sus últimos choques (quién la empuja) y, en los clientes, el desfase con el servidor; 0 = apagado (por defecto en Shipping)."));
 
 	const TCHAR* AnomalyName(TNShellLogic::EShellMotionAnomaly Anomaly)
 	{
@@ -364,11 +364,11 @@ void ATN_ShellBody::TickDebugWatch(float DeltaSeconds)
 	TNShellLogic::FShellMotionSample Sample;
 	Sample.DeltaSeconds = DeltaSeconds;
 	Sample.AngularSpeed = static_cast<float>(Spin.Size());
-	// Con el tope a la depenetración actuando, el cambio es parar la caída dentro del terreno más lo poco que la deja salir:
-	// no es un salto sin causa (el registro ya lo cuenta).
-	Sample.VelocityChange = bPushOutLimited ? 0.f : static_cast<float>((Velocity - DebugPrevVelocity).Size());
+	// Solo cuenta la velocidad con la que sale empujada: frenar (aterrizar, chocar) o el tope a la depenetración (ya lo registra) no.
+	Sample.VelocityChange = bPushOutLimited ? 0.f : TNShellLogic::UnexplainedVelocityChange(DebugPrevVelocity, Velocity);
 	Sample.BottomDepthUnderTerrain = TerrainDepth;
 	Sample.AgeSeconds = Age;
+	const FVector PrevVelocity = DebugPrevVelocity;
 	DebugPrevVelocity = Velocity;
 	const TNShellLogic::EShellMotionAnomaly Anomaly = TNShellLogic::ClassifyShellMotion(Sample, DebugSpinSeconds);
 	const float Now = World->GetTimeSeconds();
@@ -382,9 +382,10 @@ void ATN_ShellBody::TickDebugWatch(float DeltaSeconds)
 	const double ServerGap = HasAuthority() ? 0.0 : FVector::Dist(Box->GetComponentLocation(), GetReplicatedMovement().Location);
 	const FVector At = Box->GetComponentLocation();
 	UE_LOG(LogTortunabo, Warning,
-		TEXT("[Caparazón] TN.Shell.Debug %s de %s en %s: %s · caja en (%.1f, %.1f, %.1f) m, su parte de abajo %.0f cm bajo el terreno · v %.0f cm/s (cambio de %.0f en el paso) · giro %.1f rad/s (vertical %.1f) desde hace %.2f s · desfase con el servidor %.0f cm · edad %.2f s · choques: %s"),
+		TEXT("[Caparazón] TN.Shell.Debug %s de %s en %s: %s · caja en (%.1f, %.1f, %.1f) m, su parte de abajo %.0f cm bajo el terreno · v %.0f cm/s (cambio de %.0f en el paso; antes %s, después %s) · giro %.1f rad/s (vertical %.1f) desde hace %.2f s · desfase con el servidor %.0f cm · edad %.2f s · choques: %s"),
 		*GetName(), *GetNameSafe(Turtle.Get()), HasAuthority() ? TEXT("el servidor") : TEXT("un cliente"), AnomalyName(Anomaly),
-		At.X / 100.0, At.Y / 100.0, At.Z / 100.0, TerrainDepth, Velocity.Size(), Sample.VelocityChange, Sample.AngularSpeed, Spin.Z,
+		At.X / 100.0, At.Y / 100.0, At.Z / 100.0, TerrainDepth, Velocity.Size(), Sample.VelocityChange, *PrevVelocity.ToCompactString(),
+		*Velocity.ToCompactString(), Sample.AngularSpeed, Spin.Z,
 		DebugSpinSeconds, ServerGap, Age, *DescribeDebugContacts(Now));
 }
 
