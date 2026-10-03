@@ -234,10 +234,11 @@ void ATN_ProcMapGenerator::BuildFromNetConfig()
 
 	const double T4 = FPlatformTime::Seconds();
 	UE_LOG(LogTortunabo, Log,
-		TEXT("[ProcMap] Mapa listo · semilla %d · %s/%s · grid %dx%d · %d módulos en ruta · %d cruces · %d ramas · camino %.2f km (~%.0f min a 5,5 m/s) · layout %.2fs terreno %.2fs resto %.2fs total %.2fs"),
+		TEXT("[ProcMap] Mapa listo · semilla %d · %s/%s · grid %dx%d · %d módulos en ruta · %d cruces · %d ramas · camino %.2f km (~%.0f min a 5,5 m/s) · layout %.2fs terreno %.2fs resto %.2fs total %.2fs · ajustes %s"),
 		NetConfig.Seed, *UEnum::GetValueAsString(NetConfig.Mode), *UEnum::GetValueAsString(NetConfig.Difficulty),
 		Layout.GridW(), Layout.Params.GridSize, Layout.UniqueModulesOnRoute, Layout.Crossings.Num(), Layout.Branches.Num(),
-		Layout.MainLength() / 100000.0, EstimateTraversalMinutes(550.f), T1 - T0, T2 - T1, T4 - T2, T4 - T0);
+		Layout.MainLength() / 100000.0, EstimateTraversalMinutes(550.f), T1 - T0, T2 - T1, T4 - T2, T4 - T0,
+		Settings ? *Settings->GetName() : TEXT("ninguno (greybox)"));
 
 	OnMapGeneratedNative.Broadcast(BuiltGeneration);
 	OnMapGenerated.Broadcast(BuiltGeneration);
