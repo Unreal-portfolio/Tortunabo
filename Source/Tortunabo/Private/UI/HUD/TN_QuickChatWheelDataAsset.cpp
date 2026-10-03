@@ -43,14 +43,14 @@ EDataValidationResult UTN_QuickChatWheelDataAsset::IsDataValid(FDataValidationCo
 
 		if (UsedIds.Contains(Entry.MessageID))
 		{
-			Context.AddError(FText::FromString(FString::Printf(TEXT("MessageID duplicado: %d (index %d)"), Entry.MessageID, Index)));
+			Context.AddError(FText::AsCultureInvariant(FString::Printf(TEXT("MessageID duplicado: %d (index %d)"), Entry.MessageID, Index)));
 			bHasErrors = true;
 		}
 		UsedIds.Add(Entry.MessageID);
 
 		if (Entry.Text.IsEmpty())
 		{
-			Context.AddWarning(FText::FromString(FString::Printf(TEXT("MessageID %d no tiene Text"), Entry.MessageID)));
+			Context.AddWarning(FText::AsCultureInvariant(FString::Printf(TEXT("MessageID %d no tiene Text"), Entry.MessageID)));
 		}
 	}
 

@@ -265,7 +265,20 @@ void ATN_BeachLizard::BuildLizard()
 			UStaticMesh* Mesh = TNBeachKit::CachedMesh(FString::Printf(TEXT("Beach.Lizard.%d.%d.%d"), Pal, TemperIndex, i),
 				[&Buffers](TNProcMesh::FTNProcMeshBuffers& M) { M = Buffers; });
 			USceneComponent* Parent = bIsBody ? Scaler.Get() : static_cast<USceneComponent*>(Body.Get());
-			UStaticMeshComponent* Comp = TNBeachKit::AddPart(this, Parent, Mesh, Part.Pivot, true);
+			// Pieza de arte de cada hueso (Docs/Arte_Assets.md): pivote en su articulación.
+			FName Slot = NAME_None;
+			switch (Part.Bone)
+			{
+			case TNFauna::ETNFaunaBone::Body: Slot = TN_ART("Beach.Lizard.Body"); break;
+			case TNFauna::ETNFaunaBone::Head: Slot = TN_ART("Beach.Lizard.Head"); break;
+			case TNFauna::ETNFaunaBone::Tail: Slot = TN_ART("Beach.Lizard.Tail"); break;
+			case TNFauna::ETNFaunaBone::LegFL: Slot = TN_ART("Beach.Lizard.LegFrontLeft"); break;
+			case TNFauna::ETNFaunaBone::LegFR: Slot = TN_ART("Beach.Lizard.LegFrontRight"); break;
+			case TNFauna::ETNFaunaBone::LegBL: Slot = TN_ART("Beach.Lizard.LegBackLeft"); break;
+			case TNFauna::ETNFaunaBone::LegBR: Slot = TN_ART("Beach.Lizard.LegBackRight"); break;
+			default: break;
+			}
+			UStaticMeshComponent* Comp = TNBeachKit::AddPart(this, Parent, Mesh, Part.Pivot, true, Slot);
 			switch (Part.Bone)
 			{
 			case TNFauna::ETNFaunaBone::Body: if (!Body) { Body = Comp; } break;
@@ -280,7 +293,7 @@ void ATN_BeachLizard::BuildLizard()
 		}
 	}
 	UStaticMesh* TongueMesh = TNBeachKit::CachedMesh(TEXT("Beach.Lizard.Tongue"), [](TNProcMesh::FTNProcMeshBuffers& M) { TNBeachMeshes::BuildLizardTongue(M); });
-	Tongue = TNBeachKit::AddPart(this, Head, TongueMesh, TonguePivot, false);
+	Tongue = TNBeachKit::AddPart(this, Head, TongueMesh, TonguePivot, false, TN_ART("Beach.Lizard.Tongue"));
 	if (Tongue)
 	{
 		Tongue->SetRelativeScale3D(FVector(0.01f, 1.f, 1.f));

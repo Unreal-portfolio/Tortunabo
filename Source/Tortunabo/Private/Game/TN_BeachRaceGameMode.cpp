@@ -21,8 +21,11 @@
 #include "World/Beach/TN_BeachStunComponent.h"
 #include "World/Beach/TN_BeachTypes.h"
 #include "World/Beach/TN_RaceItemComponent.h"
+#include "World/TN_ConchPickup.h"
 #include "World/TN_DeathZoneVolume.h"
+#include "World/TN_PickupInteractableBase.h"
 #include "World/TN_StormVolume.h"
+#include "World/TN_ThrowableItemActor.h"
 #include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -42,6 +45,20 @@
 
 namespace TNBeachRaceGameModeDetail
 {
+	/** Junta en Out los actores de TActorClass que quedan sueltos y no son de ninguna ronda (TNBeachRaceRules::ShouldClearRoundLeftover). */
+	template <typename TActorClass>
+	void GatherRoundLeftovers(UWorld* World, TArray<AActor*>& Out)
+	{
+		for (TActorIterator<TActorClass> It(World); It; ++It)
+		{
+			AActor* Actor = *It;
+			if (TNBeachRaceRules::ShouldClearRoundLeftover(Actor->IsNetStartupActor(), !IsValid(Actor) || Actor->IsActorBeingDestroyed()))
+			{
+				Out.Add(Actor);
+			}
+		}
+	}
+
 	/**
 	 * CountdownValue durante la pantalla del campeón (no hay cuenta: se espera al anfitrión). Por encima de 1 para que
 	 * la música de fin de partida no se funda (el director funde en el último segundo) ni se cierre el huevo de la
@@ -1512,6 +1529,8 @@ void ATN_BeachRaceGameMode::StartSprint()
 	// las finalistas a sus huevos (PollRoundReady → PlaceSprintFinalists), 3, 2, 1 y los huevos se rompen.
 	SetFlowState(ETNMatchFlowState::WaitingForPlayers);
 	UE_LOG(LogTortunabo, Log, TEXT("[Carrera] Sprint final: se prepara la playa (%d finalistas)."), SprintFinalists.Num());
+	// Los peones se quedan (las finalistas se cambian al colocarlas en el nido), pero lo suelto de la ronda anterior, no.
+	CleanupRoundLeftovers();
 	PrepareRound(false);
 }
 
@@ -1929,6 +1948,33 @@ void ATN_BeachRaceGameMode::CleanupRoundActors()
 		{
 			It->Destroy();
 		}
+	}
+	CleanupRoundLeftovers();
+}
+
+void ATN_BeachRaceGameMode::CleanupRoundLeftovers()
+{
+	UWorld* World = GetWorld();
+	if (!World || !HasAuthority())
+	{
+		return;
+	}
+	// Nada de lo que dejan las jugadoras pasa a la ronda siguiente (#71): los pickups que se sueltan o salen de una bola
+	// parada, las conchas trampa y la reciclada que dejan al gastarse, las bolas en el aire y las cajas de objetos (el botín
+	// repartido lo vuelve a quitar UTN_BeachLootSubsystem al cambiar la ronda: sus punteros son débiles y ya no existirán).
+	// Se juntan antes de destruir, sin tocar la lista mientras se recorre. Una bola en el aire destruida así no suelta su
+	// pickup (eso solo lo hace su temporizador de vida).
+	TArray<AActor*> Leftovers;
+	TNBeachRaceGameModeDetail::GatherRoundLeftovers<ATN_ThrowableItemActor>(World, Leftovers);
+	TNBeachRaceGameModeDetail::GatherRoundLeftovers<ATN_PickupInteractableBase>(World, Leftovers);
+	TNBeachRaceGameModeDetail::GatherRoundLeftovers<ATN_ConchPickup>(World, Leftovers);
+	for (AActor* Leftover : Leftovers)
+	{
+		Leftover->Destroy();
+	}
+	if (Leftovers.Num() > 0)
+	{
+		UE_LOG(LogTortunabo, Log, TEXT("[Carrera] Ronda %d: %d objetos sueltos quitados (pickups, bolas y conchas trampa)."), CurrentRound, Leftovers.Num());
 	}
 }
 

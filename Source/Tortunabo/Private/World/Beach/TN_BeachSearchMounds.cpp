@@ -11,6 +11,7 @@
 #include "World/Beach/TN_BeachLoot.h"
 #include "World/Beach/TN_BeachRaceGenerator.h"
 #include "TN_BeachDecorKit.h"
+#include "Art/TN_Art.h"
 #include "../ProcMap/TN_ProcMapAmbientFX.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/InstancedStaticMeshComponent.h"
@@ -87,6 +88,20 @@ int32 ATN_BeachSearchRegistry::NumMoundAnims() const
 		Count += Anim.Mound != INDEX_NONE ? 1 : 0;
 	}
 	return Count;
+}
+
+bool ATN_BeachSearchRegistry::GetMoundFoot(int32 Index, FVector& OutGround, float& OutRadius) const
+{
+	if (!Mounds.IsValidIndex(Index))
+	{
+		return false;
+	}
+	// Tal como se monta en esta máquina (LiveXf sale de lo replicado y del generador: mismo sitio y tamaño en todas). El
+	// radio de la base con los terrones que asoman (R x 1,1) y el tamaño del ejemplar.
+	const FTransform& Xf = Mounds[Index].LiveXf;
+	OutGround = Xf.GetLocation();
+	OutRadius = static_cast<float>(TNBeachDecorKit::SearchMoundRadius * 1.1 * Xf.GetScale3D().X);
+	return true;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -224,7 +239,15 @@ void ATN_BeachSearchRegistry::RebuildMounds()
 		}
 		if (UInstancedStaticMeshComponent* Comp = EnsureMoundComp(v))
 		{
+			// Con la malla de arte de una ronda anterior (TNArt), vuelve a la generada antes de poner las instancias.
+			UStaticMesh* Generated = TNBeachDecorKit::SearchMoundMesh(v < NumVariants ? v : 0, v == NumVariants);
+			if (Generated && Comp->GetStaticMesh() != Generated)
+			{
+				Comp->EmptyOverrideMaterials();
+				Comp->SetStaticMesh(Generated);
+			}
 			Comp->AddInstances(Transforms, false, true, false);
+			TNArt::ApplyToInstances(Comp, v < NumVariants ? TN_ART("Beach.Search.Mound") : TN_ART("Beach.Search.MoundFlat"));
 		}
 	}
 }
@@ -241,11 +264,11 @@ void ATN_BeachSearchRegistry::SetMoundFlat(int32 Index, bool bFlat)
 	UInstancedStaticMeshComponent* FlatComp = MoundComps.IsValidIndex(NumVariants) ? MoundComps[NumVariants].Get() : nullptr;
 	if (IsValid(LiveComp))
 	{
-		LiveComp->UpdateInstanceTransform(Mound.LiveInstance, bFlat ? TNBeachMoundDetail::HiddenXf(Mound.LiveXf) : Mound.LiveXf, true, true, true);
+		TNArt::UpdateInstances(LiveComp, Mound.LiveInstance, { bFlat ? TNBeachMoundDetail::HiddenXf(Mound.LiveXf) : Mound.LiveXf }, true, true, true);
 	}
 	if (IsValid(FlatComp))
 	{
-		FlatComp->UpdateInstanceTransform(Mound.FlatInstance, bFlat ? Mound.FlatXf : TNBeachMoundDetail::HiddenXf(Mound.FlatXf), true, true, true);
+		TNArt::UpdateInstances(FlatComp, Mound.FlatInstance, { bFlat ? Mound.FlatXf : TNBeachMoundDetail::HiddenXf(Mound.FlatXf) }, true, true, true);
 	}
 	Mound.bFlatShown = bFlat;
 }
@@ -413,10 +436,14 @@ void ATN_BeachSearchRegistry::StartMoundAnim(int32 Index)
 		Comp->RegisterComponent();
 		MoundAnimPool[Slot] = Comp;
 	}
+	// El componente de la reserva cambia de montículo: sin la malla de arte del anterior mientras se prepara y con la de este
+	// después (Docs/Arte_Assets.md). Sin sustitutos no hace nada.
+	TNArt::ApplyToComponent(Comp, NAME_None);
 	Comp->SetStaticMesh(TNBeachDecorKit::SearchMoundMesh(Mound.Variant, false));
 	// Cerca de la cámara: con sombra, que se lee mejor el bulto.
 	Comp->SetCastShadow(true);
 	Comp->SetVisibility(true);
+	TNArt::ApplyToComponent(Comp, TN_ART("Beach.Search.Mound"));
 	Comp->SetWorldTransform(Mound.LiveXf);
 	TNBeachSearchMoundTypes::FMoundAnim& Anim = MoundAnims[Slot];
 	Anim = TNBeachSearchMoundTypes::FMoundAnim();
@@ -426,7 +453,7 @@ void ATN_BeachSearchRegistry::StartMoundAnim(int32 Index)
 	// Su instancia quieta se esconde mientras la mueve el componente.
 	if (UInstancedStaticMeshComponent* LiveComp = MoundComps.IsValidIndex(Mound.Variant) ? MoundComps[Mound.Variant].Get() : nullptr)
 	{
-		LiveComp->UpdateInstanceTransform(Mound.LiveInstance, TNBeachMoundDetail::HiddenXf(Mound.LiveXf), true, true, true);
+		TNArt::UpdateInstances(LiveComp, Mound.LiveInstance, { TNBeachMoundDetail::HiddenXf(Mound.LiveXf) }, true, true, true);
 	}
 }
 
@@ -443,7 +470,7 @@ void ATN_BeachSearchRegistry::StopMoundAnim(int32 Slot)
 		const TNBeachSearchMoundTypes::FMound& Mound = Mounds[Anim.Mound];
 		if (UInstancedStaticMeshComponent* LiveComp = MoundComps.IsValidIndex(Mound.Variant) ? MoundComps[Mound.Variant].Get() : nullptr)
 		{
-			LiveComp->UpdateInstanceTransform(Mound.LiveInstance, Mound.LiveXf, true, true, true);
+			TNArt::UpdateInstances(LiveComp, Mound.LiveInstance, { Mound.LiveXf }, true, true, true);
 		}
 	}
 	if (MoundAnimPool.IsValidIndex(Slot) && IsValid(MoundAnimPool[Slot]))

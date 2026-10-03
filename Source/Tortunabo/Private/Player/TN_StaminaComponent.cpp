@@ -90,6 +90,10 @@ void UTN_StaminaComponent::GrantUnlimitedStamina(float DurationSeconds)
 	bUnlimitedStamina = true;
 	UnlimitedStaminaRemaining = DurationSeconds;
 	CurrentStamina = MaxStamina;
+	// Fuera el agotamiento, como en RestoreStaminaToFull: solo se descuenta sin esprintar, y con shift pulsado el HUD, la
+	// cara y el «sin aliento» lo seguirían enseñando con la barra llena.
+	bIsExhausted = false;
+	ExhaustionTimer = 0.f;
 	RecomputeSprintState();
 }
 

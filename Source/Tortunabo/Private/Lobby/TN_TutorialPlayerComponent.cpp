@@ -53,23 +53,24 @@ namespace TNTutorialPlayerDetail
 		}
 	}
 
-	/** Lo que se enseña sin ajustes (servidor dedicado o sin subsistema): las teclas de serie. */
+	/** Lo que se enseña sin ajustes (servidor dedicado o sin subsistema): las teclas de serie, con sus nombres traducidos. */
 	FText FallbackLabel(EKey Key, bool bPad)
 	{
+		auto Name = [](const FKey& K) { return UTN_GameSettingsSubsystem::KeyDisplayName(K); };
 		switch (Key)
 		{
-			case EKey::Move:            return bPad ? NSLOCTEXT("TNTutorial", "PadMove", "Stick izquierdo") : FText::FromString(TEXT("W A S D"));
+			case EKey::Move:            return bPad ? NSLOCTEXT("TNTutorial", "PadMove", "Stick izquierdo") : INVTEXT("W A S D");
 			case EKey::Look:            return bPad ? NSLOCTEXT("TNTutorial", "PadLook", "Stick derecho") : NSLOCTEXT("TNTutorial", "MouseLook", "Ratón");
-			case EKey::Sprint:          return bPad ? FText::FromString(TEXT("RT / R2")) : FText::FromString(TEXT("Mayús izq."));
-			case EKey::Jump:            return bPad ? FText::FromString(TEXT("A / Cruz")) : NSLOCTEXT("TNTutorial", "SpaceKey", "Espacio");
-			case EKey::Interact:        return bPad ? FText::FromString(TEXT("X / Cuadrado")) : FText::FromString(TEXT("E"));
-			case EKey::RotateInventory: return bPad ? FText::FromString(TEXT("RB / R1")) : FText::FromString(TEXT("G"));
-			case EKey::DropItem:        return bPad ? FText::FromString(TEXT("Y / Triángulo")) : FText::FromString(TEXT("X"));
-			case EKey::Shell:           return bPad ? FText::FromString(TEXT("B / Círculo")) : FText::FromString(TEXT("Ctrl izq."));
-			case EKey::EmoteWheel:      return bPad ? FText::FromString(TEXT("LT / L2")) : FText::FromString(TEXT("Q"));
-			case EKey::ChatWheel:       return bPad ? FText::FromString(TEXT("LB / L1")) : FText::FromString(TEXT("C"));
-			case EKey::Talk:            return bPad ? NSLOCTEXT("TNTutorial", "PadTalk", "Cruceta abajo") : FText::FromString(TEXT("V"));
-			case EKey::Pause:           return bPad ? FText::FromString(TEXT("Start")) : FText::FromString(GIsEditor ? TEXT("Tab") : TEXT("Esc"));
+			case EKey::Sprint:          return Name(bPad ? EKeys::Gamepad_RightTrigger : EKeys::LeftShift);
+			case EKey::Jump:            return bPad ? Name(EKeys::Gamepad_FaceButton_Bottom) : NSLOCTEXT("TNTutorial", "SpaceKey", "Espacio");
+			case EKey::Interact:        return Name(bPad ? EKeys::Gamepad_FaceButton_Left : EKeys::E);
+			case EKey::RotateInventory: return Name(bPad ? EKeys::Gamepad_RightShoulder : EKeys::G);
+			case EKey::DropItem:        return Name(bPad ? EKeys::Gamepad_FaceButton_Top : EKeys::X);
+			case EKey::Shell:           return Name(bPad ? EKeys::Gamepad_FaceButton_Right : EKeys::LeftControl);
+			case EKey::EmoteWheel:      return Name(bPad ? EKeys::Gamepad_LeftTrigger : EKeys::Q);
+			case EKey::ChatWheel:       return Name(bPad ? EKeys::Gamepad_LeftShoulder : EKeys::C);
+			case EKey::Talk:            return bPad ? NSLOCTEXT("TNTutorial", "PadTalk", "Cruceta abajo") : Name(EKeys::V);
+			case EKey::Pause:           return Name(bPad ? EKeys::Gamepad_Special_Right : (GIsEditor ? EKeys::Tab : EKeys::Escape));
 			default:                    return FText::GetEmpty();
 		}
 	}
@@ -826,7 +827,7 @@ void UTN_TutorialPlayerComponent::RefreshKeys()
 					if (Key == EKey::Pause && !bGamepad && GIsEditor && Shown == EKeys::Escape)
 					{
 						// En el editor Escape corta la partida: el menú va con el Tabulador.
-						Label = FText::FromString(TEXT("Tab"));
+						Label = UTN_GameSettingsSubsystem::KeyDisplayName(EKeys::Tab);
 					}
 					else
 					{
@@ -891,7 +892,7 @@ void UTN_TutorialPlayerComponent::RefreshWidget()
 	}
 	const FText* PauseText = KeyTexts.Find(static_cast<uint8>(EKey::Pause));
 	View.SkipHint = FText::Format(NSLOCTEXT("TNTutorial", "SkipHint", "¿Ya sabes jugar? {0} > «Saltar el tutorial»."),
-		PauseText ? *PauseText : FText::FromString(TEXT("Esc")));
+		PauseText ? *PauseText : UTN_GameSettingsSubsystem::KeyDisplayName(EKeys::Escape));
 	Widget->SetView(View);
 }
 

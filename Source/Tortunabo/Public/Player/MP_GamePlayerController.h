@@ -257,6 +257,12 @@ protected:
 	 */
 	virtual void ClientWasKicked_Implementation(const FText& KickReason) override;
 
+	/**
+	 * @brief `ServerExec` (consola del motor) manda cualquier orden al servidor fuera de Shipping sin mirar quién la pide: solo
+	 *        se atiende al anfitrión, con la misma regla que los RPC de pruebas (TNDebugRpcLogic, #16).
+	 */
+	virtual void ServerExecRPC_Implementation(const FString& Msg) override;
+
 	UPROPERTY(EditDefaultsOnly, Category = "UI")
 	TSubclassOf<UUserWidget> VoiceIndicatorWidgetClass;
 

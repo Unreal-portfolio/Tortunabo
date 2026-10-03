@@ -1,6 +1,7 @@
 #include "World/Beach/TN_BeachQuadLane.h"
 #include "World/Beach/TN_BeachCameraShake.h"
 #include "World/Beach/TN_BeachEnemySynth.h"
+#include "World/Beach/TN_BeachRaceGenerator.h"
 #include "TN_BeachEnemyKit.h"
 #include "TN_BeachEnemyMeshes.h"
 #include "Components/StaticMeshComponent.h"
@@ -33,8 +34,14 @@ namespace TNBeachQuad
 	constexpr float LaunchSide = 380.f;
 	constexpr float LaunchUp = 750.f;
 	constexpr float LaunchSpin = 420.f;
-	/** Paso de las rodadas en la arena (cm). */
-	constexpr double RutStep = 500.0;
+	/**
+	 * Rodadas en la arena: paso a lo largo (cm; la malla del terreno va cada 3 m), puntos a lo ancho de cada una, largo de cada
+	 * banda clara u oscura (cm, los tacos del neumático) y lo que se levantan sobre la arena (cm).
+	 */
+	constexpr double RutStep = 125.0;
+	constexpr int32 RutAcross = 5;
+	constexpr double RutBand = 250.0;
+	constexpr double RutLift = 5.0;
 }
 
 ATN_BeachQuadLane::ATN_BeachQuadLane()
@@ -83,13 +90,13 @@ void ATN_BeachQuadLane::BuildQuad()
 	QuadRoot->SetupAttachment(GetRootComponent());
 	QuadRoot->SetAbsolute(true, true, true);
 	QuadRoot->RegisterComponent();
-	QuadBody = TNBeachKit::AddPart(this, QuadRoot, BodyMesh, FVector::ZeroVector);
+	QuadBody = TNBeachKit::AddPart(this, QuadRoot, BodyMesh, FVector::ZeroVector, true, TN_ART("Beach.QuadLane.Quad"));
 	const double S = TNBeach::Scale;
 	for (int32 i = 0; i < 4; ++i)
 	{
 		const double X = (i < 2 ? 1.0 : -1.0) * TNBeachMeshes::QuadBaseHalf * S;
 		const double Y = (i % 2 == 0 ? -1.0 : 1.0) * TNBeachMeshes::QuadTrackHalf * S;
-		Wheels.Add(TNBeachKit::AddPart(this, QuadRoot, WheelMesh, FVector(X, Y, TNBeachMeshes::QuadWheelR * S)));
+		Wheels.Add(TNBeachKit::AddPart(this, QuadRoot, WheelMesh, FVector(X, Y, TNBeachMeshes::QuadWheelR * S), true, TN_ART("Beach.QuadLane.Wheel")));
 	}
 	QuadRoot->SetVisibility(false, true);
 
@@ -114,31 +121,62 @@ void ATN_BeachQuadLane::BuildQuad()
 
 bool ATN_BeachQuadLane::BuildRuts()
 {
-	// Dos rodadas oscuras de arena apisonada por donde van las ruedas, siguiendo el suelo: avisan de dónde pasa el quad.
+	// Dos rodadas oscuras de arena apisonada por donde van las ruedas, pegadas a la arena: avisan de dónde pasa el quad.
+	// La altura es la de la malla del terreno (ATN_BeachRaceGenerator::TraceTerrainAt) o, donde no la hay, la del generador,
+	// como las ruedas: una traza contra el mundo daba entre las palmeras en los muros invisibles de los lados (una que empieza
+	// dentro de uno sube la rodada 30 m) y, sobre el decorado, la subía encima de lo que hubiera. Cada tira se apoya en la
+	// arena a lo ancho (RutAcross puntos) y a lo largo cada RutStep: una tira plana de 6 m con tramos de 5 m flotaba en las
+	// hondonadas y en las cuestas de lado.
+	const ATN_BeachRaceGenerator* Gen = FindGenerator();
+	if (Gen && !Gen->IsRoundReady() && RutsTries < 8)
+	{
+		// El terreno de la ronda (con sus asientos) aún no está montado en esta máquina: se reintenta.
+		return false;
+	}
 	const FTransform LaneXf = GetActorTransform();
 	const double S = TNBeach::Scale;
 	const double TrackY = TNBeachMeshes::QuadTrackHalf * S * SizeK;
 	const double HalfW = TNBeachMeshes::QuadWheelHalfW * S * SizeK * 0.9;
-	const int32 N = FMath::Clamp(static_cast<int32>(2.0 * HalfLength / TNBeachQuad::RutStep), 4, 200);
-	TArray<double> LocalZ[2];
+	const int32 N = FMath::Clamp(FMath::CeilToInt32(2.0 * HalfLength / TNBeachQuad::RutStep), 4, 600);
+	constexpr int32 Across = TNBeachQuad::RutAcross;
+	const auto LocalYAt = [TrackY, HalfW](int32 Side, int32 k)
+	{
+		return (Side == 0 ? -1.0 : 1.0) * TrackY + FMath::Lerp(-HalfW, HalfW, static_cast<double>(k) / static_cast<double>(Across - 1));
+	};
+	const auto LocalXAt = [this, N](int32 j)
+	{
+		return -static_cast<double>(HalfLength) + 2.0 * static_cast<double>(HalfLength) * static_cast<double>(j) / static_cast<double>(N);
+	};
+	TArray<double> LocalZ;
+	LocalZ.SetNumZeroed(2 * (N + 1) * Across);
+	const auto ZIndex = [N](int32 Side, int32 j, int32 k) { return (Side * (N + 1) + j) * Across + k; };
 	int32 Hits = 0;
 	for (int32 Side = 0; Side < 2; ++Side)
 	{
-		LocalZ[Side].SetNum(N + 1);
-		const double Y = (Side == 0 ? -1.0 : 1.0) * TrackY;
 		for (int32 j = 0; j <= N; ++j)
 		{
-			const double X = -HalfLength + 2.0 * HalfLength * j / N;
-			const FVector OnGround = LaneXf.TransformPosition(FVector(X, Y, 0.0));
-			float Z = static_cast<float>(OnGround.Z);
-			if (TraceGround(this, OnGround, Z))
+			for (int32 k = 0; k < Across; ++k)
 			{
-				++Hits;
+				const FVector OnGround = LaneXf.TransformPosition(FVector(LocalXAt(j), LocalYAt(Side, k), 0.0));
+				float Z = static_cast<float>(OnGround.Z);
+				if (Gen)
+				{
+					if (!Gen->TraceTerrainAt(OnGround, Z))
+					{
+						Z = Gen->GetGroundHeightAt(OnGround);
+					}
+					++Hits;
+				}
+				else if (TraceGround(this, OnGround, Z))
+				{
+					// Sin generador (pruebas en otro mapa): traza, como antes.
+					++Hits;
+				}
+				LocalZ[ZIndex(Side, j, k)] = LaneXf.InverseTransformPosition(FVector(OnGround.X, OnGround.Y, Z)).Z + TNBeachQuad::RutLift;
 			}
-			LocalZ[Side][j] = LaneXf.InverseTransformPosition(FVector(OnGround.X, OnGround.Y, Z)).Z;
 		}
 	}
-	if (Hits < (N + 1) * 2 * 6 / 10 && RutsTries < 8)
+	if (Hits < 2 * (N + 1) * Across * 6 / 10 && RutsTries < 8)
 	{
 		// El suelo aún no está (o el paso cae fuera): se reintenta.
 		return false;
@@ -148,18 +186,20 @@ bool ATN_BeachQuadLane::BuildRuts()
 	const FLinearColor Dark(0.58f, 0.48f, 0.33f);
 	for (int32 Side = 0; Side < 2; ++Side)
 	{
-		const double Y = (Side == 0 ? -1.0 : 1.0) * TrackY;
 		for (int32 j = 0; j < N; ++j)
 		{
-			const double X0 = -HalfLength + 2.0 * HalfLength * j / N;
-			const double X1 = -HalfLength + 2.0 * HalfLength * (j + 1) / N;
-			const double Z0 = LocalZ[Side][j] + 5.0;
-			const double Z1 = LocalZ[Side][j + 1] + 5.0;
-			// Dos bandas por tramo (tacos del neumático).
-			const double Xm = (X0 + X1) * 0.5;
-			const double Zm = (Z0 + Z1) * 0.5;
-			B.AddQuad(FVector(X0, Y - HalfW, Z0), FVector(X0, Y + HalfW, Z0), FVector(Xm, Y + HalfW, Zm), FVector(Xm, Y - HalfW, Zm), FVector::UpVector, Dark);
-			B.AddQuad(FVector(Xm, Y - HalfW, Zm), FVector(Xm, Y + HalfW, Zm), FVector(X1, Y + HalfW, Z1), FVector(X1, Y - HalfW, Z1), FVector::UpVector, Light);
+			const double X0 = LocalXAt(j);
+			const double X1 = LocalXAt(j + 1);
+			// Bandas claras y oscuras a lo largo (tacos del neumático).
+			const int32 Band = FMath::FloorToInt32((0.5 * (X0 + X1) + static_cast<double>(HalfLength)) / TNBeachQuad::RutBand);
+			const FLinearColor& Color = Band % 2 == 0 ? Dark : Light;
+			for (int32 k = 0; k + 1 < Across; ++k)
+			{
+				const double Y0 = LocalYAt(Side, k);
+				const double Y1 = LocalYAt(Side, k + 1);
+				B.AddQuad(FVector(X0, Y0, LocalZ[ZIndex(Side, j, k)]), FVector(X0, Y1, LocalZ[ZIndex(Side, j, k + 1)]),
+					FVector(X1, Y1, LocalZ[ZIndex(Side, j + 1, k + 1)]), FVector(X1, Y0, LocalZ[ZIndex(Side, j + 1, k)]), FVector::UpVector, Color);
+			}
 		}
 	}
 	RutsMesh = TNProcRuntimeMesh::MakeStaticMesh(this, B, TNBeachKit::SolidMaterial());

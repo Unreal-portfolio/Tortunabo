@@ -634,9 +634,9 @@ void ATN_BeachPoolOctopus::BuildOctopus()
 	{
 		TNBeachCritterMeshes::BuildOctoBody(M, Look, static_cast<uint32>(Pal) * 17u + 3u);
 	});
-	BodyMesh = TNBeachCritterKit::AddPart(this, BodyRoot, BodyM, FVector::ZeroVector);
+	BodyMesh = TNBeachCritterKit::AddPart(this, BodyRoot, BodyM, FVector::ZeroVector, true, TN_ART("Beach.PoolOctopus.Body"));
 	UStaticMesh* SegM = TNBeachKit::CachedMesh(Key + TEXT("Arm"), [&Look](FTNProcMeshBuffers& M) { TNBeachCritterMeshes::BuildOctoArmSegment(M, Look); });
-	Arms = TNBeachCritterKit::AddInstances(this, GetRootComponent(), SegM, 8 * TNBeachCritterMeshes::OctoArmSegments, true, false);
+	Arms = TNBeachCritterKit::AddInstances(this, GetRootComponent(), SegM, 8 * TNBeachCritterMeshes::OctoArmSegments, true, false, TN_ART("Beach.PoolOctopus.ArmSegment"));
 	ArmXf.Init(FTransform(FQuat::Identity, PoolHome, FVector::ZeroVector), 8 * TNBeachCritterMeshes::OctoArmSegments);
 
 	UStaticMesh* SilM = TNBeachKit::CachedMesh(TEXT("Beach.Octopus.Silhouette"), [](FTNProcMeshBuffers& M) { TNBeachCritterMeshes::BuildOctoSilhouette(M); },

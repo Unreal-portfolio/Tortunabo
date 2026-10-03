@@ -1,4 +1,5 @@
 #include "Lobby/TN_ShopKeeper.h"
+#include "Art/TN_Art.h"
 #include "Audio/TN_MusicSynthComponent.h"
 #include "Core/TN_CosmeticLook.h"
 #include "Core/TN_Log.h"
@@ -498,7 +499,8 @@ void ATN_ShopKeeper::BuildStall()
 	}
 
 	UMaterialInterface* VertexColorMat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Cosmetics/Materials/M_CosmeticVertexColor.M_CosmeticVertexColor"));
-	Stall->SetStaticMesh(TNProcRuntimeMesh::MakeStaticMesh(this, B, VertexColorMat));
+	// El puesto entero es una pieza de arte; con StallScale se escala el componente, y con él la malla de arte.
+	TNArt::SetMesh(Stall, TNProcRuntimeMesh::MakeStaticMesh(this, B, VertexColorMat), TN_ART("Lobby.Shop.Stall"));
 }
 
 void ATN_ShopKeeper::HideBlockoutKeeper()
