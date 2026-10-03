@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "VR/TN_VRMath.h"
 
 /**
  * Cuentas de las manos VR sin mundo (las usan ATN_VRRig y UTN_VRGrabComponent y las prueba Tortunabo.VR.Hands*): la
@@ -147,7 +148,31 @@ namespace TNVRHands
 		return true;
 	}
 
+	// ── Gatillo entre los menús y el juego ───────────────────────────────────
+
+	/**
+	 * ¿Se come el procesador de menús este valor del eje del gatillo (no llega al juego)? Con un menú delante, sí (es el clic
+	 * del láser), salvo al soltarlo: el juego tiene que verlo abierto o se queda con el valor de antes del menú. Apretado en el
+	 * menú, tampoco llega al juego tras cerrarlo hasta soltarlo: si no, el clic en «Cerrar» con el gatillo interactuaría otra
+	 * vez con lo que abrió el menú (la tienda, el general). bPressedInMenu: estado de cada gatillo, lo actualiza.
+	 */
+	inline bool ShouldEatTriggerAxis(bool bMenuUp, bool bJustPressed, float Value, bool& bPressedInMenu)
+	{
+		if (Value < TNVRMath::AnalogReleaseThreshold)
+		{
+			bPressedInMenu = false;
+			return false;
+		}
+		if (bMenuUp)
+		{
+			bPressedInMenu |= bJustPressed;
+			return true;
+		}
+		return bPressedInMenu;
+	}
+
 	// ── Vibración de los mandos ──────────────────────────────────────────────
+
 
 
 	/** Un toque de vibración: fuerza (0..1) y duración (s). */

@@ -246,8 +246,39 @@ bool FTNVRPokeTest::RunTest(const FString& Parameters)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Gatillo entre los menús y el juego
+// ─────────────────────────────────────────────────────────────────────────────
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNVRTriggerMenuLatchTest,
+	"Tortunabo.VR.TriggerMenuLatch",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNVRTriggerMenuLatchTest::RunTest(const FString& Parameters)
+{
+	using TNVRHands::ShouldEatTriggerAxis;
+	// Clic en «Cerrar» de la tienda con el gatillo: se aprieta con el menú delante, el menú se cierra y el gatillo sigue
+	// apretado unos fotogramas (con su temblor). Antes el juego lo veía como una pulsación nueva y volvía a abrir la tienda.
+	bool bPressed = false;
+	TestTrue(TEXT("Apretado en el menú: es del menú"), ShouldEatTriggerAxis(true, true, 0.9f, bPressed));
+	TestTrue(TEXT("Menú cerrado, aún apretado: no llega al juego"), ShouldEatTriggerAxis(false, false, 0.88f, bPressed));
+	TestTrue(TEXT("Menú cerrado, aún apretado (otro valor): tampoco"), ShouldEatTriggerAxis(false, false, 0.6f, bPressed));
+	TestFalse(TEXT("Al soltarlo: llega al juego (lo ve abierto)"), ShouldEatTriggerAxis(false, false, 0.1f, bPressed));
+	TestFalse(TEXT("Apretado otra vez jugando: llega al juego"), ShouldEatTriggerAxis(false, false, 0.9f, bPressed));
+
+	// El menú se abrió con el gatillo (interactuar con la tienda) y se suelta dentro: el juego tiene que ver que se soltó, o
+	// se queda con el 90 % de antes del menú.
+	bool bOpened = false;
+	TestFalse(TEXT("Jugando: llega al juego"), ShouldEatTriggerAxis(false, true, 0.9f, bOpened));
+	TestTrue(TEXT("Menú abierto, aún apretado: es del menú"), ShouldEatTriggerAxis(true, false, 0.9f, bOpened));
+	TestFalse(TEXT("Soltado con el menú delante: llega al juego"), ShouldEatTriggerAxis(true, false, 0.f, bOpened));
+	TestFalse(TEXT("Al cerrarlo sin tocar: nada pendiente"), bOpened);
+	return true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Viñeta de confort y sitio para el HUD
 // ─────────────────────────────────────────────────────────────────────────────
+
 
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNVRComfortVignetteTest,
