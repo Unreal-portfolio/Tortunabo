@@ -56,6 +56,11 @@ public:
 	bool DebugSavePhoto(const FString& File, int32 Size, float Yaw);
 	/** Pruebas: alguna pieza del buggy del escaparate aún precarga sus PSO (se vería con el material por defecto). */
 	bool DebugIsBuggyPrecaching() const;
+	/**
+	 * Pruebas: pide las miniaturas de todos los modelos y pinturas del buggy y, cuando están pintadas, las guarda en
+	 * Dir como PNG. Devuelve true cuando ha acabado.
+	 */
+	bool DebugSaveBuggyThumbs(const FString& Dir);
 #endif
 
 	/** Pose: saludo al elegir algo; con bCelebrate, el grito de alegría de una compra. Luego vuelve a la espera. */
@@ -149,6 +154,8 @@ private:
 	/** Miniaturas del buggy: de una en una, con el buggy de miniaturas ya vestido y sus PSO listos. */
 	TArray<FThumbRequest> PendingBuggyThumbs;
 	int32 BuggyThumbFrames = 0;
+	/** La miniatura del buggy ya se ha capturado una vez con su cámara (ver TickBuggyThumbs). */
+	bool bBuggyThumbPrimed = false;
 	FTN_TurtleLook Look;
 	FTN_BuggyLook BuggyLookState;
 	bool bBuggyMode = false;

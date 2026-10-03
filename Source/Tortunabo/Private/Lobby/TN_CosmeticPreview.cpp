@@ -372,31 +372,46 @@ void ATN_CosmeticPreview::TickBuggyThumbs()
 	{
 		ThumbBuggy->ApplyLook(Wanted, TNPreviewDetail::BuggyPreviewTeam);
 		BuggyThumbFrames = 0;
+		bBuggyThumbPrimed = false;
 		return;
 	}
-	// Un fotograma para que la escena tenga las mallas nuevas y, si hay precarga de PSO, a que acabe (con tope).
+	// Un fotograma para que la escena tenga las mallas nuevas y, si hay precarga de PSO, a que acabe (con tope). Mientras
+	// precarga, una pieza puede no tener aún su proxy de render (no se dibuja): también se espera.
 	bool bPrecaching = false;
 	TArray<UPrimitiveComponent*> Parts;
 	ThumbBuggy->GetPrimitives(Parts);
-	for (UPrimitiveComponent* Part : Parts) { bPrecaching |= Part && Part->IsVisible() && Part->CheckPSOPrecachingAndBoostPriority(EPSOPrecachePriority::Highest); }
-	if (++BuggyThumbFrames < 2 || (bPrecaching && BuggyThumbFrames < 120)) { return; }
+	for (UPrimitiveComponent* Part : Parts)
+	{
+		if (!Part || !Part->IsVisible()) { continue; }
+		bPrecaching |= Part->CheckPSOPrecachingAndBoostPriority(EPSOPrecachePriority::Highest) || (Part->IsRegistered() && !Part->SceneProxy);
+	}
+	if (++BuggyThumbFrames < 2 || (bPrecaching && BuggyThumbFrames < 600)) { return; }
+	// Dos capturas en fotogramas seguidos: la captura guarda su estado de render, y la oclusión de la miniatura anterior
+	// (otra cámara, otra carrocería) taparía piezas que ahora se ven. La primera la pone al día; la segunda es la buena.
 	CaptureBuggyThumbnail(Request);
+	if (!bBuggyThumbPrimed)
+	{
+		bBuggyThumbPrimed = true;
+		return;
+	}
+	bBuggyThumbPrimed = false;
 	PendingBuggyThumbs.RemoveAt(0);
 }
 
 void ATN_CosmeticPreview::CaptureBuggyThumbnail(const FThumbRequest& Request)
 {
 	using namespace TNPreviewDetail;
-	// Buggy solo, de tres cuartos por el lado de la conductora: el modelo entero o, la pintura, desde más arriba.
+	// Buggy solo, de tres cuartos por el lado de la conductora: el modelo entero o, la pintura (en el de serie), desde más
+	// arriba para que se vean los pontones y el capó.
 	ThumbCapture->ClearShowOnlyComponents();
 	TArray<UPrimitiveComponent*> Parts;
 	ThumbBuggy->GetPrimitives(Parts);
 	for (UPrimitiveComponent* Part : Parts) { ThumbCapture->ShowOnlyComponent(Part); }
 	const bool bModel = Request.Category == ETNCosmeticCategory::BuggyModel;
 	const FTransform BuggyXf = ThumbBuggyRoot->GetComponentTransform();
-	const FVector Focus = BuggyXf.TransformPosition(bModel ? FVector(0.f, 0.f, 90.f) : FVector(-40.f, 0.f, 96.f));
-	const FVector ViewDir = (bModel ? FVector(0.78, -0.52, 0.36) : FVector(0.3, -0.72, 0.62)).GetSafeNormal();
-	const float Reach = (bModel ? 270.f : 185.f) * BuggyScale;
+	const FVector Focus = BuggyXf.TransformPosition(bModel ? FVector(0.f, 0.f, 90.f) : FVector(10.f, 0.f, 80.f));
+	const FVector ViewDir = (bModel ? FVector(0.78, -0.52, 0.36) : FVector(0.55, -0.62, 0.56)).GetSafeNormal();
+	const float Reach = (bModel ? 270.f : 235.f) * BuggyScale;
 	const float Distance = Reach / FMath::Tan(FMath::DegreesToRadians(CaptureFOV * 0.5f)) * 1.02f;
 	const FVector CamPos = Focus + ViewDir * Distance;
 	ThumbCapture->SetWorldLocationAndRotation(CamPos, LookRotation(CamPos, Focus));

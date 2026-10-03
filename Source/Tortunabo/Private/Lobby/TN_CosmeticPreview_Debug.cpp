@@ -27,6 +27,41 @@
 
 DEFINE_LOG_CATEGORY_STATIC(LogTNBuggyPhotos, Log, All);
 
+namespace TNBuggyPhotosDetail
+{
+	/** Guarda una captura del escaparate (HDR con alfa de cobertura) como PNG sobre un degradado de mar. */
+	bool SaveCapturePng(UTextureRenderTarget2D* RT, const FString& File)
+	{
+		TArray<FFloat16Color> Pixels;
+		FTextureRenderTargetResource* Resource = RT ? RT->GameThread_GetRenderTargetResource() : nullptr;
+		const int32 Size = RT ? RT->SizeX : 0;
+		if (!Resource || !Resource->ReadFloat16Pixels(Pixels) || Size <= 1 || Pixels.Num() != Size * RT->SizeY || RT->SizeY != Size) { return false; }
+
+		// Como M_UI_Preview: exposición, curva ACES y cobertura = 1 - alfa; detrás, un degradado de mar.
+		TArray<FColor> Out;
+		Out.SetNumUninitialized(Size * Size);
+		for (int32 y = 0; y < Size; ++y)
+		{
+			const float T = static_cast<float>(y) / (Size - 1);
+			const FLinearColor Bg = FMath::Lerp(FLinearColor::FromSRGBColor(FColor(0x12, 0x30, 0x5A)), FLinearColor::FromSRGBColor(FColor(0x1E, 0x9C, 0xC6)), T);
+			for (int32 x = 0; x < Size; ++x)
+			{
+				const FFloat16Color& P = Pixels[y * Size + x];
+				FLinearColor C(P.R.GetFloat(), P.G.GetFloat(), P.B.GetFloat(), P.A.GetFloat());
+				const auto Aces = [](float X) { X = FMath::Max(X * 1.6f, 0.f); return FMath::Clamp((X * (2.51f * X + 0.03f)) / (X * (2.43f * X + 0.59f) + 0.14f), 0.f, 1.f); };
+				const float Cover = FMath::Clamp(1.f - C.A, 0.f, 1.f);
+				const FLinearColor Mapped(Aces(C.R), Aces(C.G), Aces(C.B), 1.f);
+				FLinearColor Final = Mapped * Cover + Bg * (1.f - Cover);
+				Final.A = 1.f;
+				Out[y * Size + x] = Final.ToFColor(true);
+			}
+		}
+		TArray64<uint8> Png;
+		FImageUtils::PNGCompressImageArray(Size, Size, TArrayView64<const FColor>(Out.GetData(), Out.Num()), Png);
+		return FFileHelper::SaveArrayToFile(Png, *File);
+	}
+}
+
 bool ATN_CosmeticPreview::DebugSavePhoto(const FString& File, int32 Size, float Yaw)
 {
 	UTextureRenderTarget2D* RT = UKismetRenderingLibrary::CreateRenderTarget2D(this, Size, Size, RTF_RGBA16f, FLinearColor(0.f, 0.f, 0.f, 1.f));
@@ -39,36 +74,33 @@ bool ATN_CosmeticPreview::DebugSavePhoto(const FString& File, int32 Size, float 
 	ManualSpinHold = 1000.f;
 	Turntable->SetRelativeRotation(FRotator(0.f, Yaw, 0.f));
 	Capture->CaptureScene();
-
-	TArray<FFloat16Color> Pixels;
-	FTextureRenderTargetResource* Resource = RT->GameThread_GetRenderTargetResource();
-	const bool bRead = Resource && Resource->ReadFloat16Pixels(Pixels);
+	const bool bSaved = TNBuggyPhotosDetail::SaveCapturePng(RT, File);
 	Capture->TextureTarget = OldTarget;
 	Capture->bCaptureEveryFrame = bOldEvery;
-	if (!bRead || Pixels.Num() != Size * Size) { return false; }
+	return bSaved;
+}
 
-	// Como M_UI_Preview: exposición, curva ACES y cobertura = 1 - alfa; detrás, un degradado de mar.
-	TArray<FColor> Out;
-	Out.SetNumUninitialized(Size * Size);
-	for (int32 y = 0; y < Size; ++y)
+bool ATN_CosmeticPreview::DebugSaveBuggyThumbs(const FString& Dir)
+{
+	TArray<TPair<FString, UTextureRenderTarget2D*>> Thumbs;
+	for (const ETNCosmeticCategory Category : { ETNCosmeticCategory::BuggyModel, ETNCosmeticCategory::BuggyPaint })
 	{
-		const float T = static_cast<float>(y) / (Size - 1);
-		const FLinearColor Bg = FMath::Lerp(FLinearColor::FromSRGBColor(FColor(0x12, 0x30, 0x5A)), FLinearColor::FromSRGBColor(FColor(0x1E, 0x9C, 0xC6)), T);
-		for (int32 x = 0; x < Size; ++x)
+		TArray<FName> Ids = TNBuggyCosmetics::CatalogIds(Category);
+		Ids.Insert(NAME_None, 0);
+		for (const FName Id : Ids)
 		{
-			const FFloat16Color& P = Pixels[y * Size + x];
-			FLinearColor C(P.R.GetFloat(), P.G.GetFloat(), P.B.GetFloat(), P.A.GetFloat());
-			const auto Aces = [](float X) { X = FMath::Max(X * 1.6f, 0.f); return FMath::Clamp((X * (2.51f * X + 0.03f)) / (X * (2.43f * X + 0.59f) + 0.14f), 0.f, 1.f); };
-			const float Cover = FMath::Clamp(1.f - C.A, 0.f, 1.f);
-			const FLinearColor Mapped(Aces(C.R), Aces(C.G), Aces(C.B), 1.f);
-			FLinearColor Final = Mapped * Cover + Bg * (1.f - Cover);
-			Final.A = 1.f;
-			Out[y * Size + x] = Final.ToFColor(true);
+			const FString Name = FString::Printf(TEXT("miniatura_%s_%s"), Category == ETNCosmeticCategory::BuggyModel ? TEXT("modelo") : TEXT("pintura"),
+				Id.IsNone() ? TEXT("Serie") : *Id.ToString().Replace(TEXT("BuggyModel_"), TEXT("")).Replace(TEXT("BuggyPaint_"), TEXT("")));
+			Thumbs.Emplace(Name, GetThumbnail(Category, Id));
 		}
 	}
-	TArray64<uint8> Png;
-	FImageUtils::PNGCompressImageArray(Size, Size, TArrayView64<const FColor>(Out.GetData(), Out.Num()), Png);
-	return FFileHelper::SaveArrayToFile(Png, *File);
+	if (PendingBuggyThumbs.Num() > 0) { return false; }
+	for (const TPair<FString, UTextureRenderTarget2D*>& Thumb : Thumbs)
+	{
+		const bool bOk = TNBuggyPhotosDetail::SaveCapturePng(Thumb.Value, Dir / (Thumb.Key + TEXT(".png")));
+		UE_LOG(LogTNBuggyPhotos, Display, TEXT("[BuggyPhotos] %s %s"), bOk ? TEXT("ok") : TEXT("FALLO"), *Thumb.Key);
+	}
+	return true;
 }
 
 bool ATN_CosmeticPreview::DebugIsBuggyPrecaching() const
@@ -168,6 +200,12 @@ static FAutoConsoleCommandWithWorldAndArgs GTNBuggyPhotosCommand(
 			}
 			if (I >= Shots->Num())
 			{
+				// Después, las miniaturas de la tienda (con su tope por si alguna no acaba de pintarse).
+				if (!Stage->DebugSaveBuggyThumbs(Dir) && I < Shots->Num() + 400)
+				{
+					++I;
+					return true;
+				}
 				UE_LOG(LogTNBuggyPhotos, Display, TEXT("[BuggyPhotos] %d fotos en %s"), Shots->Num(), *Dir);
 				FPlatformMisc::RequestExit(false, TEXT("TN.Buggy.Photos"));
 				return false;
