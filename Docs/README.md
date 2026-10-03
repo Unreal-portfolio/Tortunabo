@@ -13,6 +13,7 @@ Un documento de referencia por tema. Lo retirado o superado está en [`Archivo/`
 | Gaps de Steam | [`Analisis/2026-09-29/F_gaps_steam.md`](Analisis/2026-09-29/F_gaps_steam.md) | Auditoría de lo que falta para publicar. |
 | Calidad y limpieza de código | [`Calidad-Codigo-2026-09-29.md`](Calidad-Codigo-2026-09-29.md), [`Limpieza-2026-09-29.md`](Limpieza-2026-09-29.md) | Auditoría de código vivo y de código muerto antes de Steam. |
 | Pruebas de estrés | [`Estres-Monkey-2026-09-29.md`](Estres-Monkey-2026-09-29.md) | Monkey test y herramientas de estrés. |
+| Render y GPU | [`Rendimiento_GPU_2026-10-02.md`](Rendimiento_GPU_2026-10-02.md) | Hilos de juego y render, GPU, draw calls y triángulos con ventana (Development y DebugGame). |
 | Integración de la nube | [`Reviews/nube/integracion-2026-09-29.md`](Reviews/nube/integracion-2026-09-29.md) | Estado de la PR #9 (tarea E0-01 del roadmap). |
 
 ## Equipo y herramientas
