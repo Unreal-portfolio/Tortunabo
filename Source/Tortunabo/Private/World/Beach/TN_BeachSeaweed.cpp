@@ -195,7 +195,7 @@ void ATN_BeachSeaweed::ApplySpec()
 
 	TNBeachTrapKit::FBuffers Patch;
 	BuildPatch(Patch, Ax, Ay, MoundH, Seed, FrondBases);
-	TNBeachTrapKit::SetMesh(PatchMesh, this, Patch);
+	TNBeachTrapKit::SetMesh(PatchMesh, this, Patch, TN_ART("Beach.Seaweed.Patch"));
 	FrondPhases.Reset();
 	FrondHeights.Reset();
 	for (int32 f = 0; f < FrondBases.Num(); ++f)

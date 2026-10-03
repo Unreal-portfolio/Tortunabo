@@ -307,12 +307,12 @@ void ATN_BeachShellGate::ApplySpec()
 	const double SwitchSide = bBare ? -1.0 : ((TNPlaygroundKit::Hash01(1, 2, Seed) > 0.5) ? 1.0 : -1.0);
 	SwitchLocal = FVector(-380.0, SwitchSide * (DoorWidth * 0.5 + 170.0), 0.0);
 	BuildSwitchPad(Frame, SwitchLocal, SwitchRadius, DoorWidth);
-	TNBeachTrapKit::SetMesh(FrameMesh, this, Frame);
+	TNBeachTrapKit::SetMesh(FrameMesh, this, Frame, TN_ART("Beach.ShellGate.Frame"));
 	FrameCollision->SetCollisionConvexMeshes(Hulls);
 
 	TNBeachTrapKit::FBuffers Shell;
 	BuildSwitchShell(Shell, SwitchRadius * 0.62, Seed);
-	TNBeachTrapKit::SetMesh(SwitchMesh, this, Shell);
+	TNBeachTrapKit::SetMesh(SwitchMesh, this, Shell, TN_ART("Beach.ShellGate.Switch"));
 	SwitchMesh->SetRelativeLocation(SwitchLocal);
 
 	// Hojas: la de -Y crece hacia +Y desde su bisagra; la de +Y, girada 180°, igual.
@@ -322,10 +322,10 @@ void ATN_BeachShellGate::ApplySpec()
 	HingeRight->SetRelativeLocation(FVector(0.0, DoorWidth * 0.5, 0.0));
 	TNBeachTrapKit::FBuffers LeafA;
 	BuildLeaf(LeafA, LeafW, LeafH, Seed);
-	TNBeachTrapKit::SetMesh(LeafMeshLeft, this, LeafA);
+	TNBeachTrapKit::SetMesh(LeafMeshLeft, this, LeafA, TN_ART("Beach.ShellGate.Leaf"));
 	TNBeachTrapKit::FBuffers LeafB;
 	BuildLeaf(LeafB, LeafW, LeafH, Seed + 17u);
-	TNBeachTrapKit::SetMesh(LeafMeshRight, this, LeafB);
+	TNBeachTrapKit::SetMesh(LeafMeshRight, this, LeafB, TN_ART("Beach.ShellGate.Leaf"));
 	for (UBoxComponent* Leaf : { LeafBoxLeft.Get(), LeafBoxRight.Get() })
 	{
 		Leaf->SetBoxExtent(FVector(LeafThick * 0.5, LeafW * 0.5, LeafH * 0.5), false);

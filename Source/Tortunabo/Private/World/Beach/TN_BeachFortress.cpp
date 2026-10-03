@@ -59,22 +59,26 @@ void ATN_BeachFortress::ApplySpec()
 	const uint32 Seed = TNBeachTrapKit::SeedOf(Spec.Seed, 151u);
 	const TNBeachFortressKit::FPlan Plan = TNBeachFortressKit::MakePlan(Spec.Element, Spec.SizeScale, Seed);
 
+	// Espejo en Y según la semilla: la espiral de subida, las torrecillas y la cornisa, hacia un lado u otro.
+	const bool bMirror = (TNBeachTrapKit::SeedOf(Spec.Seed, 157u) & 1u) != 0u;
+
 	TNBeachTrapKit::FBuffers Castle;
 	TNBeachTrapKit::FBuffers Decor;
 	TNBeachTrapKit::FHulls Hulls;
-	TNBeachFortressKit::BuildFortress(Castle, Decor, Hulls, Plan, Seed);
+	// Piezas que Arte puede sustituir (Docs/Arte_Assets.md), con su pivote ya reflejado; la colisión es la de los cascos.
+	TNArt::FPieceLog Log(TEXT("Fortress"));
+	TNBeachFortressKit::BuildFortress(Castle, Decor, Hulls, Plan, Seed, &Log, bMirror);
 	TNBeachFortressKit::TintSand(Castle, Seed);
 
-	// Espejo en Y según la semilla: la espiral de subida, las torrecillas y la cornisa, hacia un lado u otro.
-	const bool bMirror = (TNBeachTrapKit::SeedOf(Spec.Seed, 157u) & 1u) != 0u;
 	if (bMirror)
 	{
 		TNBeachFortressKit::MirrorY(Castle);
 		TNBeachFortressKit::MirrorY(Decor);
 		TNBeachFortressKit::MirrorY(Hulls);
 	}
-	TNBeachTrapKit::SetMesh(CastleMesh, this, Castle);
-	TNBeachTrapKit::SetMesh(DecorMesh, this, Decor);
+	TNBeachTrapKit::SetMeshWithPieces(CastleMesh, this, Castle, Log);
+	TNBeachTrapKit::SetMeshWithPieces(DecorMesh, this, Decor, Log);
+	TNArt::SpawnPieceArt(CastleMesh, Log);
 	CastleCollision->SetCollisionConvexMeshes(Hulls);
 
 	// Lo de la cima, con el espejo.

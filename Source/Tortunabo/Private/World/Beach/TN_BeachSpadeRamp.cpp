@@ -197,7 +197,7 @@ void ATN_BeachSpadeRamp::ApplySpec()
 
 	TNBeachTrapKit::FBuffers Spade;
 	BuildSpade(Spade, Dims, Seed);
-	TNBeachTrapKit::SetMesh(SpadeMesh, this, Spade);
+	TNBeachTrapKit::SetMesh(SpadeMesh, this, Spade, TN_ART("Beach.SpadeRamp.Spade"));
 	FVector BladeC, BladeH, ShaftC, ShaftH, GripC, GripH;
 	SpadeBoxes(Dims, BladeC, BladeH, ShaftC, ShaftH, GripC, GripH);
 	BladeBox->SetBoxExtent(BladeH, false);
@@ -270,7 +270,7 @@ void ATN_BeachSpadeRamp::ApplySpec()
 		SpadePivot->SetRelativeLocationAndRotation(FVector::ZeroVector, FRotator::ZeroRotator);
 		SpadeFrame->SetRelativeLocationAndRotation(Tip, FrameRot);
 	}
-	TNBeachTrapKit::SetMesh(BaseMesh, this, Base);
+	TNBeachTrapKit::SetMesh(BaseMesh, this, Base, TN_ART("Beach.SpadeRamp.Base"));
 	BaseCollision->SetCollisionConvexMeshes(Hulls);
 	UE_LOG(LogTortunabo, Verbose, TEXT("[Playa] Pala %s: %s, %.0f cm."), *GetName(), bSeesaw ? TEXT("balancín") : TEXT("puente-trampolín"), SpadeLength);
 }

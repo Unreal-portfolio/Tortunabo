@@ -6,6 +6,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #include "World/Beach/TN_BeachChest.h"
+#include "Art/TN_Art.h"
 #include "Settings/TN_GameplayAssetSettings.h"
 #include "World/TN_PickupInteractableBase.h"
 #include "World/TN_ScorePickup.h"
@@ -768,9 +769,10 @@ void ATN_BeachChestSpot::BuildChestMeshes()
 	{
 		return;
 	}
-	ChestBody->SetStaticMesh(SharedMesh(0));
-	ChestTreasure->SetStaticMesh(SharedMesh(1));
-	ChestLid->SetStaticMesh(SharedMesh(2));
+	// Piezas de arte (Docs/Arte_Assets.md): la tapa gira en su bisagra y el tesoro se ve al abrirse; las mallas de arte van con ellos.
+	TNArt::SetMesh(ChestBody, SharedMesh(0), TN_ART("Beach.Chest.Body"));
+	TNArt::SetMesh(ChestTreasure, SharedMesh(1), TN_ART("Beach.Chest.Treasure"));
+	TNArt::SetMesh(ChestLid, SharedMesh(2), TN_ART("Beach.Chest.Lid"));
 }
 
 void ATN_BeachChestSpot::EnsureBeacon()

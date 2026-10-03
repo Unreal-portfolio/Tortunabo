@@ -196,7 +196,7 @@ void ATN_BeachBarbedWire::ApplySpec()
 
 	TNBeachTrapKit::FBuffers Wire;
 	TNBeachBarbedWireDetail::BuildWire(Wire, HalfLength, CoilRadius, Seed);
-	TNBeachTrapKit::SetMesh(WireMesh, this, Wire);
+	TNBeachTrapKit::SetMesh(WireMesh, this, Wire, TN_ART("Beach.BarbedWire.Wire"));
 
 	TNBeachTrapKit::FHulls Hulls;
 	TNBeachBarbedWireDetail::BuildHulls(Hulls, HalfLength, CoilRadius);

@@ -1,5 +1,6 @@
 #include "Lobby/Playground/TN_PlaygroundPiece.h"
 #include "Lobby/Playground/TN_PlaygroundSynthComponent.h"
+#include "Art/TN_Art.h"
 #include "Core/TN_Log.h"
 #include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -60,6 +61,86 @@ namespace TNPlaygroundPieceDetail
 	FLinearColor TintColor(ETNPlaygroundTint Which, float Shine = 0.14f)
 	{
 		return TNPlaygroundKit::ToyColor(static_cast<int32>(Which), Shine);
+	}
+
+	// ── Arte (Docs/Arte_Assets.md) ───────────────────────────────────────────
+	// Cada pieza de arte se modela con las medidas por defecto de ATN_PlaygroundPiece (las de la tabla) y se estira a las de
+	// cada copia. Sin sustituto, nada de esto se ve: la malla generada sale igual que siempre.
+	constexpr double RefPostHeight = 180.0;
+	constexpr int32 RefStepCount = 3;
+	constexpr double RefStepHeight = 36.0;
+	constexpr double RefStepDepth = 60.0;
+	constexpr double RefStepWidth = 120.0;
+	constexpr double RefSlideHeight = 160.0;
+	constexpr double RefSlideAngle = 46.0;
+	constexpr double RefSlideWidth = 190.0;
+	constexpr double RefPlatformHeight = 140.0;
+	constexpr double RefCookieRadius = 115.0;
+	constexpr double RefTunnelLength = 220.0;
+	constexpr double RefArmLength = 230.0;
+	constexpr double RefArmHeight = 30.0;
+
+	/** Pieza de arte del cuerpo (la malla que no gira). Variantes de otra forma, otro nombre: la rampa sin escalera. */
+	FName BodyArtSlot(ETNPlaygroundPieceType Type, bool bSlideSteps)
+	{
+		switch (Type)
+		{
+		case ETNPlaygroundPieceType::PopsicleSteps: return TN_ART("Lobby.Playground.PopsicleSteps");
+		case ETNPlaygroundPieceType::ShellSlide:
+			return bSlideSteps ? TN_ART("Lobby.Playground.ShellSlide") : TN_ART("Lobby.Playground.ShellSlideNoSteps");
+		case ETNPlaygroundPieceType::CookiePlatform: return TN_ART("Lobby.Playground.CookiePlatform");
+		case ETNPlaygroundPieceType::CastleTunnel: return TN_ART("Lobby.Playground.CastleTunnel");
+		case ETNPlaygroundPieceType::SpadeSpinner: return TN_ART("Lobby.Playground.SpadeSpinnerHub");
+		default: return TN_ART("Lobby.Playground.BucketPost");
+		}
+	}
+
+	/** Pieza de arte de las palas que giran: una por número de brazos (la forma cambia). */
+	FName SpinArtSlot(int32 Arms)
+	{
+		switch (Arms)
+		{
+		case 1: return TN_ART("Lobby.Playground.SpadeSpinnerArms1");
+		case 3: return TN_ART("Lobby.Playground.SpadeSpinnerArms3");
+		default: return TN_ART("Lobby.Playground.SpadeSpinnerArms2");
+		}
+	}
+
+	/** Escala de la malla de arte del cuerpo para las medidas de esta copia respecto a las de referencia. */
+	FVector BodyArtScale(const ATN_PlaygroundPiece& Piece)
+	{
+		switch (Piece.PieceType)
+		{
+		case ETNPlaygroundPieceType::PopsicleSteps:
+		{
+			const double Count = FMath::Clamp(Piece.StepCount, 1, 5);
+			return FVector((Count * Piece.StepDepth) / (RefStepCount * RefStepDepth), Piece.StepWidth / RefStepWidth,
+				(Count * Piece.StepHeight) / (RefStepCount * RefStepHeight));
+		}
+		case ETNPlaygroundPieceType::ShellSlide:
+		{
+			// Largo de la rampa (por la pendiente), medio ancho del labio y alto de la charnela.
+			const auto RunFor = [](double Height, double AngleDeg) { return (Height - SlideLip) / FMath::Tan(FMath::DegreesToRadians(FMath::Clamp(AngleDeg, 20.0, 60.0))); };
+			const auto LipHalfFor = [](double Width) { return FMath::Max(SlideHingeHalf + 10.0, Width * 0.5); };
+			return FVector(RunFor(Piece.SlideHeight, Piece.SlideAngle) / RunFor(RefSlideHeight, RefSlideAngle), LipHalfFor(Piece.SlideWidth) / LipHalfFor(RefSlideWidth),
+				Piece.SlideHeight / RefSlideHeight);
+		}
+		case ETNPlaygroundPieceType::CookiePlatform:
+			return FVector(Piece.CookieRadius / RefCookieRadius, Piece.CookieRadius / RefCookieRadius, Piece.PlatformHeight / RefPlatformHeight);
+		case ETNPlaygroundPieceType::CastleTunnel:
+			return FVector(Piece.TunnelLength / RefTunnelLength, 1.0, 1.0);
+		case ETNPlaygroundPieceType::SpadeSpinner:
+			return FVector::OneVector;
+		default:
+			return FVector(1.0, 1.0, Piece.PostHeight / RefPostHeight);
+		}
+	}
+
+	/** Escala de la malla de arte de las palas: largo del brazo y altura del mango. */
+	FVector SpinArtScale(const ATN_PlaygroundPiece& Piece)
+	{
+		const double Length = Piece.ArmLength / RefArmLength;
+		return FVector(Length, Length, (Piece.ArmHeight + 12.0) / (RefArmHeight + 12.0));
 	}
 
 	/** Solo simulan el movimiento de un personaje el servidor y el cliente que lo controla. */
@@ -953,12 +1034,23 @@ void ATN_PlaygroundPiece::BuildAll(bool bForce)
 		break;
 	}
 
-	BodyMesh->SetStaticMesh(TNPlaygroundKit::BuildMesh(this, Body, Mat));
+	// Cuerpo: pieza de arte (la colisión convexa de abajo no cambia; la de la malla generada se queda invisible).
+	TNArt::SetMesh(BodyMesh, TNPlaygroundKit::BuildMesh(this, Body, Mat), BodyArtSlot(PieceType, bSlideSteps));
+	TNPlaygroundKit::ScaleArt(BodyMesh, BodyArtScale(*this));
 	BodyCollision->SetCollisionConvexMeshes(Hulls);
 
 	// Palas: malla que gira y cajas que apartan a los caparazones con física.
 	const bool bSpinner = PieceType == ETNPlaygroundPieceType::SpadeSpinner;
-	SpinMesh->SetStaticMesh(bSpinner ? TNPlaygroundKit::BuildMesh(this, Spin, Mat) : nullptr);
+	if (bSpinner)
+	{
+		TNArt::SetMesh(SpinMesh, TNPlaygroundKit::BuildMesh(this, Spin, Mat), SpinArtSlot(FMath::Clamp(NumArms, 1, 3)));
+		TNPlaygroundKit::ScaleArt(SpinMesh, SpinArtScale(*this));
+	}
+	else if (SpinMesh->GetStaticMesh())
+	{
+		// Ya no es una barra: se quita su malla y, con ella, la de arte.
+		TNArt::SetMesh(SpinMesh, nullptr, SpinArtSlot(2));
+	}
 	SpinPivot->SetRelativeRotation(FRotator(0.0, StartAngle, 0.0));
 	const int32 Arms = FMath::Clamp(NumArms, 1, 3);
 	const double ArmTop = ArmHeight + 12.0;
