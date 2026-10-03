@@ -1649,6 +1649,25 @@ public:
 	TObjectPtr<USoundBase> ConsumeSound;
 
 	/**
+	 * Servidor: sacudida corta de cámara y vibración del mando (Strength 0..1) solo en la máquina del jugador que recibe
+	 * el golpe, con sus ajustes (TNHitFeedback). Uno por fotograma: el primer aviso manda.
+	 */
+	void NotifyHitFeedback(float Strength);
+
+	/**
+	 * Cliente dueño: aplica la sacudida y la vibración de un golpe que ha decidido el servidor. Fiable: uno por golpe, y en
+	 * una prueba con un cliente el no fiable se perdió en el primer derribo.
+	 */
+	UFUNCTION(Client, Reliable)
+	void ClientPlayHitFeedback(float Strength);
+
+private:
+	/** Fotograma del último aviso de golpe (NotifyHitFeedback), para no repetirlo dentro del mismo. */
+	uint64 LastHitFeedbackFrame = 0;
+
+public:
+
+	/**
 	 * Multicast: spawnea Sound at-location en todas las máquinas. Llamar SOLO
 	 * desde el servidor. Usado por TN_InventoryComponent (pickup/consume) y
 	 * por el propio Character (jump/knockdown/kill/throw).

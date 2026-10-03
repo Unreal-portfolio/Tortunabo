@@ -96,6 +96,10 @@ struct FTNGameSettings
 	UPROPERTY()
 	bool bInvertGamepadY = false;
 
+	/** Vibración del mando al recibir un golpe (derribo, aturdimiento, impacto de un lanzable). Desde la versión 4. */
+	UPROPERTY()
+	bool bGamepadVibration = true;
+
 	/**
 	 * Teclas y botones reasignados, por fila de controles y aparato: «IA_Jump#0» (teclado y ratón) o «IA_Move:Y+#1»
 	 * (mando) → tecla nueva. Lo que no está aquí va con la tecla de serie de IMC_Player.
@@ -181,9 +185,13 @@ class TORTUNABO_API UTN_SettingsSaveGame : public USaveGame
 	GENERATED_BODY()
 
 public:
-	/** Versión del formato, por si algún día hay que convertir ajustes viejos (2: teclas, micrófono, interfaz; 3: idioma y ojo de pez). */
+	/**
+	 * Versión del formato, por si algún día hay que convertir ajustes viejos (2: teclas, micrófono, interfaz; 3: idioma y ojo
+	 * de pez; 4: vibración del mando). Hasta ahora todas solo añaden campos: uno que falta en un guardado viejo se queda con
+	 * su valor de serie (la vibración, encendida), así que al cargar no hay nada que convertir.
+	 */
 	UPROPERTY()
-	int32 Version = 3;
+	int32 Version = 4;
 
 	UPROPERTY()
 	FTNGameSettings Settings;

@@ -24,6 +24,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Engine/World.h"
 #include "Player/TN_TurtleActionSfx.h"
+#include "Player/TN_HitFeedback.h"
 #include "TimerManager.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "Game/TN_RunGameMode.h"
@@ -42,6 +43,10 @@ void ATortugaCharacter::ApplyKnockdown(float Duration, FVector ImpulseOverride)
 	{
 		return;
 	}
+	// Sacudida y vibración solo en la máquina de quien cae, más fuertes cuanto más fuerte es el empujón (#350). Si el
+	// golpe ya avisó en este fotograma con su propia fuerza (un lanzable), no se repite.
+	NotifyHitFeedback(TNHitFeedback::StrengthFromImpulse(ImpulseOverride.Size()));
+
 	// Noqueada de verdad: un momento quieta en el suelo con los pajaritos, aunque el golpe pida menos.
 	Duration = FMath::Max(Duration, MinKnockdownSeconds);
 
