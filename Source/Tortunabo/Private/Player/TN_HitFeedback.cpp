@@ -57,8 +57,10 @@ void TNHitFeedback::PlayLocal(APlayerController* PC, float Strength)
 	FToggles Toggles;
 	if (const UTN_GameSettingsSubsystem* Settings = UTN_GameSettingsSubsystem::Get(PC))
 	{
-		Toggles.bCameraShake = Settings->GetSettings().bCameraShake;
-		Toggles.bVibration = Settings->GetSettings().bGamepadVibration;
+		// Los de quien recibe el golpe: en la partida local cada invitado tiene su temblor y su vibración (#311).
+		const FTNGameSettings Own = Settings->GetSettingsFor(PC);
+		Toggles.bCameraShake = Own.bCameraShake;
+		Toggles.bVibration = Own.bGamepadVibration;
 	}
 	Toggles.bVR = TNVR::IsEnabled();
 
