@@ -5,6 +5,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Pawn.h"
+#include "Rally/TN_RallyCrewCalls.h"
 #include "Vehicles/TN_BuggyMath.h"
 #include "TN_BuggyGunnerPawn.generated.h"
 
@@ -41,6 +42,15 @@ public:
 
 	/** Artillera local: pide al servidor cambiar la munición seleccionada (UTN_BuggyTurretComponent::CycleAmmo lo usa). */
 	void RequestCycleAmmo(int32 Direction);
+
+	/**
+	 * Artillera local (#330): pide al servidor cantar a la conductora la próxima nota de copiloto (la primera de los
+	 * próximos 600 m). False si no hay ninguna o aún no ha pasado la espera mínima.
+	 */
+	bool RequestCallNote();
+
+	/** Artillera local (#330): pide al servidor un aviso rápido a la conductora («¡Turbo ya!», «¡Frena!»). */
+	bool RequestQuickCall(ETNRallyQuickCall Quick);
 
 	/** Artillera local: empujón de la cámara que se recupera solo (disparo, noqueo, choque). */
 	void AddCameraKick(float PitchDeg, float RollDeg, float BackCm);
@@ -126,6 +136,19 @@ private:
 	UFUNCTION(Server, Reliable, WithValidation)
 	void ServerCycleAmmo(int32 Direction);
 
+	void OnCallNote(const FInputActionValue& Value);
+	void OnQuickCall(const FInputActionValue& Value);
+
+	/** Canto de la nota que empieza en NoteArcCm (eje de las notas): el servidor la busca y la valida (#330). */
+	UFUNCTION(Server, Reliable, WithValidation)
+	void ServerCallNote(float NoteArcCm);
+
+	UFUNCTION(Server, Reliable)
+	void ServerQuickCall(ETNRallyQuickCall Quick);
+
+	/** Solo servidor: lleva Call a las ocupantes si la espera mínima lo permite. */
+	void BroadcastCall(const FTNRallyCrewCall& Call);
+
 	UFUNCTION(Server, Reliable)
 	void ServerSelfRight();
 
@@ -161,6 +184,11 @@ private:
 	FRotator LastSentAim = FRotator(1000.f, 0.f, 0.f);
 	float AimSendAccumulator = 0.f;
 	double LastFireRequest = -1000.0;
+	/** Notas de la pista: en la artillera local, para elegir la próxima; en el servidor, para validarla (#330). */
+	TNRallyCrewCalls::FNoteFollower NoteFollower;
+	/** Último canto pedido (artillera local) y último aceptado (servidor). */
+	double LastCallRequest = -1000.0;
+	double LastServerCall = -1000.0;
 	bool bSelfRightHeld = false;
 	TNBuggy::FHold RespawnHold;
 

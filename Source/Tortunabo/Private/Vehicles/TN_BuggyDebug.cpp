@@ -374,6 +374,31 @@ namespace TNBuggyDebug
 			}
 		}));
 
+	FAutoConsoleCommandWithWorldAndArgs CmdLocalCall(TEXT("TN.Rally.LocalCall"),
+		TEXT("Rally: TN.Rally.LocalCall [0 = nota, 1 = ¡Turbo ya!, 2 = ¡Frena!] [espera] [veces = 1]: la artillera local canta a la conductora (#330), una vez por segundo."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+		{
+			const int32 What = static_cast<int32>(FloatArg(Args, 0, 0.f));
+			const float Wait = FloatArg(Args, 1, 0.f);
+			const int32 Times = FMath::Clamp(static_cast<int32>(FloatArg(Args, 2, 1.f)), 1, 60);
+			for (int32 Call = 0; Call < Times; ++Call)
+			{
+				AfterGlobal(Wait + static_cast<float>(Call), [What](UWorld* Alive)
+				{
+					const APlayerController* PC = Alive ? Alive->GetFirstPlayerController() : nullptr;
+					ATN_BuggyGunnerPawn* Gunner = PC ? Cast<ATN_BuggyGunnerPawn>(PC->GetPawn()) : nullptr;
+					if (!Gunner)
+					{
+						UE_LOG(LogTNBuggy, Warning, TEXT("[Humo] TN.Rally.LocalCall: la jugadora local no es artillera"));
+						return;
+					}
+					const bool bSent = What == 0 ? Gunner->RequestCallNote()
+						: Gunner->RequestQuickCall(What == 1 ? ETNRallyQuickCall::Boost : ETNRallyQuickCall::Brake);
+					UE_LOG(LogTNBuggy, Log, TEXT("[Humo] la artillera local pide cantar %d: %s"), What, bSent ? TEXT("enviado") : TEXT("sin nota o en espera"));
+				});
+			}
+		}));
+
 	FAutoConsoleCommandWithWorldAndArgs CmdDebugSwapSeats(TEXT("TN.Rally.DebugSwapSeats"),
 		TEXT("Rally (servidor): TN.Rally.DebugSwapSeats [espera]: en cada buggy con las dos plazas ocupadas, la artillera pasa a conducir y la conductora a la torreta (para probar la salida de una conductora cliente)."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)

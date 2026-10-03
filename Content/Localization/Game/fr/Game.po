@@ -4,8 +4,8 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Game\n"
-"POT-Creation-Date: 2026-10-03 02:38\n"
-"PO-Revision-Date: 2026-10-03 02:38\n"
+"POT-Creation-Date: 2026-10-03 02:46\n"
+"PO-Revision-Date: 2026-10-03 02:46\n"
 "Language-Team: \n"
 "Language: fr\n"
 "MIME-Version: 1.0\n"
@@ -3554,6 +3554,20 @@ msgstr "ÉMOTES"
 msgctxt "TNHUD,ChatWheelTitle"
 msgid "FRASES"
 msgstr "PHRASES"
+
+#. Key:	QuickCallBoost
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyCrewCalls.cpp(89)
+#: Source/Tortunabo/Private/Rally/TN_RallyCrewCalls.cpp(89)
+msgctxt "Rally,QuickCallBoost"
+msgid "¡Turbo ya!"
+msgstr "Turbo, vas-y !"
+
+#. Key:	QuickCallBrake
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyCrewCalls.cpp(90)
+#: Source/Tortunabo/Private/Rally/TN_RallyCrewCalls.cpp(90)
+msgctxt "Rally,QuickCallBrake"
+msgid "¡Frena!"
+msgstr "Freine !"
 
 #. Key:	BotDriverName
 #. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyGameMode.cpp(338)

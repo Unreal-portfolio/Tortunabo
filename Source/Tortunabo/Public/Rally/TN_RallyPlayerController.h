@@ -8,6 +8,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
 #include "Player/TN_CosmeticsSync.h"
+#include "Rally/TN_RallyCrewCalls.h"
 #include "Rally/TN_RallyHitReport.h"
 #include "Voice/TN_VoiceRouting.h"
 #include "TN_RallyPlayerController.generated.h"
@@ -50,6 +51,16 @@ public:
 	 */
 	UFUNCTION(Client, Reliable)
 	void ClientRallyHitReport(const FTNRallyHitReport& Report);
+
+	/**
+	 * Servidor → ocupante (#330): lo que canta la artillera. Las dos lo oyen con la señal del copiloto (al lado de la curva,
+	 * tantos pitidos como el grado) y la conductora ve la placa 1,5 s. Fiable: un canto perdido es una curva sin avisar.
+	 */
+	UFUNCTION(Client, Reliable)
+	void ClientRallyCrewCall(const FTNRallyCrewCall& Call);
+
+	/** Notas cantadas por la artillera que han llegado a esta máquina (para las pruebas sin editor). */
+	int32 GetCrewCallsReceived() const { return CrewCallsReceived; }
 
 	/** Sonido corto de acierto (2D, solo en el buggy que dispara). */
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Sonido")
@@ -96,6 +107,11 @@ private:
 	/** Voz de otra tortuga que ha filtrado el servidor (TNVoiceRouting); bIntercom = de su mismo buggy. */
 	UFUNCTION(Client, Unreliable)
 	void ClientReceiveVoice(const TArray<uint8>& CompressedData, int32 SenderSampleRate, AActor* SpeakerActor, bool bIntercom);
+
+	/** Buggy en que va el jugador local (el que conduce o el de su peón de artillera). */
+	ATN_Buggy* FindSeatedBuggy() const;
+
+	int32 CrewCallsReceived = 0;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UTN_RallyHUDWidget> RallyHUD;

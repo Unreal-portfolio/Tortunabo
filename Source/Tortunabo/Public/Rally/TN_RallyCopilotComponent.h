@@ -34,6 +34,12 @@ public:
 	 */
 	void PresentCall(const TNRallyPaceNotes::FPaceNote& Note, ATN_Buggy* Buggy);
 
+	/**
+	 * Aviso rápido de la artillera (#330) en esta máquina: Signal centrada y, en el buggy de la conductora local, la placa
+	 * con Headline y el borde en Accent.
+	 */
+	void PresentQuickCall(const FText& Headline, const TNRallyCopilot::FCallSignal& Signal, const FLinearColor& Accent, ATN_Buggy* Buggy);
+
 	/** Notas cantadas desde que empezó (para las pruebas sin editor). */
 	int32 GetCallCount() const { return CallCount; }
 

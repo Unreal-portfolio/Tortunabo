@@ -53,6 +53,10 @@ public:
 	UPROPERTY() TObjectPtr<UInputAction> AimMouse;
 	/** Apuntar con el stick derecho (velocidad, -1..1 por eje). */
 	UPROPERTY() TObjectPtr<UInputAction> AimStick;
+	/** Cantar la próxima nota de copiloto a la conductora (F · A, #330). */
+	UPROPERTY() TObjectPtr<UInputAction> CallNote;
+	/** Aviso rápido (#330): Axis1D, +1 «¡Turbo ya!» (1 · cruceta arriba), -1 «¡Frena!» (2 · B). */
+	UPROPERTY() TObjectPtr<UInputAction> QuickCall;
 
 	UPROPERTY() TObjectPtr<UInputMappingContext> DriverContext;
 	UPROPERTY() TObjectPtr<UInputMappingContext> GunnerContext;

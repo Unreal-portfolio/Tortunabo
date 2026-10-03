@@ -1,15 +1,19 @@
-// ATN_RallyPlayerController: avisos entre el servidor y las ocupantes de un buggy (confirmación de impactos, #332).
+// ATN_RallyPlayerController: avisos entre el servidor y las ocupantes de un buggy: confirmación de impactos (#332) y lo
+// que canta la artillera a la conductora (#330).
 
 #include "Rally/TN_RallyPlayerController.h"
 #include "Core/TN_LocText.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerState.h"
 #include "Kismet/GameplayStatics.h"
+#include "Rally/TN_RallyCopilotComponent.h"
 #include "Rally/TN_RallyGameState.h"
 #include "Rally/TN_RallyHUDWidget.h"
 #include "Rally/TN_RallyLogic.h"
 #include "Rally/UI/TN_RallyCopilotTablet.h"
 #include "Sound/SoundBase.h"
+#include "Vehicles/TN_Buggy.h"
+#include "Vehicles/TN_BuggyGunnerPawn.h"
 #include "Vehicles/TN_BuggyMath.h"
 
 namespace TNRallyCrewDetail
@@ -67,4 +71,36 @@ void ATN_RallyPlayerController::ClientRallyHitReport_Implementation(const FTNRal
 	{
 		UGameplayStatics::PlaySound2D(this, HitConfirmSound, HitConfirmVolume, Report.bBlocked ? BlockedPitch : HitPitch);
 	}
+}
+
+ATN_Buggy* ATN_RallyPlayerController::FindSeatedBuggy() const
+{
+	if (ATN_Buggy* Driven = Cast<ATN_Buggy>(GetPawn()))
+	{
+		return Driven;
+	}
+	const ATN_BuggyGunnerPawn* Gunner = Cast<ATN_BuggyGunnerPawn>(GetPawn());
+	return Gunner ? Gunner->GetBuggy() : nullptr;
+}
+
+void ATN_RallyPlayerController::ClientRallyCrewCall_Implementation(const FTNRallyCrewCall& Call)
+{
+	++CrewCallsReceived;
+	if (!Copilot)
+	{
+		return;
+	}
+	ATN_Buggy* Buggy = FindSeatedBuggy();
+	if (Call.bQuick)
+	{
+		Copilot->PresentQuickCall(TNRallyCrewCalls::QuickHeadline(Call.Quick), TNRallyCrewCalls::QuickSignal(Call.Quick),
+			TNRallyCrewCalls::QuickColor(Call.Quick), Buggy);
+		UE_LOG(LogTNRally, Log, TEXT("[RallyCall] %s oye el aviso %s"), *GetNameSafe(this), *TNRallyCrewCalls::QuickHeadline(Call.Quick).ToString());
+		return;
+	}
+	const TNRallyPaceNotes::FPaceNote Note = TNRallyCrewCalls::NoteFromCall(Call);
+	Copilot->PresentCall(Note, Buggy);
+	const TNRallyCopilot::FCallSignal Signal = TNRallyCopilot::SignalFor(Note);
+	UE_LOG(LogTNRally, Log, TEXT("[RallyCall] %s oye «%s»: %d pitidos, lado %.0f"), *GetNameSafe(this),
+		*TNRallyPaceNotes::NoteText(Note).ToString(), Signal.Beeps, Signal.Pan);
 }

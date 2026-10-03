@@ -184,6 +184,16 @@ void UTN_RallyCopilotComponent::PresentCall(const TNRallyPaceNotes::FPaceNote& N
 	}
 }
 
+void UTN_RallyCopilotComponent::PresentQuickCall(const FText& Headline, const TNRallyCopilot::FCallSignal& Signal,
+	const FLinearColor& Accent, ATN_Buggy* Buggy)
+{
+	PlaySignal(Signal);
+	if (UTN_RallyDashboardComponent* Dashboard = UTN_RallyDashboardComponent::FindOn(Buggy))
+	{
+		Dashboard->ShowCall(Headline, FText::GetEmpty(), Accent, TNRallyCopilot::PlateSeconds);
+	}
+}
+
 void UTN_RallyCopilotComponent::PlaySignal(const TNRallyCopilot::FCallSignal& Signal)
 {
 	UWorld* World = GetWorld();

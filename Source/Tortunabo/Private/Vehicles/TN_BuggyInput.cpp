@@ -62,6 +62,8 @@ UTN_BuggyInputSet* UTN_BuggyInputSet::Create(UObject* Outer)
 	Set->CycleAmmo = MakeAction(Set, TEXT("IA_BuggyCycleAmmo"), EInputActionValueType::Axis1D);
 	Set->AimMouse = MakeAction(Set, TEXT("IA_BuggyAimMouse"), EInputActionValueType::Axis2D);
 	Set->AimStick = MakeAction(Set, TEXT("IA_BuggyAimStick"), EInputActionValueType::Axis2D);
+	Set->CallNote = MakeAction(Set, TEXT("IA_BuggyCallNote"), EInputActionValueType::Boolean);
+	Set->QuickCall = MakeAction(Set, TEXT("IA_BuggyQuickCall"), EInputActionValueType::Axis1D);
 
 	UInputMappingContext* Driver = NewObject<UInputMappingContext>(Set, TEXT("IMC_BuggyDriver"), RF_Transient);
 	Driver->MapKey(Set->Throttle, EKeys::W);
@@ -97,6 +99,13 @@ UTN_BuggyInputSet* UTN_BuggyInputSet::Create(UObject* Outer)
 	Gunner->MapKey(Set->SelfRight, EKeys::R);
 	Gunner->MapKey(Set->SelfRight, EKeys::Gamepad_FaceButton_Top);
 	MapCycleAmmo(Gunner, Set->CycleAmmo);
+	// Cantos a la conductora (#330). La cruceta abajo es «pulsar para hablar» y la izquierda y la derecha cambian la munición.
+	Gunner->MapKey(Set->CallNote, EKeys::F);
+	Gunner->MapKey(Set->CallNote, EKeys::Gamepad_FaceButton_Bottom);
+	Gunner->MapKey(Set->QuickCall, EKeys::One);
+	Gunner->MapKey(Set->QuickCall, EKeys::Gamepad_DPad_Up);
+	MapNegated(Gunner, Set->QuickCall, EKeys::Two);
+	MapNegated(Gunner, Set->QuickCall, EKeys::Gamepad_FaceButton_Right);
 	Set->GunnerContext = Gunner;
 	return Set;
 }

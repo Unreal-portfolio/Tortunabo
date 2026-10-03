@@ -242,6 +242,8 @@ void ATN_BuggyGunnerPawn::SetupPlayerInputComponent(UInputComponent* PlayerInput
 	Input->BindAction(Set->CycleAmmo, ETriggerEvent::Started, this, &ATN_BuggyGunnerPawn::OnCycleAmmo);
 	Input->BindAction(Set->SelfRight, ETriggerEvent::Started, this, &ATN_BuggyGunnerPawn::OnSelfRightPressed);
 	Input->BindAction(Set->SelfRight, ETriggerEvent::Completed, this, &ATN_BuggyGunnerPawn::OnSelfRightReleased);
+	Input->BindAction(Set->CallNote, ETriggerEvent::Started, this, &ATN_BuggyGunnerPawn::OnCallNote);
+	Input->BindAction(Set->QuickCall, ETriggerEvent::Started, this, &ATN_BuggyGunnerPawn::OnQuickCall);
 	// Tableta de copiloto (M o el botón Vista; el Tabulador en el editor abre la pausa).
 	UTN_RallyCopilotTablet::BindToggleKeys(PlayerInputComponent, this);
 	Input->BindAction(CameraToggleAction, ETriggerEvent::Started, this, &ATN_BuggyGunnerPawn::OnToggleCamera);
