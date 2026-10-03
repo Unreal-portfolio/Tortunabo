@@ -156,10 +156,19 @@ def item_de_issue(proyecto: dict, numero: int) -> str:
     return cache[numero]
 
 
+def comprobar_campos(proyecto: dict, campos: dict) -> None:
+    """Falla si algún valor no es una opción de su campo (los vacíos no cuentan): para comprobar antes de crear nada."""
+    for campo, valor in campos.items():
+        if not valor:
+            continue
+        info = proyecto["campos"].get(campo)
+        if info is None or valor not in info["opciones"]:
+            raise ErrorTablero(f"El campo «{campo}» no admite «{valor}». Opciones: {list((info or {}).get('opciones', {}))}")
+
+
 def poner_campo(proyecto: dict, numero: int, campo: str, valor: str) -> None:
-    info = proyecto["campos"].get(campo)
-    if info is None or valor not in info["opciones"]:
-        raise ErrorTablero(f"El campo «{campo}» no admite «{valor}». Opciones: {list((info or {}).get('opciones', {}))}")
+    comprobar_campos(proyecto, {campo: valor})
+    info = proyecto["campos"][campo]
     gh("project", "item-edit", "--project-id", proyecto["id"], "--id", item_de_issue(proyecto, numero),
        "--field-id", info["id"], "--single-select-option-id", info["opciones"][valor])
 
