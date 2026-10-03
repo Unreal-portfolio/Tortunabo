@@ -4,8 +4,8 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Game\n"
-"POT-Creation-Date: 2026-10-03 17:17\n"
-"PO-Revision-Date: 2026-10-03 17:17\n"
+"POT-Creation-Date: 2026-10-03 18:32\n"
+"PO-Revision-Date: 2026-10-03 18:32\n"
 "Language-Team: \n"
 "Language: ru\n"
 "MIME-Version: 1.0\n"
@@ -3959,7 +3959,7 @@ msgstr "Выбор в колесе"
 #: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1774)
 msgctxt "TNSettings,CameraRow"
 msgid "Cambiar de cámara"
-msgstr ""
+msgstr "Сменить камеру"
 
 #. Key:	TalkRow
 #. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1780)
@@ -7172,28 +7172,28 @@ msgstr "Справа на экране показывается имя того,
 #: Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2614)
 msgctxt "TNPause,CameraFirst"
 msgid "Primera persona"
-msgstr ""
+msgstr "От первого лица"
 
 #. Key:	CameraThird
 #. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2614)
 #: Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2614)
 msgctxt "TNPause,CameraThird"
 msgid "Tercera persona"
-msgstr ""
+msgstr "От третьего лица"
 
 #. Key:	CameraView
 #. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2615)
 #: Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2615)
 msgctxt "TNPause,CameraView"
 msgid "Cámara"
-msgstr ""
+msgstr "Камера"
 
 #. Key:	CameraViewDesc
 #. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2620)
 #: Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2620)
 msgctxt "TNPause,CameraViewDesc"
 msgid "Primera persona: la vista va en la cabeza de tu tortuga (también tumbada) y al mirar abajo ves tu cuerpo, tus aletas y tu lengua. Dentro del caparazón se ve desde dentro, a oscuras. También se cambia jugando con {0} o, con el mando, con {1} (en Controles, «Cambiar de cámara»)."
-msgstr ""
+msgstr "От первого лица: камера находится в голове твоей черепашки (даже когда она лежит), а если посмотреть вниз, видно тело, ласты и язык. Внутри панциря всё видно изнутри, в темноте. Переключить её можно и во время игры: {0} или, на геймпаде, {1} (в «Управлении», «Сменить камеру»)."
 
 #. Key:	HeadVR
 #. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2626)
@@ -7291,7 +7291,7 @@ msgstr "Дрожание камеры включено, поле зрения к
 #: Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2659)
 msgctxt "TNPause,ResetGameDesc"
 msgid "Temblor de cámara y ojo de pez encendidos, campo de visión e interfaz de siempre, sin filtro de color, sin «Quién habla», el idioma de tu sistema, la cámara en tercera persona y el modo VR automático con giro a pasos de 30°."
-msgstr ""
+msgstr "Тряска камеры и «рыбий глаз» включены, обычные угол обзора и интерфейс, без цветового фильтра, без «Кто говорит», язык системы, камера от третьего лица и автоматический режим VR с поворотом шагами по 30°."
 
 #. Key:	ResetAll
 #. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2663)
@@ -7375,7 +7375,7 @@ msgstr "{0} На геймпаде: {1}."
 #: Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2724)
 msgctxt "TNPause,CameraKeyRowDesc"
 msgid "Tercera o primera persona, sin gafas (como Ajustes > Juego > Cámara). {0}"
-msgstr ""
+msgstr "От третьего или первого лица, без шлема (как в «Настройки > Игра > Камера»). {0}"
 
 #. Key:	NoMapping
 #. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2731)

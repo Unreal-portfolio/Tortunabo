@@ -4,8 +4,8 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Game\n"
-"POT-Creation-Date: 2026-10-03 17:17\n"
-"PO-Revision-Date: 2026-10-03 17:17\n"
+"POT-Creation-Date: 2026-10-03 18:32\n"
+"PO-Revision-Date: 2026-10-03 18:32\n"
 "Language-Team: \n"
 "Language: ko\n"
 "MIME-Version: 1.0\n"
@@ -3959,7 +3959,7 @@ msgstr "휠에서 고르기"
 #: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1774)
 msgctxt "TNSettings,CameraRow"
 msgid "Cambiar de cámara"
-msgstr ""
+msgstr "카메라 전환"
 
 #. Key:	TalkRow
 #. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1780)
@@ -7172,28 +7172,28 @@ msgstr "화면 오른쪽에 음성으로 말하는 사람의 이름을 보여줘
 #: Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2614)
 msgctxt "TNPause,CameraFirst"
 msgid "Primera persona"
-msgstr ""
+msgstr "1인칭"
 
 #. Key:	CameraThird
 #. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2614)
 #: Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2614)
 msgctxt "TNPause,CameraThird"
 msgid "Tercera persona"
-msgstr ""
+msgstr "3인칭"
 
 #. Key:	CameraView
 #. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2615)
 #: Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2615)
 msgctxt "TNPause,CameraView"
 msgid "Cámara"
-msgstr ""
+msgstr "카메라"
 
 #. Key:	CameraViewDesc
 #. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2620)
 #: Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2620)
 msgctxt "TNPause,CameraViewDesc"
 msgid "Primera persona: la vista va en la cabeza de tu tortuga (también tumbada) y al mirar abajo ves tu cuerpo, tus aletas y tu lengua. Dentro del caparazón se ve desde dentro, a oscuras. También se cambia jugando con {0} o, con el mando, con {1} (en Controles, «Cambiar de cámara»)."
-msgstr ""
+msgstr "1인칭: 시점이 거북이의 머리에 있어요(누워 있을 때도). 아래를 보면 내 몸, 지느러미, 혀가 보여요. 등껍질 안에서는 안쪽에서 어둠 속을 보게 돼요. 플레이 중에 {0}, 컨트롤러로는 {1}로도 바꿀 수 있어요(조작의 “카메라 전환”)."
 
 #. Key:	HeadVR
 #. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2626)
@@ -7291,7 +7291,7 @@ msgstr "카메라 흔들림은 켜고 시야각은 늘 쓰던 값으로 돌려�
 #: Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2659)
 msgctxt "TNPause,ResetGameDesc"
 msgid "Temblor de cámara y ojo de pez encendidos, campo de visión e interfaz de siempre, sin filtro de color, sin «Quién habla», el idioma de tu sistema, la cámara en tercera persona y el modo VR automático con giro a pasos de 30°."
-msgstr ""
+msgstr "카메라 흔들림과 어안 렌즈는 켜고, 시야각과 UI는 기본으로, 색 필터와 “말하는 사람”은 끄고, 언어는 시스템 언어로, 카메라는 3인칭으로, VR 모드는 자동에 30°씩 끊어서 회전하도록 돌려요."
 
 #. Key:	ResetAll
 #. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2663)
@@ -7375,7 +7375,7 @@ msgstr "{0} 컨트롤러: {1}"
 #: Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2724)
 msgctxt "TNPause,CameraKeyRowDesc"
 msgid "Tercera o primera persona, sin gafas (como Ajustes > Juego > Cámara). {0}"
-msgstr ""
+msgstr "헤드셋 없이 3인칭 또는 1인칭(설정 > 게임 > 카메라와 같아요). {0}"
 
 #. Key:	NoMapping
 #. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2731)

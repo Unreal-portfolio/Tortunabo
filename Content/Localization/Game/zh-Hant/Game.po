@@ -4,8 +4,8 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Game\n"
-"POT-Creation-Date: 2026-10-03 17:17\n"
-"PO-Revision-Date: 2026-10-03 17:17\n"
+"POT-Creation-Date: 2026-10-03 18:32\n"
+"PO-Revision-Date: 2026-10-03 18:32\n"
 "Language-Team: \n"
 "Language: zh-Hant\n"
 "MIME-Version: 1.0\n"
@@ -3959,7 +3959,7 @@ msgstr "在輪盤中選擇"
 #: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1774)
 msgctxt "TNSettings,CameraRow"
 msgid "Cambiar de cámara"
-msgstr ""
+msgstr "切換鏡頭"
 
 #. Key:	TalkRow
 #. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1780)
@@ -7172,28 +7172,28 @@ msgstr "在螢幕右側顯示正在語音說話的人的名字。適合靜音遊
 #: Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2614)
 msgctxt "TNPause,CameraFirst"
 msgid "Primera persona"
-msgstr ""
+msgstr "第一人稱"
 
 #. Key:	CameraThird
 #. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2614)
 #: Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2614)
 msgctxt "TNPause,CameraThird"
 msgid "Tercera persona"
-msgstr ""
+msgstr "第三人稱"
 
 #. Key:	CameraView
 #. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2615)
 #: Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2615)
 msgctxt "TNPause,CameraView"
 msgid "Cámara"
-msgstr ""
+msgstr "鏡頭"
 
 #. Key:	CameraViewDesc
 #. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2620)
 #: Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2620)
 msgctxt "TNPause,CameraViewDesc"
 msgid "Primera persona: la vista va en la cabeza de tu tortuga (también tumbada) y al mirar abajo ves tu cuerpo, tus aletas y tu lengua. Dentro del caparazón se ve desde dentro, a oscuras. También se cambia jugando con {0} o, con el mando, con {1} (en Controles, «Cambiar de cámara»)."
-msgstr ""
+msgstr "第一人稱：視角在小龜的頭上（躺著時也是），往下看能看到自己的身體、鰭和舌頭。縮進龜殼裡時，從裡面往外看，一片漆黑。遊戲中也可以用 {0} 切換，手把則用 {1}（在「操作」中的「切換鏡頭」）。"
 
 #. Key:	HeadVR
 #. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2626)
@@ -7291,7 +7291,7 @@ msgstr "開啟鏡頭晃動，視野恢復一貫的設定（僅限你自己的）
 #: Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2659)
 msgctxt "TNPause,ResetGameDesc"
 msgid "Temblor de cámara y ojo de pez encendidos, campo de visión e interfaz de siempre, sin filtro de color, sin «Quién habla», el idioma de tu sistema, la cámara en tercera persona y el modo VR automático con giro a pasos de 30°."
-msgstr ""
+msgstr "鏡頭晃動和魚眼開啟，視野和介面大小恢復預設，關閉色盲濾鏡和「誰在說話」，語言跟隨你的系統，鏡頭為第三人稱，VR 模式為自動、轉向每次 30°。"
 
 #. Key:	ResetAll
 #. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2663)
@@ -7375,7 +7375,7 @@ msgstr "{0} 使用手把時固定為 {1}。"
 #: Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2724)
 msgctxt "TNPause,CameraKeyRowDesc"
 msgid "Tercera o primera persona, sin gafas (como Ajustes > Juego > Cámara). {0}"
-msgstr ""
+msgstr "不戴頭戴裝置時的第三人稱或第一人稱（同 設定 > 遊戲 > 鏡頭）。{0}"
 
 #. Key:	NoMapping
 #. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2731)

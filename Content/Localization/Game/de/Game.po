@@ -4,8 +4,8 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Game\n"
-"POT-Creation-Date: 2026-10-03 17:17\n"
-"PO-Revision-Date: 2026-10-03 17:17\n"
+"POT-Creation-Date: 2026-10-03 18:32\n"
+"PO-Revision-Date: 2026-10-03 18:32\n"
 "Language-Team: \n"
 "Language: de\n"
 "MIME-Version: 1.0\n"
@@ -3959,7 +3959,7 @@ msgstr "Im Rad wählen"
 #: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1774)
 msgctxt "TNSettings,CameraRow"
 msgid "Cambiar de cámara"
-msgstr ""
+msgstr "Kamera wechseln"
 
 #. Key:	TalkRow
 #. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1780)
@@ -7172,28 +7172,28 @@ msgstr "Rechts auf dem Bildschirm steht der Name der Person, die gerade per Spra
 #: Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2614)
 msgctxt "TNPause,CameraFirst"
 msgid "Primera persona"
-msgstr ""
+msgstr "Ich-Perspektive"
 
 #. Key:	CameraThird
 #. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2614)
 #: Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2614)
 msgctxt "TNPause,CameraThird"
 msgid "Tercera persona"
-msgstr ""
+msgstr "Verfolgerperspektive"
 
 #. Key:	CameraView
 #. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2615)
 #: Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2615)
 msgctxt "TNPause,CameraView"
 msgid "Cámara"
-msgstr ""
+msgstr "Kamera"
 
 #. Key:	CameraViewDesc
 #. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2620)
 #: Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2620)
 msgctxt "TNPause,CameraViewDesc"
 msgid "Primera persona: la vista va en la cabeza de tu tortuga (también tumbada) y al mirar abajo ves tu cuerpo, tus aletas y tu lengua. Dentro del caparazón se ve desde dentro, a oscuras. También se cambia jugando con {0} o, con el mando, con {1} (en Controles, «Cambiar de cámara»)."
-msgstr ""
+msgstr "Ich-Perspektive: Die Sicht sitzt im Kopf deiner Schildkröte (auch im Liegen), und wenn du nach unten schaust, siehst du deinen Körper, deine Flossen und deine Zunge. Im Panzer siehst du von innen, im Dunkeln. Beim Spielen lässt sie sich auch mit {0} oder am Controller mit {1} umschalten (in Steuerung, „Kamera wechseln“)."
 
 #. Key:	HeadVR
 #. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2626)
@@ -7291,7 +7291,7 @@ msgstr "Kamerawackeln an und gewohntes Sichtfeld (nur deine)."
 #: Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2659)
 msgctxt "TNPause,ResetGameDesc"
 msgid "Temblor de cámara y ojo de pez encendidos, campo de visión e interfaz de siempre, sin filtro de color, sin «Quién habla», el idioma de tu sistema, la cámara en tercera persona y el modo VR automático con giro a pasos de 30°."
-msgstr ""
+msgstr "Kamerawackeln und Fischauge an, Sichtfeld und Oberfläche wie gewohnt, ohne Farbfilter, ohne „Wer spricht“, die Sprache deines Systems, Kamera in der Verfolgerperspektive und automatischer VR-Modus mit Drehung in 30°-Schritten."
 
 #. Key:	ResetAll
 #. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2663)
@@ -7375,7 +7375,7 @@ msgstr "{0} Mit dem Controller gilt {1}."
 #: Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2724)
 msgctxt "TNPause,CameraKeyRowDesc"
 msgid "Tercera o primera persona, sin gafas (como Ajustes > Juego > Cámara). {0}"
-msgstr ""
+msgstr "Verfolger- oder Ich-Perspektive, ohne Brille (wie Einstellungen > Spiel > Kamera). {0}"
 
 #. Key:	NoMapping
 #. SourceLocation:	Source/Tortunabo/Private/UI/Pause/TN_PauseMenuWidget.cpp(2731)
