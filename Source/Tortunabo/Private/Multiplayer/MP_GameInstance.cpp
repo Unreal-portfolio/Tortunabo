@@ -1577,7 +1577,7 @@ void UMP_GameInstance::HandleChecksumMismatch(const FString& ErrorString)
 {
 	HideLoadingScreen();
 	// Una sola línea: el menú enseña lo que va tras el último salto de línea del estado (#280); la pista de Live Coding va al registro.
-	UpdateStatus(TEXT("ERROR: Versiones incompatibles con el servidor."));
+	UpdateStatus(NSLOCTEXT("TNRooms", "BuildMismatchStatus", "Versiones incompatibles con el servidor.").ToString());
 	// Destruir la sesión huérfana del lado cliente para poder reintentar.
 	DestroyCurrentSession();
 	// El motor vuelve solo al menú (?closed): que diga por qué y no parezca un fallo de la sala (#245).

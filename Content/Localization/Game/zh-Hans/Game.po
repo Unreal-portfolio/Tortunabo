@@ -4,8 +4,8 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Game\n"
-"POT-Creation-Date: 2026-10-03 17:02\n"
-"PO-Revision-Date: 2026-10-03 17:02\n"
+"POT-Creation-Date: 2026-10-03 17:07\n"
+"PO-Revision-Date: 2026-10-03 17:07\n"
 "Language-Team: \n"
 "Language: zh-Hans\n"
 "MIME-Version: 1.0\n"
@@ -1601,6 +1601,13 @@ msgstr "屏幕下方中间显示你带着的东西：鳍上一件，壳里一件
 msgctxt "TNTutorial,Header"
 msgid "TUTORIAL · {0} / {1}"
 msgstr "教程 · {0} / {1}"
+
+#. Key:	BuildMismatchStatus
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1580)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1580)
+msgctxt "TNRooms,BuildMismatchStatus"
+msgid "Versiones incompatibles con el servidor."
+msgstr "与服务器版本不兼容。"
 
 #. Key:	BuildMismatch
 #. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1584)
@@ -9350,4 +9357,3 @@ msgstr "{0}:{1}"
 msgctxt "Tortunabo,CastleGateName"
 msgid "TORTUNAVY"
 msgstr "TORTUNAVY"
-
