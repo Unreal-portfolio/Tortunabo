@@ -21,6 +21,11 @@ class UPrimitiveComponent;
  * para. Nunca coge tortugas, enemigos ni caparazones (esos tienen sus propias reglas), lo que lleva la etiqueta NoVRGrab,
  * un actor replicado que no replica su movimiento ni nada de más de MaxMass kg.
  *
+ * Robustez (servidor y dueño): lo que lleva otra tortuga no se coge (un objeto, un dueño); una tortuga derribada, muerta,
+ * en el caparazón o llevada no coge y suelta lo que llevaba; lo cogido que se queda enganchado lejos de la mano (una pared,
+ * algo que lo sujeta) se suelta solo (TNVRHands::ShouldBreakGrab); la cápsula del dueño no choca con lo que lleva (no se
+ * sube encima ni se empuja con ello) y lo cogido usa CCD (no atraviesa paredes finas al lanzarlo).
+ *
  * Lo usa ATN_VRRig; vive en la tortuga para que sus RPC vayan por la conexión de su dueño.
  */
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
@@ -43,6 +48,21 @@ public:
 	void Release(int32 Hand, const FVector& HandVelocity);
 
 	bool IsGrabbing(int32 Hand) const;
+
+	/** Lo que lleva esa mano (nullptr si nada). */
+	UPrimitiveComponent* GetHeld(int32 Hand) const;
+
+	/**
+	 * Dueño: cuánto (cm) se ha separado lo cogido de donde debería estar en la mano (para la vibración). 0 si no lleva nada
+	 * o si lo mueve el servidor (lo que se ve aquí llega con el retraso de la red).
+	 */
+	float GetStrain(int32 Hand, const FTransform& HandWorld) const;
+
+	/** ¿Puede coger con las manos? Una tortuga en VR que no esté derribada, muerta, en el caparazón ni llevada. Otro actor, sí. */
+	static bool CanOwnerGrab(const AActor* Owner);
+
+	/** Quién lleva ahora ese componente en esta máquina (nullptr si nadie). */
+	static UTN_VRGrabComponent* FindHolder(const UPrimitiveComponent* Component);
 
 	/**
 	 * ¿Se puede coger con la mano aquí, donde simula? Con física, móvil, sin dueño pawn ni caparazón, sin NoVRGrab, con su
@@ -78,9 +98,12 @@ private:
 	UFUNCTION(Server, Reliable)
 	void ServerRelease(uint8 Hand, FVector_NetQuantize10 Velocity);
 
-	/** El servidor no ha aceptado el agarre (no se puede coger o está lejos): el dueño deja de llevarlo. */
+	/**
+	 * El servidor no ha aceptado el agarre (no se puede coger, está lejos o lo lleva otro) o lo ha soltado él (enganchado,
+	 * derribo): el dueño deja de llevarlo.
+	 */
 	UFUNCTION(Client, Reliable)
-	void ClientGrabRejected(uint8 Hand, UPrimitiveComponent* Target);
+	void ClientGrabLost(uint8 Hand, UPrimitiveComponent* Target);
 
 	UPrimitiveComponent* FindGrabbable(const FVector& At) const;
 	/** IsGrabbable o, si lo mueve el servidor y esta máquina no lo es, IsGrabbableFromClient. */
@@ -91,7 +114,16 @@ private:
 	bool GrabHere(int32 Hand, UPrimitiveComponent* Target, const FTransform& HandWorld);
 	void MoveHere(int32 Hand, const FTransform& HandWorld);
 	void ReleaseHere(int32 Hand, const FVector& Velocity);
+	/** Servidor: suelta y, si el dueño es un cliente, se lo dice. */
+	void DropOnServer(int32 Hand);
 	UPhysicsHandleComponent* GetHandle(int32 Hand);
+	/** Dónde se cogió (respecto de la mano y del objeto) y que aún no va enganchado. */
+	void RememberGrabPoint(int32 Hand, UPrimitiveComponent* Target, const FTransform& HandWorld);
+	/** La cápsula del dueño deja de chocar (o vuelve a chocar) con lo que lleva en esta máquina. */
+	void SetOwnerIgnores(UPrimitiveComponent* Target, bool bIgnore) const;
+	/** Separación (cm) entre el punto por el que se cogió y donde debería estar con la mano en HandWorld. */
+	float SeparationFromHand(int32 Hand, const FTransform& HandWorld) const;
+	bool IsOwnerLocal() const;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UPhysicsHandleComponent> LeftHandle;
@@ -102,6 +134,9 @@ private:
 	/** Lo cogido por cada mano, dónde respecto a la mano y si lo mueve el servidor. */
 	TWeakObjectPtr<UPrimitiveComponent> Held[2];
 	FTransform HeldFromHand[2];
+	/** El punto por el que se cogió, en el espacio del objeto, y desde cuándo va enganchado (-1 si no lo va). */
+	FVector GrabPointLocal[2] = { FVector::ZeroVector, FVector::ZeroVector };
+	double StrainSince[2] = { -1.0, -1.0 };
 	bool bHeldByServer[2] = { false, false };
 	double LastMoveSent[2] = { -1.0, -1.0 };
 	/** Servidor: el objeto con física que cada mano tiene despierto en red (ATN_PhysicsObjectActor::SetExternallyHeld). */
