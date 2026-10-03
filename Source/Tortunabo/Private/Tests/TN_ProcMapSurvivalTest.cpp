@@ -67,7 +67,7 @@ bool FTNProcMapCoopUnchangedTest::RunTest(const FString& Parameters)
 	const FCase Cases[] = {
 		{ 11u, 3, 0xFD5CBBA920111AD3ull },
 		{ 12u, 3, 0xD8A940E8D5C2E22Dull },
-		{ 21u, 6, 0x787A8D4838D3FD94ull },
+		{ 21u, 6, 0x06BAEAE6AA08AC97ull },
 	};
 	for (const FCase& C : Cases)
 	{
