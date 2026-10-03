@@ -6,6 +6,8 @@
 #include "Misc/AutomationTest.h"
 #include "Lobby/TN_LobbyMission.h"
 #include "Kart/TN_KartRoutePlan.h"
+#include "Kart/TN_KartTrack.h"
+#include "World/ProcMap/TN_ProcMapGenerator.h"
 #include "World/ProcMap/TN_ProcMapGenerate.h"
 #include "World/ProcMap/TN_ProcMapTypes.h"
 
@@ -181,6 +183,31 @@ bool FTNKartRouteRacingLineTest::RunTest(const FString& Parameters)
 	// Un obstáculo fuera de la calzada no cambia nada.
 	const FLineObstacle Far{ FVector2D(30000.0, 6000.0), 400.0 };
 	TestTrue(TEXT("Obstáculo lejos del camino: línea por el eje"), FMath::IsNearlyZero(PlanRacingLineOffsets(Road, Half, { Far }, 450.0, 4500.0)[30]));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNKartRouteHazardGatesTest, "Tortunabo.Kart.Route.NoGateNearWater",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNKartRouteHazardGatesTest::RunTest(const FString& Parameters)
+{
+	// Camino recto con un canal de agua de 300 a 320 m: sin puertas en el canal ni a menos de 25 m de él.
+	TArray<FTNProcPathPoint> Points;
+	for (int32 Index = 0; Index <= 200; ++Index)
+	{
+		FTNProcPathPoint& Point = Points.AddDefaulted_GetRef();
+		Point.Location = FVector(Index * 400.0, 0.0, 100.0);
+		Point.Width = 1600.f;
+		Point.Flags = (Index >= 75 && Index <= 80) ? TNProcMap::PathFlags::Islet : 0u;
+	}
+	const TArray<TNKart::FRouteSample> Samples = TNKart::RouteSamplesFrom(Points);
+	for (int32 Index = 0; Index < Samples.Num(); ++Index)
+	{
+		const double X = Index * 400.0;
+		const bool bNear = X >= 30000.0 - TNKart::GateAwayFromHazardCm && X <= 32000.0 + TNKart::GateAwayFromHazardCm;
+		TestEqual(*FString::Printf(TEXT("Muestra a %.0f m: puerta %s"), X / 100.0, bNear ? TEXT("prohibida") : TEXT("permitida")),
+			Samples[Index].bNoGate, bNear);
+	}
 	return true;
 }
 

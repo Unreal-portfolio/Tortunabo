@@ -21,7 +21,13 @@ namespace TNKart
 	/** Parámetros del plan: puertas cada 250 m, salida a 42 m del principio y meta en la playa, por encima del mar. */
 	TORTUNABO_API FRoutePlanParams MakePlanParams(double SeaLevelZ);
 
-	/** Muestras del plan desde el camino del generador: sin puertas en cuevas ni estructuras; la playa final, marcada. */
+	/** Sin puertas a menos de esto (cm, a lo largo del camino) del agua, las cascadas, los géiseres y los huecos. */
+	inline constexpr double GateAwayFromHazardCm = 2500.0;
+
+	/**
+	 * Muestras del plan desde el camino del generador: sin puertas en cuevas ni estructuras, ni cerca del agua, las cascadas
+	 * y los géiseres (GateAwayFromHazardCm); la playa final, marcada.
+	 */
 	TORTUNABO_API TArray<FRouteSample> RouteSamplesFrom(const TArray<FTNProcPathPoint>& Points);
 
 	/**

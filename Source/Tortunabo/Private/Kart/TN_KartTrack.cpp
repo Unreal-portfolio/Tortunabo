@@ -36,15 +36,37 @@ namespace TNKart
 		// pasarelas, huecos y puentes del río.
 		constexpr uint32 NoGate = PathFlags::Tunnel | PathFlags::Elevated | PathFlags::Colossal | PathFlags::TowerTop | PathFlags::UnderTower
 			| PathFlags::Slide | PathFlags::GeyserBase | PathFlags::Islet | PathFlags::Boardwalk | PathFlags::Gap | PathFlags::RiverCross;
+		// Agua, cascadas, géiseres y huecos: tampoco cerca (el kart sale del agua por debajo del arco o llega volando).
+		constexpr uint32 Away = PathFlags::Islet | PathFlags::Slide | PathFlags::GeyserBase | PathFlags::CliffUp | PathFlags::Gap
+			| PathFlags::RiverCross;
 		TArray<FRouteSample> Samples;
 		Samples.Reserve(Points.Num());
-		for (const FTNProcPathPoint& Point : Points)
+		TArray<double> Arc;
+		Arc.Reserve(Points.Num());
+		for (int32 Index = 0; Index < Points.Num(); ++Index)
 		{
+			const FTNProcPathPoint& Point = Points[Index];
 			FRouteSample& Sample = Samples.AddDefaulted_GetRef();
 			Sample.Location = Point.Location;
 			Sample.WidthCm = Point.Width;
 			Sample.bNoGate = (Point.Flags & NoGate) != 0;
 			Sample.bShore = (Point.Flags & PathFlags::Shore) != 0;
+			Arc.Add(Index > 0 ? Arc.Last() + FVector::Dist(Points[Index - 1].Location, Point.Location) : 0.0);
+		}
+		for (int32 Index = 0; Index < Points.Num(); ++Index)
+		{
+			if ((Points[Index].Flags & Away) == 0)
+			{
+				continue;
+			}
+			for (int32 Other = Index - 1; Other >= 0 && Arc[Index] - Arc[Other] <= GateAwayFromHazardCm; --Other)
+			{
+				Samples[Other].bNoGate = true;
+			}
+			for (int32 Other = Index + 1; Other < Points.Num() && Arc[Other] - Arc[Index] <= GateAwayFromHazardCm; ++Other)
+			{
+				Samples[Other].bNoGate = true;
+			}
 		}
 		return Samples;
 	}
