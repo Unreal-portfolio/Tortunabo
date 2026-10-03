@@ -144,10 +144,15 @@ public:
 	 * @brief Reproduce datos de voz remotos recibidos en este componente.
 	 * @param CompressedData Payload comprimido tal y como vino del servidor.
 	 * @param SenderSampleRate SampleRate original del emisor (para resample si difiere).
-	 * @param bIntercom El que habla comparte interfono con este jugador (TNVoiceRouting): se oye sin atenuar.
 	 * @note Lo llaman los PlayerController que reciben voz (ITN_VoiceListener) tras el filtro del servidor.
 	 */
-	void PlayRemoteVoice(const TArray<uint8>& CompressedData, int32 SenderSampleRate, bool bIntercom = false);
+	void PlayRemoteVoice(const TArray<uint8>& CompressedData, int32 SenderSampleRate);
+
+	/**
+	 * @brief Igual que la anterior, por la ruta que eligió el servidor.
+	 * @param bIntercom El que habla comparte interfono con este jugador (TNVoiceRouting): se oye sin atenuar.
+	 */
+	void PlayRemoteVoice(const TArray<uint8>& CompressedData, int32 SenderSampleRate, bool bIntercom);
 
 	/**
 	 * @brief Servidor: añade la voz a Pawn si aún no la tiene (lo hacen los PlayerController en OnPossess). En la máquina

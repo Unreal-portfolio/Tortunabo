@@ -2,14 +2,15 @@
 #include "TN_VoiceDeviceCapture.h"
 #include "Core/TN_Log.h"
 #include "UI/Voice/VoiceIndicatorWidget.h"
-#include "Voice/TN_VoiceRouting.h"
-#include "GameFramework/Pawn.h"
-#include "GameFramework/PlayerState.h"
+#include "Player/MP_GamePlayerController.h"
 #include "GameFramework/PlayerController.h"
 #include "Net/UnrealNetwork.h"
 #include "Engine/World.h"
 #include "Blueprint/UserWidget.h"
 #include "Input/Events.h"
+#include "Voice/TN_VoiceRouting.h"
+#include "GameFramework/Pawn.h"
+#include "GameFramework/PlayerState.h"
 #include "EngineUtils.h"
 #include "VR/TN_VRMode.h"
 
@@ -396,31 +397,6 @@ void UProximityVoiceComponent::SetupPlayback(int32 InSampleRate)
 	PlaybackAudioComponent->Play();
 }
 
-FSoundAttenuationSettings UProximityVoiceComponent::MakeAttenuation(bool bIntercom) const
-{
-	FSoundAttenuationSettings Settings;
-	// Interfono: ni atenuación ni espacialización (la cámara de persecución del Rally va a 8 m del buggy).
-	Settings.bAttenuate = !bIntercom;
-	Settings.bSpatialize = !bIntercom;
-	Settings.FalloffDistance = FMath::Max(OuterRadius - InnerRadius, 100.f);
-	Settings.AttenuationShape = EAttenuationShape::Sphere;
-	Settings.AttenuationShapeExtents = FVector(InnerRadius);
-	Settings.DistanceAlgorithm = EAttenuationDistanceModel::NaturalSound;
-	return Settings;
-}
-
-void UProximityVoiceComponent::ApplyPlaybackRoute(bool bIntercom)
-{
-	if (!PlaybackAudioComponent || bPlaybackIntercom == bIntercom)
-	{
-		return;
-	}
-	bPlaybackIntercom = bIntercom;
-	PlaybackAudioComponent->bAllowSpatialization = !bIntercom;
-	// AdjustAttenuation también cambia el sonido que ya está sonando.
-	PlaybackAudioComponent->AdjustAttenuation(MakeAttenuation(bIntercom));
-}
-
 void UProximityVoiceComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
@@ -688,6 +664,39 @@ void UProximityVoiceComponent::RelayVoiceToListeners(const TArray<uint8>& Compre
 	}
 }
 
+FSoundAttenuationSettings UProximityVoiceComponent::MakeAttenuation(bool bIntercom) const
+{
+	FSoundAttenuationSettings Settings;
+	// Interfono: ni atenuación ni espacialización (la cámara de persecución del Rally va a 8 m del buggy).
+	Settings.bAttenuate = !bIntercom;
+	Settings.bSpatialize = !bIntercom;
+	Settings.FalloffDistance = FMath::Max(OuterRadius - InnerRadius, 100.f);
+	Settings.AttenuationShape = EAttenuationShape::Sphere;
+	Settings.AttenuationShapeExtents = FVector(InnerRadius);
+	Settings.DistanceAlgorithm = EAttenuationDistanceModel::NaturalSound;
+	return Settings;
+}
+
+void UProximityVoiceComponent::ApplyPlaybackRoute(bool bIntercom)
+{
+	if (!PlaybackAudioComponent || bPlaybackIntercom == bIntercom)
+	{
+		return;
+	}
+	bPlaybackIntercom = bIntercom;
+	PlaybackAudioComponent->bAllowSpatialization = !bIntercom;
+	// AdjustAttenuation también cambia el sonido que ya está sonando.
+	PlaybackAudioComponent->AdjustAttenuation(MakeAttenuation(bIntercom));
+}
+
+void UProximityVoiceComponent::PlayRemoteVoice(const TArray<uint8>& CompressedData, int32 SenderSampleRate, bool bIntercom)
+{
+	PlayRemoteVoice(CompressedData, SenderSampleRate);
+	// Después del paquete: el primero crea el playback (SetupPlayback) con la ruta de proximidad, y AdjustAttenuation
+	// también cambia lo que ya está sonando.
+	ApplyPlaybackRoute(bIntercom);
+}
+
 bool UProximityVoiceComponent::IsHeardSpeaking() const
 {
 	if (IsLocallyOwned())
@@ -698,7 +707,7 @@ bool UProximityVoiceComponent::IsHeardSpeaking() const
 	return World && LastRemoteVoiceTime >= 0.0 && World->GetRealTimeSeconds() - LastRemoteVoiceTime < 0.35;
 }
 
-void UProximityVoiceComponent::PlayRemoteVoice(const TArray<uint8>& CompressedData, int32 SenderSampleRate, bool bIntercom)
+void UProximityVoiceComponent::PlayRemoteVoice(const TArray<uint8>& CompressedData, int32 SenderSampleRate)
 {
 	if (bIsShuttingDown || (GetWorld() && GetWorld()->bIsTearingDown) || IsLocallyOwned())
 	{
@@ -720,7 +729,6 @@ void UProximityVoiceComponent::PlayRemoteVoice(const TArray<uint8>& CompressedDa
 	{
 		return;
 	}
-	ApplyPlaybackRoute(bIntercom);
 
 	const TArray<float> Samples = DecompressSamples(CompressedData);
 	if (Samples.Num() == 0)
