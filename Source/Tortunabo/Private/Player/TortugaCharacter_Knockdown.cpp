@@ -23,6 +23,7 @@
 #include "Net/UnrealNetwork.h"
 #include "Kismet/GameplayStatics.h"
 #include "Engine/World.h"
+#include "Player/TN_TurtleActionSfx.h"
 #include "TimerManager.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "Game/TN_RunGameMode.h"
@@ -214,6 +215,14 @@ void ATortugaCharacter::MulticastApplyKnockdownVisual_Implementation(bool bKnock
 	if (bKnocked && KnockdownSound)
 	{
 		PlaySfxAtSelf(KnockdownSound);
+	}
+	else if (bKnocked)
+	{
+		// Sin recurso: el «¡clonc!» sintetizado del caparazón (#348).
+		if (UTN_TurtleActionSynthComponent* Synth = UTN_TurtleActionSynthComponent::FindOrAddTo(this))
+		{
+			Synth->PlayKnockdown();
+		}
 	}
 }
 
