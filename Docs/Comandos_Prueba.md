@@ -88,6 +88,7 @@ necesita espera a que esté lista.
 | `TN.Beach.Lizard <huidizo\|generoso\|mordedor>` | Un lagarto de ese carácter 22 m delante de ti, mirándote. El generoso (motas doradas) deja premio al huir; el mordedor (cresta roja) se lanza a morderte. `TN.Beach.Place clear` lo quita. |
 | `TN.Beach.StunNearest [segundos=3]` | Marea al enemigo más cercano a tu tortuga (pajaritos, sin atacar). Los quads, no. Con el ermitaño rodando lo para en seco; con el pulpo agarrando, suelta; las pulgas se dispersan; el tanque echa humo y la antena da vueltas. |
 | `TN.Beach.Worm [jugador=0]` | Un gusano de arena se come ya a esa tortuga. |
+| `TN.Beach.Mine.Blast <jugador> [metros=0] [veces=1] [cada=6] [espera=cada]` | Solo en el servidor. Pone una mina a esos metros detrás de la tortuga del jugador (índice en `PlayerArray` del anfitrión: 1 = el primer cliente) y la hace saltar; lo repite «veces» veces cada «cada» segundos (la primera, a los «espera»), esperando a que la tortuga esté libre. Con 0 m sale en bola; con 2-6 m, empujón. Para la red (#18): con `p.NetShowCorrections 1` en las dos máquinas y `NetEmulation.PktLag 120` en el cliente, el empujón no debe dar ninguna línea `*** Client: Error` ni `*** Server: Error` tras `explota`. Con `-game` (donde `-ExecCmds` no corre), `-TNMineBlast=1_3_6_6_30` en la línea de órdenes del servidor. |
 | `TN.Beach.Enemy.Stats` | Cuántos enemigos hay y cuántos van a ritmo lento por estar lejos. |
 | `TN.Beach.Enemy.Debug 1` | Dibuja radios de visión, oído y patrulla, y estados. |
 
