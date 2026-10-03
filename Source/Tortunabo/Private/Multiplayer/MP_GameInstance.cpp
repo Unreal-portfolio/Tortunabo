@@ -24,6 +24,8 @@
 #include "Misc/PackageName.h"
 #include "TimerManager.h"
 #include "Multiplayer/TN_CosmeticSaveGame.h"
+#include "Vehicles/TN_BuggyCosmetics.h"
+#include "HAL/IConsoleManager.h"
 #include "Lobby/TN_LobbyMission.h"
 #include "Multiplayer/TN_RoomInfo.h"
 #include "Multiplayer/TN_SaveGameIO.h"
@@ -359,6 +361,12 @@ FName UMP_GameInstance::GetEquippedSkinId() const
 bool UMP_GameInstance::IsCosmeticUnlocked(ETNCosmeticCategory Category, FName Id) const
 {
 	if (Id == NAME_None) { return true; }
+	if (TNIsBuggyCategory(Category))
+	{
+		// Lo gratis del catálogo no hace falta comprarlo.
+		if (!TNBuggyCosmetics::IsKnown(Category, Id)) { return false; }
+		return TNBuggyCosmetics::PriceOf(Category, Id) == 0 || (CosmeticProfile && CosmeticProfile->UnlockedBuggyIds.Contains(Id));
+	}
 	if (!CosmeticProfile) { return false; }
 	return Category == ETNCosmeticCategory::Helmet ? CosmeticProfile->UnlockedHelmetIds.Contains(Id) : CosmeticProfile->UnlockedSkinIds.Contains(Id);
 }
@@ -366,6 +374,7 @@ bool UMP_GameInstance::IsCosmeticUnlocked(ETNCosmeticCategory Category, FName Id
 int32 UMP_GameInstance::GetCosmeticPrice(ETNCosmeticCategory Category, FName Id) const
 {
 	if (Id == NAME_None) { return 0; }
+	if (TNIsBuggyCategory(Category)) { return TNBuggyCosmetics::PriceOf(Category, Id); }
 	if (Category == ETNCosmeticCategory::Helmet)
 	{
 		const FTN_HelmetData* HelmRow = FindHelmetRow(Id, TEXT("GetCosmeticPrice"));
@@ -378,11 +387,13 @@ int32 UMP_GameInstance::GetCosmeticPrice(ETNCosmeticCategory Category, FName Id)
 bool UMP_GameInstance::PurchaseCosmetic(ETNCosmeticCategory Category, FName Id)
 {
 	if (!CosmeticProfile || Id == NAME_None) { return false; }
+	if (TNIsBuggyCategory(Category) && !TNBuggyCosmetics::IsKnown(Category, Id)) { return false; }
 	if (IsCosmeticUnlocked(Category, Id)) { return true; }
 	const int32 Price = GetCosmeticPrice(Category, Id);
 	if (Price > CosmeticProfile->AccumulatedRaceScore) { return false; }
 	CosmeticProfile->AccumulatedRaceScore -= Price;
 	if (Category == ETNCosmeticCategory::Helmet) { CosmeticProfile->UnlockedHelmetIds.AddUnique(Id); }
+	else if (TNIsBuggyCategory(Category)) { CosmeticProfile->UnlockedBuggyIds.AddUnique(Id); }
 	else { CosmeticProfile->UnlockedSkinIds.AddUnique(Id); }
 	SaveCosmeticProfile();
 	UE_LOG(LogTortunabo, Log, TEXT("[Tienda] Desbloqueado '%s' por %d (quedan %d)."), *Id.ToString(), Price, CosmeticProfile->AccumulatedRaceScore);
@@ -391,6 +402,7 @@ bool UMP_GameInstance::PurchaseCosmetic(ETNCosmeticCategory Category, FName Id)
 
 TArray<FName> UMP_GameInstance::GetCosmeticCatalog(ETNCosmeticCategory Category) const
 {
+	if (TNIsBuggyCategory(Category)) { return TNBuggyCosmetics::CatalogIds(Category); }
 	TArray<FName> Out;
 	if (Category == ETNCosmeticCategory::Helmet)
 	{
@@ -445,6 +457,30 @@ bool UMP_GameInstance::EquipEyes(FName EyesId)
 FName UMP_GameInstance::GetEquippedEyesId() const
 {
 	return CosmeticProfile ? CosmeticProfile->EquippedEyesId : NAME_None;
+}
+
+TArray<FName> UMP_GameInstance::GetUnlockedBuggyIds() const
+{
+	return CosmeticProfile ? CosmeticProfile->UnlockedBuggyIds : TArray<FName>();
+}
+
+bool UMP_GameInstance::EquipBuggyLook(const FTN_BuggyLook& Look)
+{
+	if (!CosmeticProfile) { return false; }
+	const FTN_BuggyLook Clean = TNBuggyCosmetics::Sanitize(Look);
+	if (!IsCosmeticUnlocked(ETNCosmeticCategory::BuggyModel, Clean.ModelId) || !IsCosmeticUnlocked(ETNCosmeticCategory::BuggyPaint, Clean.PaintId))
+	{
+		UE_LOG(LogTortunabo, Warning, TEXT("[Tienda] Buggy '%s' sin desbloquear: no se equipa."), *TNBuggyCosmetics::LookKey(Clean));
+		return false;
+	}
+	CosmeticProfile->EquippedBuggyLook = Clean;
+	SaveCosmeticProfile();
+	return true;
+}
+
+FTN_BuggyLook UMP_GameInstance::GetEquippedBuggyLook() const
+{
+	return CosmeticProfile ? TNBuggyCosmetics::Sanitize(CosmeticProfile->EquippedBuggyLook) : FTN_BuggyLook();
 }
 
 const FTN_HelmetData* UMP_GameInstance::FindHelmetRow(FName HelmetId, const TCHAR* Ctx) const
@@ -1310,6 +1346,23 @@ int32 UMP_GameInstance::GetAccumulatedRaceScore() const
 {
 	return CosmeticProfile ? CosmeticProfile->AccumulatedRaceScore : 0;
 }
+
+#if !UE_BUILD_SHIPPING
+// Para probar la tienda (los buggies cuestan conchas): suma conchas al perfil local y las guarda.
+static FAutoConsoleCommandWithWorldAndArgs GTNShopAddShellsCommand(
+	TEXT("TN.Shop.AddShells"),
+	TEXT("Tienda: TN.Shop.AddShells <conchas = 5000>: suma conchas al perfil cosmético local (para comprar buggies y pinturas)."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+	{
+		UMP_GameInstance* GI = World ? Cast<UMP_GameInstance>(World->GetGameInstance()) : nullptr;
+		if (!GI)
+		{
+			UE_LOG(LogTortunabo, Warning, TEXT("TN.Shop.AddShells: no hay UMP_GameInstance"));
+			return;
+		}
+		GI->AddRaceScore(Args.Num() > 0 ? FMath::Max(1, FCString::Atoi(*Args[0])) : 5000);
+	}));
+#endif
 
 // ── Tutorial state ────────────────────────────────────────────────────────────
 
