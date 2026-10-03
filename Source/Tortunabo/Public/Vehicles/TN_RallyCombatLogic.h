@@ -72,6 +72,13 @@ namespace TNRallyCombat
 	/** Vida tras recibir Damage (negativo cuenta como 0), en [0, MaxHealth]. */
 	TORTUNABO_API float ApplyDamage(float Health, float Damage, float MaxHealth);
 	TORTUNABO_API bool IsSmoking(float Health, float MaxHealth);
+
+	/** Bocanadas de humo por segundo a media vida y con la vida casi a 0 (#296: humo de malla propia, sin Niagara). */
+	constexpr float SmokeMinPuffsPerSecond = 3.f;
+	constexpr float SmokeMaxPuffsPerSecond = 9.f;
+
+	/** Bocanadas por segundo: 0 si no echa humo; de SmokeMinPuffsPerSecond a media vida a SmokeMaxPuffsPerSecond en 0. */
+	TORTUNABO_API float SmokePuffsPerSecond(float Health, float MaxHealth);
 	TORTUNABO_API bool IsDestroyed(float Health);
 
 	// ── Choques ─────────────────────────────────────────────────────────────────

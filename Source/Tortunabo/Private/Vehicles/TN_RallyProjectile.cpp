@@ -60,9 +60,13 @@ namespace TNRallyFX
 		case ETNRallyBurstKind::Sand: return FLinearColor(0.85f, 0.72f, 0.45f);
 		case ETNRallyBurstKind::MuzzleFlash: return FLinearColor(1.00f, 0.85f, 0.40f);
 		case ETNRallyBurstKind::Sparks: return FLinearColor(1.00f, 0.70f, 0.20f);
+		case ETNRallyBurstKind::Smoke: return FLinearColor(0.16f, 0.16f, 0.17f);
 		default: return FLinearColor(0.55f, 0.35f, 0.15f);
 		}
 	}
+
+	/** Velocidad de subida del humo (cm/s); las demás ráfagas no se mueven. */
+	constexpr float SmokeRiseCms = 160.f;
 
 	/** Duración de cada ráfaga (s): el fogonazo y las chispas son más cortos; la nube de arena, más larga. */
 	float BurstSeconds(ETNRallyBurstKind Kind)
@@ -72,6 +76,7 @@ namespace TNRallyFX
 		case ETNRallyBurstKind::MuzzleFlash: return 0.15f;
 		case ETNRallyBurstKind::Sparks: return 0.25f;
 		case ETNRallyBurstKind::Sand: return 1.2f;
+		case ETNRallyBurstKind::Smoke: return 1.1f;
 		default: return 0.5f;
 		}
 	}
@@ -552,6 +557,10 @@ void ATN_RallyBurstFX::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 	Age += DeltaSeconds;
+	if (Kind == ETNRallyBurstKind::Smoke)
+	{
+		AddActorWorldOffset(FVector(0.f, 0.f, TNRallyFX::SmokeRiseCms * DeltaSeconds));
+	}
 	const float Alpha = FMath::Clamp(Age / TNRallyFX::BurstSeconds(Kind), 0.f, 1.f);
 	// Crece rápido hasta el radio final y se encoge al final para desaparecer.
 	const float Grow = 1.f - FMath::Square(1.f - Alpha);

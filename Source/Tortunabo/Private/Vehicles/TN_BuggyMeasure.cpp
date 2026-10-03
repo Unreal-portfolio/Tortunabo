@@ -3,7 +3,7 @@
 // Espera a que la carrera esté en marcha (o, sin carrera, a que haya un buggy y una pista construida), toma el buggy del
 // primer jugador o el primero del mundo, aparta a su piloto IA y:
 //   1. lo para;
-//   2. acelera a fondo siguiendo la spline de la pista: tiempo de 0 a 100 km/h y velocidad máxima;
+//   2. acelera a fondo siguiendo la spline de la pista: tiempos de 0 a 60 y de 0 a 100 km/h y velocidad máxima;
 //   3. frena a fondo: distancia desde que baja de 60 km/h hasta que se para.
 // Resultado en LogTNBuggy: "[Medida] ...". Con un buggy de piloto IA: LVL_Rally?Bots=1?AutoStart en un servidor sin
 // jugadoras.
@@ -30,6 +30,8 @@ namespace TNBuggyMeasure
 	constexpr float BrakeTimeoutSeconds = 10.f;
 	constexpr float BrakeFromKmh = 60.f;
 	constexpr float SprintToKmh = 100.f;
+	/** Marca intermedia de la salida (#294: 0-60 km/h en ~2 s). */
+	constexpr float SprintMarkKmh = 60.f;
 	/** Mirada adelantada para seguir la spline (como el piloto IA). */
 	constexpr double LookAheadBaseCm = 1200.0;
 	constexpr double LookAheadSeconds = 0.6;
@@ -50,6 +52,7 @@ namespace TNBuggyMeasure
 		double StageStart = 0.0;
 		double Arc = 0.0;
 		float MaxKmh = 0.f;
+		float ZeroToSixty = -1.f;
 		float ZeroToHundred = -1.f;
 		FVector BrakeFrom = FVector::ZeroVector;
 		bool bBrakeArmed = false;
@@ -114,11 +117,14 @@ namespace TNBuggyMeasure
 		{
 			Pilot->SetActorTickEnabled(true);
 		}
-		const FString ZeroToHundred = Run->ZeroToHundred >= 0.f ? FString::Printf(TEXT("%.2f s"), Run->ZeroToHundred)
-			: FString::Printf(TEXT("no llega en %.0f s"), Run->SprintSeconds);
+		const auto SprintTime = [&Run](float Seconds)
+		{
+			return Seconds >= 0.f ? FString::Printf(TEXT("%.2f s"), Seconds) : FString::Printf(TEXT("no llega en %.0f s"), Run->SprintSeconds);
+		};
 		const FString Brake = Run->BrakeMeters >= 0.f ? FString::Printf(TEXT("%.1f m"), Run->BrakeMeters) : FString(TEXT("sin medir"));
-		UE_LOG(LogTNBuggy, Display, TEXT("[Medida] %s: velocidad máxima %.1f km/h, 0-100 km/h %s, frenada desde 60 km/h %s, vuelcos %d"),
-			Why, Run->MaxKmh, *ZeroToHundred, *Brake, Run->Flips);
+		UE_LOG(LogTNBuggy, Display,
+			TEXT("[Medida] %s: velocidad máxima %.1f km/h, 0-60 km/h %s, 0-100 km/h %s, frenada desde 60 km/h %s, vuelcos %d"),
+			Why, Run->MaxKmh, *SprintTime(Run->ZeroToSixty), *SprintTime(Run->ZeroToHundred), *Brake, Run->Flips);
 		if (Run->bQuitWhenDone)
 		{
 			FPlatformMisc::RequestExit(false, TEXT("TN.Rally.Measure"));
@@ -190,6 +196,10 @@ namespace TNBuggyMeasure
 		case EStage::Sprint:
 			Buggy->SetAIDriveInput(1.f, 0.f, Steer, false);
 			Run->MaxKmh = FMath::Max(Run->MaxKmh, Kmh);
+			if (Run->ZeroToSixty < 0.f && Kmh >= SprintMarkKmh)
+			{
+				Run->ZeroToSixty = static_cast<float>(Elapsed);
+			}
 			if (Run->ZeroToHundred < 0.f && Kmh >= SprintToKmh)
 			{
 				Run->ZeroToHundred = static_cast<float>(Elapsed);
@@ -245,7 +255,7 @@ namespace TNBuggyMeasure
 	}
 
 	FAutoConsoleCommandWithWorldAndArgs CmdMeasure(TEXT("TN.Rally.Measure"),
-		TEXT("Rally (servidor): TN.Rally.Measure [segundos de aceleración = 25] [cerrar 0|1]: velocidad máxima, 0-100 km/h y frenada desde 60 km/h del buggy en la pista (LogTNBuggy [Medida])."),
+		TEXT("Rally (servidor): TN.Rally.Measure [segundos de aceleración = 25] [cerrar 0|1]: velocidad máxima, 0-60 y 0-100 km/h y frenada desde 60 km/h del buggy en la pista (LogTNBuggy [Medida])."),
 		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World) { Start(Args, World); }));
 }
 

@@ -222,7 +222,7 @@ namespace TNProcMap
 		TArray<FPathSample> All = L.Main;
 		for (const FBranch& B : L.Branches) { All.Append(B.Samples); }
 		PathDetail::FSampleGrid Grid;
-		Grid.Build(All, L.WorldSize);
+		Grid.Build(All, L.MaxExtent());
 		for (const FModule& M : L.Modules)
 		{
 			KindsFor(M.Biome, Arches, Plaza, Far);
@@ -249,7 +249,7 @@ namespace TNProcMap
 					if (Coast - C.Y > 30000.0) { break; }
 					C.Y = Coast - Rng.Range(1500.0, 4000.0);
 				}
-				else if (C.X < 8000.0 || C.X > L.WorldSize - 8000.0 || C.Y < 8000.0 || C.Y > Coast - 6000.0)
+				else if (C.X < 8000.0 || C.X > L.WorldSizeX - 8000.0 || C.Y < 8000.0 || C.Y > Coast - 6000.0)
 				{
 					continue;
 				}

@@ -28,6 +28,7 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "HAL/PlatformTime.h"
+#include "World/ProcMap/TN_ProcMapSurvival.h"
 
 ATN_ProcMapGenerator::ATN_ProcMapGenerator()
 {
@@ -55,6 +56,7 @@ void ATN_ProcMapGenerator::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>&
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(ATN_ProcMapGenerator, NetConfig);
+	DOREPLIFETIME_CONDITION(ATN_ProcMapGenerator, Settings, COND_InitialOnly);
 }
 
 void ATN_ProcMapGenerator::BeginPlay()
@@ -137,6 +139,16 @@ void ATN_ProcMapGenerator::ServerGenerate(int32 InSeed, ETNProcGameMode InMode, 
 	ForceNetUpdate();
 }
 
+void ATN_ProcMapGenerator::ServerGenerateSurvival(int32 InSeed, int32 InSurvivalDifficulty)
+{
+	if (!HasAuthority())
+	{
+		return;
+	}
+	NetConfig.SurvivalDifficulty = FMath::Clamp(InSurvivalDifficulty, TNProcMap::SurvivalMinDifficulty, TNProcMap::SurvivalMaxDifficulty);
+	ServerGenerate(InSeed, ETNProcGameMode::Survival, ETNProcDifficulty::Normal);
+}
+
 void ATN_ProcMapGenerator::GenerateInEditor()
 {
 	UWorld* World = GetWorld();
@@ -151,6 +163,7 @@ void ATN_ProcMapGenerator::GenerateInEditor()
 	NetConfig.Seed = bEditorRandomSeed ? FMath::Rand() : EditorSeed;
 	NetConfig.Mode = EditorMode;
 	NetConfig.Difficulty = EditorDifficulty;
+	NetConfig.SurvivalDifficulty = EditorSurvivalDifficulty;
 	NetConfig.Generation += 1;
 	BuildFromNetConfig();
 }
@@ -225,10 +238,11 @@ void ATN_ProcMapGenerator::BuildFromNetConfig()
 
 	const double T4 = FPlatformTime::Seconds();
 	UE_LOG(LogTortunabo, Log,
-		TEXT("[ProcMap] Mapa listo · semilla %d · %s/%s · grid %dx%d · %d módulos en ruta · %d cruces · %d ramas · camino %.2f km (~%.0f min a 5,5 m/s) · layout %.2fs terreno %.2fs resto %.2fs total %.2fs"),
+		TEXT("[ProcMap] Mapa listo · semilla %d · %s/%s · grid %dx%d · %d módulos en ruta · %d cruces · %d ramas · camino %.2f km (~%.0f min a 5,5 m/s) · layout %.2fs terreno %.2fs resto %.2fs total %.2fs · ajustes %s"),
 		NetConfig.Seed, *UEnum::GetValueAsString(NetConfig.Mode), *UEnum::GetValueAsString(NetConfig.Difficulty),
-		Layout.Params.GridSize, Layout.Params.GridSize, Layout.UniqueModulesOnRoute, Layout.Crossings.Num(), Layout.Branches.Num(),
-		Layout.MainLength() / 100000.0, EstimateTraversalMinutes(550.f), T1 - T0, T2 - T1, T4 - T2, T4 - T0);
+		Layout.GridW(), Layout.Params.GridSize, Layout.UniqueModulesOnRoute, Layout.Crossings.Num(), Layout.Branches.Num(),
+		Layout.MainLength() / 100000.0, EstimateTraversalMinutes(550.f), T1 - T0, T2 - T1, T4 - T2, T4 - T0,
+		Settings ? *Settings->GetName() : TEXT("ninguno (greybox)"));
 
 	OnMapGeneratedNative.Broadcast(BuiltGeneration);
 	OnMapGenerated.Broadcast(BuiltGeneration);
@@ -247,6 +261,15 @@ bool ATN_ProcMapGenerator::BuildLayout()
 	const ETNProcGameMode ProfileMode = bKarts ? ETNProcGameMode::Coop : NetConfig.Mode;
 	ActiveProfile = Settings ? Settings->ResolveProfile(ProfileMode, NetConfig.Difficulty)
 		: TN_MakeDefaultProcProfile(ProfileMode, NetConfig.Difficulty);
+
+	// Supervivencia (#273): su propio perfil, alargado y lineal, con la dificultad 1–5 del nivel.
+	const bool bSurvival = NetConfig.Mode == ETNProcGameMode::Survival;
+	const int32 SurvivalDifficulty = NetConfig.SurvivalDifficulty > 0 ? NetConfig.SurvivalDifficulty
+		: 1 + 2 * static_cast<int32>(NetConfig.Difficulty);
+	if (bSurvival)
+	{
+		return TNProcMap::GenerateSurvivalLayout(static_cast<uint32>(NetConfig.Seed), SurvivalDifficulty, Layout) != 0;
+	}
 
 	// Reintentos deterministas: todas las máquinas prueban la misma secuencia de semillas.
 	for (int32 Attempt = 0; Attempt < 5; ++Attempt)
@@ -585,7 +608,7 @@ void ATN_ProcMapGenerator::BuildProgressIndex()
 	}
 
 	ProgressOrigin = FVector2D(-20000.0, -20000.0);
-	ProgressW = FMath::Max(1, FMath::CeilToInt((Layout.WorldSize + 40000.0) / ProgressCell));
+	ProgressW = FMath::Max(1, FMath::CeilToInt((Layout.MaxExtent() + 40000.0) / ProgressCell));
 	ProgressH = ProgressW;
 	ProgressBuckets.Reset();
 	ProgressBuckets.SetNum(ProgressW * ProgressH);

@@ -10,6 +10,7 @@
 #include "Rally/TN_RallyGameState.h"
 #include "Rally/TN_RallyLogic.h"
 #include "Rally/TN_RallyTrack.h"
+#include "Rally/UI/TN_RallyDashboard.h"
 #include "UObject/ObjectKey.h"
 #include "Vehicles/TN_Buggy.h"
 #include "Vehicles/TN_BuggyGunnerPawn.h"
@@ -501,7 +502,7 @@ namespace TNRallyTabletDebug
 		Panel->SetRelativeScale3D(FVector(PanelCmPerPx));
 		Panel->SetWidgetSpace(EWidgetSpace::World);
 		Panel->SetDrawSize(FVector2D(TNRallyTabletLayout::DesignSize(ETNRallyTabletView::Compact)));
-		Panel->SetBlendMode(EWidgetBlendMode::Transparent);
+		Panel->SetBlendMode(TNRallyDashboard::UseMaskedPanels() ? EWidgetBlendMode::Masked : EWidgetBlendMode::Transparent);
 		Panel->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		Panel->RegisterComponent();
 		const UTN_RallyCopilotTablet* Tablet = UTN_RallyCopilotTablet::PresentInWorldFor(Player, Panel);

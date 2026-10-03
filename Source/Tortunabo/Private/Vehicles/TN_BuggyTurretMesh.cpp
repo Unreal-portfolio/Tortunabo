@@ -86,11 +86,11 @@ namespace TNBuggyTurretMesh
 	void BuildRing(FTNProcMeshBuffers& Out)
 	{
 		AddTorus(Out, FVector(0.0, 0.0, RingZ), RingRadius, RingTube, Trim);
-		// Tirantes que suben a las barandillas laterales, con su abrazadera.
+		// Patas a los lados de la cadera, del aro al suelo de la carrocería trasera, con su pie.
 		for (const double Side : { -1.0, 1.0 })
 		{
-			Out.AddBeam(FVector(0.0, Side * (RingRadius + RingTube * 0.5), RingZ), FVector(0.0, Side * (RailY - 2.0), RailZ), 1.6, Trim);
-			Out.AddBox(FVector(0.0, Side * RailY, RailZ), AxisX, FVector(3.0, 5.2, 5.2), Paint);
+			Out.AddBeam(FVector(0.0, Side * RingRadius, RingZ), FVector(0.0, Side * RingRadius, FloorZ), 1.6, Trim);
+			Out.AddBox(FVector(0.0, Side * RingRadius, FloorZ + 1.0), AxisX, FVector(3.5, 3.5, 1.0), Paint);
 		}
 	}
 
@@ -126,7 +126,7 @@ namespace TNBuggyTurretMesh
 	{
 		const double SideY = UTN_BuggyTurretComponent::MuzzleSideCm;
 		// Brazo lateral del cubo al cuerpo, por fuera del cuerpo.
-		Out.AddBox(FVector((BodyMinX + 2.0 - 3.0) * 0.5, ArmY, 0.0), AxisX, FVector((BodyMinX + 2.0 + 3.0) * 0.5, 2.0, 3.5), Trim);
+		Out.AddBox(FVector((BodyMinX + 2.0 - 3.0) * 0.5, ArmY, ArmZ), AxisX, FVector((BodyMinX + 2.0 + 3.0) * 0.5, 2.0, 3.5), Trim);
 		// Cuerpo, culata y tolva de cocos.
 		const double BodyHalfX = (BodyMaxX - BodyMinX) * 0.5;
 		Out.AddBox(FVector(BodyMinX + BodyHalfX, SideY, BodyZ), AxisX, FVector(BodyHalfX, 8.0, 7.0), Yellow);

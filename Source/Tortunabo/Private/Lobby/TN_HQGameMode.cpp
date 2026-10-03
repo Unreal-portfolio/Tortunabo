@@ -6,6 +6,7 @@
 #include "Player/TortugaCharacter.h"
 #include "Player/MP_GamePlayerController.h"
 #include "Multiplayer/MP_GameInstance.h"
+#include "Multiplayer/TN_TravelFailureSubsystem.h"
 #include "Engine/World.h"
 #include "UObject/Package.h"
 #include "Misc/PackageName.h"
@@ -508,6 +509,11 @@ void ATN_HQGameMode::HandleSeamlessTravelPlayer(AController*& C)
 
 	// El componente del tutorial (vuelve de una partida: si esa máquina aún no lo ha hecho, lo pedirá ella).
 	SetupTutorialFor(Cast<APlayerController>(C));
+}
+
+bool ATN_HQGameMode::CanServerTravel(const FString& URL, bool bAbsolute)
+{
+	return Super::CanServerTravel(URL, bAbsolute) && UTN_TravelFailureSubsystem::CanServerTravelTo(GetWorld(), URL, bAbsolute);
 }
 
 void ATN_HQGameMode::PostSeamlessTravel()

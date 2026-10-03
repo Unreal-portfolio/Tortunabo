@@ -202,7 +202,15 @@ void AMP_GamePlayerController::OnPossess(APawn* InPawn)
 		return;
 	}
 
-	UProximityVoiceComponent::EnsureOn(InPawn);
+	UProximityVoiceComponent* ExistingVoice = InPawn->FindComponentByClass<UProximityVoiceComponent>();
+	if (!ExistingVoice)
+	{
+		UProximityVoiceComponent* VoiceComp = NewObject<UProximityVoiceComponent>(InPawn, TEXT("ProximityVoice"));
+		if (VoiceComp)
+		{
+			VoiceComp->RegisterComponent();
+		}
+	}
 
 	// Aplicar cosméticos al pawn recién poseído (server-side, para TODOS los jugadores).
 	// El listen-server no recibe OnRep de su propio PlayerState → aplica directamente.

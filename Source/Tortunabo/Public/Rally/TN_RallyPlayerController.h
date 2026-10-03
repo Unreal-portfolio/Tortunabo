@@ -6,6 +6,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Engine/Scene.h"
 #include "GameFramework/PlayerController.h"
 #include "Player/TN_CosmeticsSync.h"
 #include "Rally/TN_RallyCrewCalls.h"
@@ -13,6 +14,7 @@
 #include "Voice/TN_VoiceRouting.h"
 #include "TN_RallyPlayerController.generated.h"
 
+class APostProcessVolume;
 class ATN_Buggy;
 class UTN_RallyCameraDirector;
 class UTN_RallyCopilotComponent;
@@ -72,6 +74,16 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Sonido", meta = (ClampMin = "0"))
 	float HitConfirmVolume = 0.7f;
 
+	/**
+	 * Desenfoque de movimiento en el Rally (#605): 0 = ninguno. Con la cámara de persecución, el buggy y sus paneles 3D
+	 * dejaban estela (sobre todo a 30 fps). Lo aplica un volumen de postproceso local sin límites en cada jugador local.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Imagen", meta = (ClampMin = "0", ClampMax = "1"))
+	float MotionBlurAmount = 0.f;
+
+	/** Ajustes de postproceso del Rally: solo MotionBlurAmount (lo demás, el del nivel). */
+	static FPostProcessSettings MakeRallyPostProcess(float InMotionBlurAmount);
+
 	// ITN_VoiceListener
 	virtual void SendVoiceToOwningClient(const TArray<uint8>& CompressedData, int32 SenderSampleRate, AActor* SpeakerActor,
 		bool bIntercom) override;
@@ -125,4 +137,11 @@ private:
 	/** Copiloto automático de la conductora sin artillera humana (#331): solo en esta máquina. */
 	UPROPERTY(Transient)
 	TObjectPtr<UTN_RallyCopilotComponent> Copilot;
+
+	/** Volumen de postproceso local del Rally (MakeRallyPostProcess): solo en el jugador local. */
+	UPROPERTY(Transient)
+	TObjectPtr<APostProcessVolume> RallyPostProcess;
+
+	/** Crea RallyPostProcess (sin límites y con prioridad alta) si no existe. */
+	void ApplyRallyPostProcess();
 };

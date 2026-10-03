@@ -8,6 +8,7 @@
 #include "Rally/TN_RallyLogic.h"
 #include "Rally/TN_RallyTrack.h"
 #include "Rally/TN_RallyVehicle.h"
+#include "Vehicles/TN_BuggyMath.h"
 
 namespace
 {
@@ -35,6 +36,12 @@ namespace
 	/** Una marcha atrás a menos de esto de la anterior alarga la siguiente, hasta RallyAIReverseMaxSeconds. */
 	constexpr double RallyAIReverseMemorySeconds = 12.0;
 	constexpr double RallyAIReverseMaxSeconds = 4.0;
+	/** Gravedad (cm/s²) para pasar de g a aceleración. */
+	constexpr float RallyAIGravityCms2 = 981.f;
+	/** Por encima del objetivo: hasta CoastBand sin acelerar del todo, desde BrakeBand frena, y a FullBrakeOver por encima, a fondo. */
+	constexpr float RallyAICoastBandKmh = 4.f;
+	constexpr float RallyAIBrakeBandKmh = 6.f;
+	constexpr float RallyAIFullBrakeOverKmh = 20.f;
 }
 
 ATN_RallyAIController::ATN_RallyAIController()
@@ -123,12 +130,8 @@ void ATN_RallyAIController::Drive(float DeltaSeconds, ATN_RallyTrack& Track)
 	const double LookAhead = bOffRoad ? RallyAIRejoinLookAheadCm : LookAheadBaseCm + SpeedCms * LookAheadSeconds;
 	const FVector Target = Track.GetLocationAtArc(Arc + LookAhead);
 	const float Steer = TNRally::SteerToward(Forward, Target - Location, SteerSaturationDeg);
-	const float CornerKmh = TNRally::CornerSpeedKmh(Track.GetDirectionAtArc(Arc),
-		Track.GetDirectionAtArc(Arc + RallyAICornerProbeCm + SpeedCms * RallyAICornerProbeSeconds), MaxSpeedKmh, MinCornerSpeedKmh);
-	// Cuesta abajo se frena peor: menos velocidad objetivo (en las bajadas con curva de E01B se salían por fuera).
-	const double Grade = (Track.GetLocationAtArc(Arc + RallyAIGradeProbeCm).Z - Track.GetLocationAtArc(Arc).Z) / RallyAIGradeProbeCm;
-	const double Downhill = FMath::Clamp(1.0 + RallyAIDownhillSlowdown * FMath::Min(0.0, Grade), RallyAIMinDownhillFactor, 1.0);
-	const float TargetKmh = bOffRoad ? FMath::Min(CornerKmh, RallyAIRejoinKmh) : static_cast<float>(CornerKmh * Downhill);
+	const float CurvesKmh = TargetSpeedKmh(Track, SpeedCms);
+	const float TargetKmh = bOffRoad ? FMath::Min(CurvesKmh, RallyAIRejoinKmh) : CurvesKmh;
 
 	if (Time < ReverseUntil)
 	{
@@ -136,8 +139,14 @@ void ATN_RallyAIController::Drive(float DeltaSeconds, ATN_RallyTrack& Track)
 		RallyVehicle->SetAIDriveInput(0.f, 1.f, -Steer, false);
 		return;
 	}
-	const float Throttle = SpeedKmh < TargetKmh ? 1.f : 0.25f;
-	const float Brake = SpeedKmh > TargetKmh + 12.f ? 0.8f : 0.f;
+	// Con 38 grados de rueda a cualquier velocidad (#606), la dirección a tope a mucha velocidad volcaría el buggy: se acota a
+	// lo que no pasa de MaxLateralAccelG de lateral.
+	const float SteerCap = TNBuggy::SafeSteerFraction(static_cast<float>(SpeedCms), SteerAngleDeg, WheelbaseCm, MaxLateralAccelG * RallyAIGravityCms2);
+	const float SafeSteer = FMath::Clamp(Steer, -SteerCap, SteerCap);
+	// Frena en cuanto pasa del objetivo y más fuerte cuanto más se pasa: llega a la curva a su velocidad.
+	const float Over = SpeedKmh - TargetKmh;
+	const float Throttle = Over < 0.f ? 1.f : (Over < RallyAICoastBandKmh ? 0.2f : 0.f);
+	const float Brake = Over > RallyAIBrakeBandKmh ? FMath::Clamp(Over / RallyAIFullBrakeOverKmh, 0.4f, 1.f) : 0.f;
 	SlowSeconds = (Throttle > 0.5f && SpeedKmh < RallyAIStuckKmh && Time >= IgnoreSlowUntil) ? SlowSeconds + DeltaSeconds : 0.f;
 	if (SlowSeconds > RallyAIStuckSeconds)
 	{
@@ -149,8 +158,26 @@ void ATN_RallyAIController::Drive(float DeltaSeconds, ATN_RallyTrack& Track)
 			*GetNameSafe(Vehicle), Location.X, Location.Y, Location.Z, Arc / 100.0,
 			FVector::Dist(Location, Track.GetLocationAtArc(Arc)) / 100.0, Steer, Vehicle->GetActorUpVector().Z);
 	}
-	RallyVehicle->SetAIDriveInput(Throttle, Brake, Steer, false);
+	RallyVehicle->SetAIDriveInput(Throttle, Brake, SafeSteer, false);
 	TryFire(Location, Forward);
+}
+
+float ATN_RallyAIController::TargetSpeedKmh(const ATN_RallyTrack& Track, double SpeedCms) const
+{
+	// La curva de aquí (como antes) y las de los siguientes BrakeProbeCm: a cada una se llega frenando con BrakeDecelG.
+	const double Probe = RallyAICornerProbeCm + SpeedCms * RallyAICornerProbeSeconds;
+	const double Decel = BrakeDecelG * RallyAIGravityCms2;
+	float Target = MaxSpeedKmh;
+	for (double Ahead = 0.0; Ahead <= BrakeProbeCm; Ahead += FMath::Max(200.0, static_cast<double>(BrakeProbeStepCm)))
+	{
+		const float CornerKmh = TNRally::CornerSpeedKmh(Track.GetDirectionAtArc(Arc + Ahead),
+			Track.GetDirectionAtArc(Arc + Ahead + Probe), MaxSpeedKmh, MinCornerSpeedKmh);
+		Target = FMath::Min(Target, TNRally::ApproachSpeedKmh(CornerKmh, Ahead, Decel));
+	}
+	// Cuesta abajo se frena peor: menos velocidad objetivo (en las bajadas con curva de E01B se salían por fuera).
+	const double Grade = (Track.GetLocationAtArc(Arc + RallyAIGradeProbeCm).Z - Track.GetLocationAtArc(Arc).Z) / RallyAIGradeProbeCm;
+	const double Downhill = FMath::Clamp(1.0 + RallyAIDownhillSlowdown * FMath::Min(0.0, Grade), RallyAIMinDownhillFactor, 1.0);
+	return static_cast<float>(Target * Downhill);
 }
 
 void ATN_RallyAIController::TryFire(const FVector& Location, const FVector& Forward)

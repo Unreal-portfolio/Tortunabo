@@ -23,6 +23,7 @@
 #include "Engine/World.h"
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "Materials/MaterialInterface.h"
 #include "Net/UnrealNetwork.h"
 #include "Sound/SoundBase.h"
 #include "UObject/ConstructorHelpers.h"
@@ -89,11 +90,19 @@ namespace TNBuggyDetail
 		FillLinearCurve(*Engine.TorqueCurve.GetRichCurve(), Keys, MaxRPM, 1.f);
 	}
 
-	/** Curva de dirección (TNBuggy::SteerCurveKeys) en mph y fracción del ángulo parado. Se lee al crear la simulación. */
+	/** Curva de dirección (TNBuggy::SteerCurveKeys) en mph y fracción del ángulo máximo. Se lee al crear la simulación. */
 	void BuildSteeringCurve(FVehicleSteeringConfig& Steering)
 	{
-		FillLinearCurve(*Steering.SteeringCurve.GetRichCurve(), TNBuggy::SteerCurveKeys(), CmsToMph,
-			1.f / TNBuggy::SteerAngleAtRestDeg);
+		FillLinearCurve(*Steering.SteeringCurve.GetRichCurve(), TNBuggy::SteerCurveKeys(), CmsToMph, 1.f);
+	}
+
+	/** Rapidez y respuesta del volante de Chaos (#606): se usan en el hilo de juego al procesar la entrada. */
+	void ApplySteeringResponse(UChaosWheeledVehicleMovementComponent& Move, const UTN_BuggyData& Tuning)
+	{
+		Move.SteeringInputRate.RiseRate = Tuning.SteerRiseRate;
+		Move.SteeringInputRate.FallRate = Tuning.SteerFallRate;
+		Move.SteeringInputRate.InputCurveFunction = Tuning.bLinearSteerResponse ? EInputFunctionType::LinearFunction
+			: EInputFunctionType::SquaredFunction;
 	}
 }
 
@@ -150,6 +159,11 @@ ATN_Buggy::ATN_Buggy()
 	static ConstructorHelpers::FObjectFinder<USoundBase> BoostStartFinder(TEXT("/Game/Audio/Rally/SFX_Buggy_Turbo_Start.SFX_Buggy_Turbo_Start"));
 	BoostSound = BoostLoopFinder.Object;
 	BoostStartSound = BoostStartFinder.Object;
+	// Llama del turbo sin Niagara (#294): cono básico tintado, como las ráfagas del Rally (ATN_RallyBurstFX).
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> FlameMeshFinder(TEXT("/Engine/BasicShapes/Cone.Cone"));
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> FlameMaterialFinder(TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
+	BoostFlameMesh = FlameMeshFinder.Object;
+	BoostFlameMaterial = FlameMaterialFinder.Object;
 	// Aspecto de la tienda: carrocerías tortuga por piezas y pinturas (solo visual).
 	BuggyLook = CreateDefaultSubobject<UTN_BuggyLookComponent>(TEXT("BuggyLook"));
 	BuggyLook->SetupAttachment(Chassis);
@@ -246,8 +260,9 @@ ATN_Buggy::ATN_Buggy()
 	BuildTorqueCurve(Move->EngineSetup, Defaults->MaxRPM, Defaults->MaxTorque);
 	Move->DifferentialSetup.DifferentialType = EVehicleDifferential::RearWheelDrive;
 	Move->SteeringSetup.SteeringType = ESteeringType::AngleRatio;
-	Move->SteeringSetup.AngleRatio = 0.7f;
+	Move->SteeringSetup.AngleRatio = TNBuggy::SteerAngleRatio;
 	BuildSteeringCurve(Move->SteeringSetup);
+	ApplySteeringResponse(*Move, *Defaults);
 
 	SetPhysicsReplicationMode(EPhysicsReplicationMode::PredictiveInterpolation);
 }
@@ -291,6 +306,7 @@ void ATN_Buggy::PostInitializeComponents()
 	Move->EngineSetup.MaxRPM = Tuning->MaxRPM;
 	TNBuggyDetail::BuildTorqueCurve(Move->EngineSetup, Tuning->MaxRPM, Tuning->MaxTorque);
 	TNBuggyDetail::BuildSteeringCurve(Move->SteeringSetup);
+	TNBuggyDetail::ApplySteeringResponse(*Move, *Tuning);
 	Move->TransmissionSetup.FinalRatio = Tuning->FinalDriveRatio;
 	Move->RecreatePhysicsState();
 	ApplyWheelFriction();
@@ -402,6 +418,7 @@ void ATN_Buggy::TickDrivePhysics()
 	if (bRaceBrakeHeld && (HasAuthority() || IsLocallyControlled()))
 	{
 		ApplyRaceBrake();
+		HoldOnGrid();
 	}
 	ApplyBumpKicks();
 	ApplyPuddleSpeedCap();
@@ -409,6 +426,7 @@ void ATN_Buggy::TickDrivePhysics()
 	ApplyStability();
 	ApplyBoostPush();
 	RefreshBoostEffects();
+	UpdateBoostFlames();
 	if (IsLocallyControlled() || (HasAuthority() && !IsPlayerControlled()))
 	{
 		ApplySteeringAssist();
@@ -451,8 +469,13 @@ void ATN_Buggy::ApplyWheelFriction()
 	const int32 Wheels = FMath::Min(TNBuggyDetail::WheelCount, Move->WheelSetups.Num());
 	for (int32 Index = 0; Index < Wheels; ++Index)
 	{
-		const float Base = Index < TNBuggyDetail::FirstRearWheel ? Tuning->FrontFriction : RearFriction;
-		Move->SetWheelFrictionMultiplier(Index, Base * Grip);
+		const bool bFront = Index < TNBuggyDetail::FirstRearWheel;
+		Move->SetWheelFrictionMultiplier(Index, (bFront ? Tuning->FrontFriction : RearFriction) * Grip);
+		if (bFront)
+		{
+			// El ángulo del asset de ajuste (#606): la rueda Chaos sale de UTN_BuggyWheelFront con el de serie.
+			Move->SetWheelMaxSteerAngle(Index, Tuning->MaxSteerAngleDeg);
+		}
 	}
 	bHandbrakeFrictionApplied = bHandbrakeHeld;
 	AppliedGripMultiplier = Grip;
@@ -790,11 +813,14 @@ void ATN_Buggy::SetAIDriveInput(float Throttle, float Brake, float Steer, bool b
 	Move->SetRequiresControllerForInputs(false);
 	const bool bLocked = IsEngineLocked() || bRaceBrakeHeld;
 	Move->SetThrottleInput(bLocked ? 0.f : FMath::Clamp(Throttle, 0.f, 1.f));
-	Move->SetBrakeInput(bRaceBrakeHeld ? 1.f : FMath::Clamp(Brake, 0.f, 1.f));
+	// Con el freno de carrera manda el freno de estacionamiento (ApplyRaceBrake): el pedal, parado, metería la marcha atrás.
+	Move->SetBrakeInput(bRaceBrakeHeld ? 0.f : FMath::Clamp(Brake, 0.f, 1.f));
 	SteerRequest = FMath::Clamp(Steer, -1.f, 1.f);
-	if (bHandbrake != bHandbrakeHeld)
+	// El freno de mano baja la fricción trasera (derrape): en la parrilla haría resbalar el buggy cuesta abajo (#611).
+	const bool bWantHandbrake = bHandbrake && !bRaceBrakeHeld;
+	if (bWantHandbrake != bHandbrakeHeld)
 	{
-		SetHandbrakeHeld(bHandbrake);
+		SetHandbrakeHeld(bWantHandbrake);
 	}
 	ApplySteeringAssist();
 }

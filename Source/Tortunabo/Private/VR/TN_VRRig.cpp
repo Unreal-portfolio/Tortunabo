@@ -3,6 +3,7 @@
 #include "VR/TN_VRSubsystem.h"
 #include "VR/TN_VRMath.h"
 #include "Core/TN_Log.h"
+#include "Core/TN_ProjectMaterials.h"
 #include "Player/MP_GamePlayerController.h"
 #include "Player/TortugaCharacter.h"
 #include "Settings/TN_GameSettingsSubsystem.h"
@@ -48,17 +49,19 @@ namespace TNVRRigDetail
 {
 	const TCHAR* const ControlsPath = TEXT("/Game/Blueprints/Gameplay/Controls/");
 
-	/** Color sRGB 0xRRGGBB para M_CosmeticVertexColor (MakeStaticMesh decodifica una vez más: así llega lineal). */
+	/**
+	 * Color sRGB 0xRRGGBB para M_CosmeticVertexColor (MakeStaticMesh decodifica una vez más: así llega lineal). El alfa
+	 * es el brillo del material (0 = mate, sin metal): las aletas son piel, no metal.
+	 */
 	FLinearColor Pal(uint32 Hex)
 	{
 		return FLinearColor(TNProcRuntimeMesh::SRGBToLinear(((Hex >> 16) & 255) / 255.f), TNProcRuntimeMesh::SRGBToLinear(((Hex >> 8) & 255) / 255.f),
-			TNProcRuntimeMesh::SRGBToLinear((Hex & 255) / 255.f), 1.f);
+			TNProcRuntimeMesh::SRGBToLinear((Hex & 255) / 255.f), 0.f);
 	}
 
 	UMaterialInterface* VertexColorMaterial()
 	{
-		UMaterialInterface* Mat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Cosmetics/Materials/M_CosmeticVertexColor.M_CosmeticVertexColor"));
-		return Mat ? Mat : LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
+		return TNMaterials::VertexColor();
 	}
 
 	UInputAction* LoadAction(const TCHAR* Name)

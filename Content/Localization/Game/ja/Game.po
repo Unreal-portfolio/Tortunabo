@@ -4,8 +4,8 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Game\n"
-"POT-Creation-Date: 2026-10-03 17:54\n"
-"PO-Revision-Date: 2026-10-03 17:54\n"
+"POT-Creation-Date: 2026-10-03 19:19\n"
+"PO-Revision-Date: 2026-10-03 19:19\n"
 "Language-Team: \n"
 "Language: ja\n"
 "MIME-Version: 1.0\n"
@@ -1008,29 +1008,29 @@ msgid "PROBADOR"
 msgstr "試着室"
 
 #. Key:	GeneralPrompt
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(124)
-#: Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(124)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(125)
+#: Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(125)
 msgctxt "Tortunabo,GeneralPrompt"
 msgid "Hablar con el general"
 msgstr "将軍と話す"
 
 #. Key:	GeneralName
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(125)
-#: Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(125)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(126)
+#: Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(126)
 msgctxt "Tortunabo,GeneralName"
 msgid "General Galápago"
 msgstr "ガラパゴス将軍"
 
 #. Key:	GeneralHQ
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(126)
-#: Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(126)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(127)
+#: Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(127)
 msgctxt "Tortunabo,GeneralHQ"
 msgid "Cuartel general"
 msgstr "司令部"
 
 #. Key:	GeneralMissionBoard
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(285)
-#: Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(285)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(286)
+#: Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(286)
 msgctxt "Tortunabo,GeneralMissionBoard"
 msgid "ORDEN DEL DÍA<br>MISIÓN: {0}<br>DIFICULTAD: {1}"
 msgstr "本日の命令<br>ミッション：{0}<br>難易度：{1}"
@@ -1771,78 +1771,78 @@ msgid "TUTORIAL · {0} / {1}"
 msgstr "チュートリアル · {0} / {1}"
 
 #. Key:	ConnectFailed
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1685)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1685)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1687)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1687)
 msgctxt "TNRooms,ConnectFailed"
 msgid "No se ha podido conectar con la sala: puede que el anfitrión se haya ido."
 msgstr "ルームに接続できませんでした。ホストが退出したのかもしれません。"
 
 #. Key:	HostLeft
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1686)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1686)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1688)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1688)
 msgctxt "TNRooms,HostLeft"
 msgid "Se ha acabado la partida: el anfitrión se ha ido o se ha perdido la conexión."
 msgstr "ゲームは終了しました。ホストが退出したか、接続が切れました。"
 
 #. Key:	ListStale
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1796)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1796)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1798)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1798)
 msgctxt "TNRooms,ListStale"
 msgid "Esa sala ya no está en la lista: actualízala."
 msgstr "そのルームはもう一覧にありません。更新してください。"
 
 #. Key:	ListLocked
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1804)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1804)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1806)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1806)
 msgctxt "TNRooms,ListLocked"
 msgid "«{0}» está cerrada: el anfitrión no deja entrar a nadie más."
 msgstr "「{0}」は締め切られています。ホストが新しい参加を止めています。"
 
 #. Key:	ListFull
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1810)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1810)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1812)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1812)
 msgctxt "TNRooms,ListFull"
 msgid "«{0}» está llena ({1}/{2})."
 msgstr "「{0}」は満員です（{1}/{2}）。"
 
 #. Key:	CodeIncomplete
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1822)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1822)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1824)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1824)
 msgctxt "TNRooms,CodeIncomplete"
 msgid "El código tiene 5 letras y números (nunca lleva O, 0, I, 1 ni L)."
 msgstr "コードは英数字5文字です（O、0、I、1、Lは使われません）。"
 
 #. Key:	CodeSearching
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1825)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1825)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1827)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1827)
 msgctxt "TNRooms,CodeSearching"
 msgid "Buscando la sala {0}..."
 msgstr "ルーム{0}を検索中…"
 
 #. Key:	Locked
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2059)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2059)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2061)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2061)
 msgctxt "TNRooms,Locked"
 msgid "Sala cerrada: no entra nadie más (los que ya estaban pueden volver)."
 msgstr "ルームを締め切りました。新しい人は入れません（すでにいた人は戻れます）。"
 
 #. Key:	Unlocked
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2060)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2060)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2062)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2062)
 msgctxt "TNRooms,Unlocked"
 msgid "Sala abierta: puede entrar gente otra vez."
 msgstr "ルームを開けました。ふたたび参加できます。"
 
 #. Key:	KickReason
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2098)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2098)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2100)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2100)
 msgctxt "TNRooms,KickReason"
 msgid "El anfitrión te ha expulsado de la sala."
 msgstr "ホストにルームから退室させられました。"
 
 #. Key:	KickedNotice
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2115)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2115)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2117)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2117)
 msgctxt "TNRooms,KickedNotice"
 msgid "El anfitrión te ha expulsado de la sala «{0}»."
 msgstr "ホストにルーム「{0}」から退室させられました。"
@@ -3667,16 +3667,30 @@ msgctxt "TNRooms,RefusedFull"
 msgid "La sala está llena: no queda sitio para otra tortuga."
 msgstr "ルームは満員です。もう1匹入る場所がありません。"
 
+#. Key:	TravelFailed
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/TN_TravelFailureSubsystem.cpp(20)
+#: Source/Tortunabo/Private/Multiplayer/TN_TravelFailureSubsystem.cpp(20)
+msgctxt "TNRooms,TravelFailed"
+msgid "No se ha podido cargar la partida y has vuelto al menú."
+msgstr "ゲームを読み込めなかったので、メニューに戻りました。"
+
+#. Key:	TravelFailedLobby
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/TN_TravelFailureSubsystem.cpp(314)
+#: Source/Tortunabo/Private/Multiplayer/TN_TravelFailureSubsystem.cpp(314)
+msgctxt "TNRooms,TravelFailedLobby"
+msgid "No se ha podido cargar la partida: volvéis al lobby."
+msgstr "ゲームを読み込めませんでした。みんなでロビーに戻ります。"
+
 #. Key:	EmoteWheelTitle
-#. SourceLocation:	Source/Tortunabo/Private/Player/MP_GamePlayerController.cpp(596)
-#: Source/Tortunabo/Private/Player/MP_GamePlayerController.cpp(596)
+#. SourceLocation:	Source/Tortunabo/Private/Player/MP_GamePlayerController.cpp(604)
+#: Source/Tortunabo/Private/Player/MP_GamePlayerController.cpp(604)
 msgctxt "TNHUD,EmoteWheelTitle"
 msgid "EMOTES"
 msgstr "エモート"
 
 #. Key:	ChatWheelTitle
-#. SourceLocation:	Source/Tortunabo/Private/Player/MP_GamePlayerController.cpp(610)
-#: Source/Tortunabo/Private/Player/MP_GamePlayerController.cpp(610)
+#. SourceLocation:	Source/Tortunabo/Private/Player/MP_GamePlayerController.cpp(618)
+#: Source/Tortunabo/Private/Player/MP_GamePlayerController.cpp(618)
 msgctxt "TNHUD,ChatWheelTitle"
 msgid "FRASES"
 msgstr "クイックチャット"
@@ -4115,33 +4129,33 @@ msgctxt "Rally,TabletNoSpecial"
 msgid "Sin carga especial"
 msgstr "特殊弾なし"
 
+#. Key:	RaceTime
+#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyDashboard.cpp(104)
+#: Source/Tortunabo/Private/Rally/UI/TN_RallyDashboard.cpp(104)
+msgctxt "Rally,RaceTime"
+msgid "{0}:{1}"
+msgstr "{0}:{1}"
+
 #. Key:	FinishedTime
-#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyDashboard.cpp(102)
-#: Source/Tortunabo/Private/Rally/UI/TN_RallyDashboard.cpp(102)
+#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyDashboard.cpp(112)
+#: Source/Tortunabo/Private/Rally/UI/TN_RallyDashboard.cpp(112)
 msgctxt "Rally,FinishedTime"
 msgid "¡Meta! {0}"
 msgstr "ゴール！ {0}"
 
 #. Key:	GateOfTotal
-#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyDashboard.cpp(106)
-#: Source/Tortunabo/Private/Rally/UI/TN_RallyDashboard.cpp(106)
+#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyDashboard.cpp(116)
+#: Source/Tortunabo/Private/Rally/UI/TN_RallyDashboard.cpp(116)
 msgctxt "Rally,GateOfTotal"
 msgid "Puerta {0}/{1}"
 msgstr "ゲート {0}/{1}"
 
 #. Key:	LapAndGate
-#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyDashboard.cpp(110)
-#: Source/Tortunabo/Private/Rally/UI/TN_RallyDashboard.cpp(110)
+#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyDashboard.cpp(120)
+#: Source/Tortunabo/Private/Rally/UI/TN_RallyDashboard.cpp(120)
 msgctxt "Rally,LapAndGate"
 msgid "Vuelta {0}/{1} · {2}"
 msgstr "ラップ {0}/{1} · {2}"
-
-#. Key:	RaceTime
-#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyDashboard.cpp(94)
-#: Source/Tortunabo/Private/Rally/UI/TN_RallyDashboard.cpp(94)
-msgctxt "Rally,RaceTime"
-msgid "{0}:{1}"
-msgstr "{0}:{1}"
 
 #. Key:	NoKey
 #. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1414)
@@ -10031,22 +10045,22 @@ msgid "¡CATAPLÁN!"
 msgstr "ガシャーン！"
 
 #. Key:	GullGrab
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1502)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1502)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1519)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1519)
 msgctxt "TNBeach,GullGrab"
 msgid "¡ÑAC!"
 msgstr "ガシッ！"
 
 #. Key:	GullSplat
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1532)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1532)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1554)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1554)
 msgctxt "TNBeach,GullSplat"
 msgid "¡PLOF!"
 msgstr "ベチャッ！"
 
 #. Key:	GullPeck
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1932)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1932)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1995)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1995)
 msgctxt "TNBeach,GullPeck"
 msgid "¡PIC!"
 msgstr "ツンッ！"
@@ -10080,15 +10094,15 @@ msgid "¡UN REGALO!"
 msgstr "プレゼント！"
 
 #. Key:	MineClick
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachMine.cpp(590)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachMine.cpp(590)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachMine.cpp(636)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachMine.cpp(636)
 msgctxt "TNBeach,MineClick"
 msgid "¡clic!"
 msgstr "カチッ！"
 
 #. Key:	MineBoom
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachMine.cpp(605)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachMine.cpp(605)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachMine.cpp(651)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachMine.cpp(651)
 msgctxt "TNBeach,MineBoom"
 msgid "¡BUM!"
 msgstr "ドカーン！"

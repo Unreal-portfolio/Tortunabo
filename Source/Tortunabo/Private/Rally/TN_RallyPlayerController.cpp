@@ -4,7 +4,10 @@
 #include "Containers/Ticker.h"
 #include "Core/TN_CoopPlayerState.h"
 #include "Engine/Engine.h"
+#include "Engine/PostProcessVolume.h"
+#include "Engine/World.h"
 #include "HAL/IConsoleManager.h"
+#include "Misc/App.h"
 #include "GameFramework/Pawn.h"
 #include "Multiplayer/MP_GameInstance.h"
 #include "Rally/TN_RallyHUDWidget.h"
@@ -25,6 +28,8 @@ namespace TNRallyPC
 {
 	/** Cada cuánto se comprueba que el buggy local lleva el salpicadero y el cartel del arco (s). */
 	constexpr float DashboardCheckSeconds = 0.5f;
+	/** Prioridad del postproceso del Rally: por encima de los volúmenes del nivel (que suelen ir en 0). */
+	constexpr float PostProcessPriority = 1000.f;
 }
 
 ATN_RallyPlayerController::ATN_RallyPlayerController()
@@ -65,6 +70,7 @@ void ATN_RallyPlayerController::BeginPlay()
 		Copilot = NewObject<UTN_RallyCopilotComponent>(this, TEXT("RallyCopilot"));
 		Copilot->RegisterComponent();
 	}
+	ApplyRallyPostProcess();
 	SyncCosmeticsToServer();
 }
 
@@ -75,7 +81,45 @@ void ATN_RallyPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason
 		RallyHUD->RemoveFromParent();
 		RallyHUD = nullptr;
 	}
+	if (IsValid(RallyPostProcess))
+	{
+		RallyPostProcess->Destroy();
+	}
+	RallyPostProcess = nullptr;
 	Super::EndPlay(EndPlayReason);
+}
+
+FPostProcessSettings ATN_RallyPlayerController::MakeRallyPostProcess(float InMotionBlurAmount)
+{
+	FPostProcessSettings Settings;
+	Settings.bOverride_MotionBlurAmount = true;
+	Settings.MotionBlurAmount = FMath::Clamp(InMotionBlurAmount, 0.f, 1.f);
+	return Settings;
+}
+
+void ATN_RallyPlayerController::ApplyRallyPostProcess()
+{
+	UWorld* World = GetWorld();
+	if (IsValid(RallyPostProcess) || !World || !FApp::CanEverRender())
+	{
+		return;
+	}
+	// Local y sin replicar: cada pantalla quita su desenfoque (#605). Sin límites y por encima de los volúmenes del nivel,
+	// así vale para todas las cámaras del Rally (persecución, artillera, llegada, podio y espectador).
+	FActorSpawnParameters Params;
+	Params.Owner = this;
+	Params.ObjectFlags |= RF_Transient;
+	RallyPostProcess = World->SpawnActor<APostProcessVolume>(Params);
+	if (!RallyPostProcess)
+	{
+		UE_LOG(LogTNRally, Warning, TEXT("[RallyPC] No se pudo crear el postproceso del Rally: queda el desenfoque del nivel."));
+		return;
+	}
+	RallyPostProcess->bUnbound = true;
+	RallyPostProcess->Priority = TNRallyPC::PostProcessPriority;
+	RallyPostProcess->BlendWeight = 1.f;
+	RallyPostProcess->Settings = MakeRallyPostProcess(MotionBlurAmount);
+	UE_LOG(LogTNRally, Log, TEXT("[RallyPC] Desenfoque de movimiento del Rally: %.2f."), RallyPostProcess->Settings.MotionBlurAmount);
 }
 
 void ATN_RallyPlayerController::SetupInputComponent()

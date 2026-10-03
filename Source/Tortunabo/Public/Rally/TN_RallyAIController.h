@@ -25,7 +25,33 @@ public:
 	float MaxSpeedKmh = 90.f;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|IA")
-	float MinCornerSpeedKmh = 35.f;
+	float MinCornerSpeedKmh = 28.f;
+
+	/**
+	 * Frenada antes de las curvas (#606): mira las curvas de los siguientes BrakeProbeCm, cada BrakeProbeStepCm, y va a la
+	 * velocidad desde la que llega a cada una frenando con BrakeDecelG (TNRally::ApproachSpeedKmh).
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|IA", meta = (ClampMin = "0"))
+	float BrakeProbeCm = 9000.f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|IA", meta = (ClampMin = "200"))
+	float BrakeProbeStepCm = 1000.f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|IA", meta = (ClampMin = "0.05"))
+	float BrakeDecelG = 0.5f;
+
+	/**
+	 * Dirección acotada para no volcar (#606): con el ángulo de rueda SteerAngleDeg y la batalla WheelbaseCm del buggy, como
+	 * mucho MaxLateralAccelG de aceleración lateral (TNBuggy::SafeSteerFraction). Despacio gira a tope.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|IA", meta = (ClampMin = "0.1"))
+	float MaxLateralAccelG = 0.9f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|IA", meta = (ClampMin = "5", ClampMax = "60"))
+	float SteerAngleDeg = 38.f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|IA", meta = (ClampMin = "50"))
+	float WheelbaseCm = 303.5f;
 
 	/** Mirada adelantada: base (cm) más segundos a la velocidad actual. */
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|IA")
@@ -51,6 +77,8 @@ public:
 private:
 	ATN_RallyTrack* ResolveTrack();
 	void Drive(float DeltaSeconds, ATN_RallyTrack& Track);
+	/** Velocidad objetivo (km/h) por las curvas de los siguientes BrakeProbeCm (frenando a tiempo) y la pendiente. */
+	float TargetSpeedKmh(const ATN_RallyTrack& Track, double SpeedCms) const;
 	void TryFire(const FVector& Location, const FVector& Forward);
 
 	TWeakObjectPtr<ATN_RallyTrack> CachedTrack;

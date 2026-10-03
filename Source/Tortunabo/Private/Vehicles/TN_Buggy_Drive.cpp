@@ -10,6 +10,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "NiagaraComponent.h"
 #include "NiagaraFunctionLibrary.h"
 
@@ -128,6 +129,7 @@ void ATN_Buggy::RefreshBoostEffects()
 		return;
 	}
 	bBoostEffectsOn = bWanted;
+	ShowBoostFlames(bWanted && !BoostEffect);
 	if (!bWanted)
 	{
 		if (BoostEffectComponent)
@@ -158,6 +160,77 @@ void ATN_Buggy::RefreshBoostEffects()
 		BoostSoundComponent = UGameplayStatics::SpawnSoundAttached(BoostSound, Body, NAME_None, Exhaust,
 			EAttachLocation::KeepRelativeOffset, true);
 	}
+}
+
+void ATN_Buggy::ShowBoostFlames(bool bShow)
+{
+	if (bShow && BoostFlames.IsEmpty() && BoostFlameMesh && Body)
+	{
+		for (int32 Index = 0; Index < 2; ++Index)
+		{
+			UStaticMeshComponent* Flame = NewObject<UStaticMeshComponent>(this);
+			Flame->SetStaticMesh(BoostFlameMesh);
+			if (BoostFlameMaterial)
+			{
+				Flame->SetMaterial(0, BoostFlameMaterial);
+			}
+			Flame->SetCollisionProfileName(TEXT("NoCollision"));
+			Flame->SetGenerateOverlapEvents(false);
+			Flame->SetCastShadow(false);
+			Flame->SetupAttachment(Body);
+			Flame->RegisterComponent();
+			if (UMaterialInstanceDynamic* Mid = Flame->CreateDynamicMaterialInstance(0))
+			{
+				Mid->SetVectorParameterValue(TEXT("Color"), BoostFlameColor);
+			}
+			BoostFlames.Add(Flame);
+		}
+	}
+	for (UStaticMeshComponent* Flame : BoostFlames)
+	{
+		if (Flame)
+		{
+			Flame->SetVisibility(bShow);
+		}
+	}
+	UpdateBoostFlames();
+}
+
+void ATN_Buggy::UpdateBoostFlames()
+{
+	if (!bBoostEffectsOn || BoostFlames.IsEmpty())
+	{
+		return;
+	}
+	const float Time = static_cast<float>(GetWorld()->GetTimeSeconds());
+	for (int32 Index = 0; Index < BoostFlames.Num(); ++Index)
+	{
+		UStaticMeshComponent* Flame = BoostFlames[Index];
+		if (!Flame)
+		{
+			continue;
+		}
+		// Una llama por tubo: el índice 0 a la izquierda (Y negativa) y el 1 a la derecha, con la dirección reflejada.
+		const float Side = Index == 0 ? -1.f : 1.f;
+		// El escape del modelo puesto (el de la tienda o, con el de serie, BoostEffectOffset).
+		const FVector Exhaust = GetExhaustLocal() + FVector(0.f, Side * BoostFlameSideOffsetCm, 0.f);
+		const FVector Dir(BoostFlameDirection.X, Side * FMath::Abs(BoostFlameDirection.Y), BoostFlameDirection.Z);
+		// Desfase por tubo para que no parpadeen a la vez.
+		const float Flicker = TNBuggy::BoostFlameFlicker(Time + 0.37f * Index, BoostFlameFlickerAmount);
+		Flame->SetRelativeTransform(TNBuggy::BoostFlameTransform(Exhaust, Dir, BoostFlameLengthCm, BoostFlameDiameterCm, Flicker));
+	}
+}
+
+void ATN_Buggy::DebugHoldBoost(bool bHold)
+{
+#if !UE_BUILD_SHIPPING
+	if (!HasAuthority())
+	{
+		return;
+	}
+	BoostCharge01 = 1.f;
+	SetBoostHeld(bHold);
+#endif
 }
 
 void ATN_Buggy::SetBoostHeld(bool bHeld)
@@ -197,7 +270,11 @@ void ATN_Buggy::SetRaceBrakeHeld(bool bHeld)
 
 void ATN_Buggy::OnRep_RaceBrake()
 {
-	if (!bRaceBrakeHeld)
+	if (bRaceBrakeHeld)
+	{
+		ApplyRaceBrake();
+	}
+	else
 	{
 		ReleaseRaceBrake();
 	}
@@ -210,17 +287,50 @@ void ATN_Buggy::ApplyRaceBrake()
 	{
 		return;
 	}
-	// Cada fotograma: la entrada de la conductora (o del piloto IA) puede haber vuelto a pisar el acelerador.
+	// Freno de estacionamiento de Chaos (par del freno de mano en las cuatro ruedas), en cada máquina. El pedal de freno no
+	// sirve parado: con bReverseAsBrake, frenar a menos de WrongDirectionThreshold mete la marcha atrás y el freno pasa a
+	// acelerador (ChaosVehicleMovementComponent::CalcThrottleBrakeInput), y con el motor cortado el buggy rodaba (#611).
+	Move->SetParked(true);
+	// Cada fotograma: la entrada de la conductora (o del piloto IA) puede haber vuelto a pisar el acelerador o el freno.
 	Move->SetThrottleInput(0.f);
-	Move->SetBrakeInput(1.f);
+	Move->SetBrakeInput(0.f);
 }
 
 void ATN_Buggy::ReleaseRaceBrake()
 {
-	// El freno de la carrera se quita; si la conductora tiene pisado el suyo, su entrada lo vuelve a poner el siguiente
-	// fotograma (Triggered).
-	if (UChaosWheeledVehicleMovementComponent* Move = GetWheeledMovement(); Move && (HasAuthority() || IsLocallyControlled()))
+	bHasGridAnchor = false;
+	UChaosWheeledVehicleMovementComponent* Move = GetWheeledMovement();
+	if (!Move)
+	{
+		return;
+	}
+	// Todos los buggies se sueltan a la vez con el verde (StartRacing), sin tirón: solo se quita el freno de estacionamiento.
+	Move->SetParked(false);
+	if (HasAuthority() || IsLocallyControlled())
 	{
 		Move->SetBrakeInput(0.f);
 	}
+}
+
+void ATN_Buggy::HoldOnGrid()
+{
+	USkeletalMeshComponent* Chassis = GetMesh();
+	const float Gain = GetData()->GridHoldGain;
+	if (!bRaceBrakeHeld || bAirborne || Gain <= 0.f || !Chassis || !Chassis->IsSimulatingPhysics())
+	{
+		// En el aire (al nacer cae unos centímetros hasta apoyarse) no se ancla: se toma el sitio al tocar el suelo.
+		return;
+	}
+	TNBuggy::FGridHoldTuning Tuning;
+	Tuning.PositionGain = Gain;
+	const FVector Location = GetActorLocation();
+	if (!bHasGridAnchor || FVector::Dist(Location, GridAnchor) > Tuning.ReanchorDistanceCm)
+	{
+		// Primer apoyo o lo han recolocado (hueco de la parrilla, reaparición): ese es su sitio.
+		GridAnchor = Location;
+		bHasGridAnchor = true;
+	}
+	const FVector Up = GetActorUpVector();
+	Chassis->SetPhysicsLinearVelocity(TNBuggy::GridHoldVelocity(Chassis->GetPhysicsLinearVelocity(), Up, Location - GridAnchor, Tuning));
+	Chassis->SetPhysicsAngularVelocityInRadians(TNBuggy::GridHoldAngularVelocity(Chassis->GetPhysicsAngularVelocityInRadians(), Up));
 }

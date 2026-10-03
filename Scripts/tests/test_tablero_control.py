@@ -412,5 +412,6 @@ def test_localizacion_se_regenera_en_vez_de_mezclar():
     assert colisiones.solo_localizacion(solo)
     assert not colisiones.solo_localizacion(solo + ["Source/X.cpp"])
     assert not colisiones.solo_localizacion([])
-    assert "no se mezclan a mano" in colisiones.cuerpo(antigua, reciente, solo, "dev")
-    assert "no se mezclan a mano" not in colisiones.cuerpo(antigua, reciente, ["Source/X.cpp"], "dev")
+    mixto = colisiones.cuerpo(antigua, reciente, solo + ["Source/X.cpp"], "dev")
+    assert "Además, 2 ficheros de localización: se regeneran." in mixto and "Game.po" not in mixto
+    assert "Además" not in colisiones.cuerpo(antigua, reciente, ["Source/X.cpp"], "dev")

@@ -1274,7 +1274,7 @@ namespace TNProcMap
 		{
 			const double ES = P.Y;
 			const double EW = P.X;
-			const double EE = L->WorldSize - P.X;
+			const double EE = L->WorldSizeX - P.X;
 			double E = ES;
 			double Along = P.X;
 			if (EW < E) { E = EW; Along = P.Y + 100000.0; }

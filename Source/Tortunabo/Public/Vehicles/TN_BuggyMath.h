@@ -153,16 +153,40 @@ namespace TNBuggy
 	/** Interpolación lineal entre Keys (ordenadas por X); fuera del rango, el valor del extremo. 0 sin claves. */
 	TORTUNABO_API float EvalLinearKeys(TConstArrayView<FCurveKey> Keys, float X);
 
-	/** Ángulo de dirección de las ruedas delanteras parado (grados): el MaxSteerAngle de UTN_BuggyWheelFront. */
-	constexpr float SteerAngleAtRestDeg = 40.f;
-	/** Ángulo de dirección a la velocidad punta y por encima (grados). */
-	constexpr float SteerAngleAtTopDeg = 12.f;
+	/**
+	 * Ángulo máximo de dirección de la rueda interior (grados), el mismo a cualquier velocidad (#606, decisión del director del
+	 * 03-10: como un buggy de verdad; girar fuerte muy rápido puede volcar y el enderezado lo recupera). Es el MaxSteerAngle de
+	 * UTN_BuggyWheelFront; UTN_BuggyData::MaxSteerAngleDeg lo ajusta en ejecución.
+	 */
+	constexpr float DefaultSteerAngleDeg = 38.f;
+	/** Fracción del ángulo de la rueda exterior (ESteeringType::AngleRatio de Chaos, como una geometría Ackermann). */
+	constexpr float SteerAngleRatio = 0.7f;
+	/** Batalla de SK_TN_BuggyChassis (cm): del eje delantero (X 168,3) al trasero (X -135,2). */
+	constexpr float WheelbaseCm = 303.5f;
 
-	/** Curva de dirección: X = velocidad de avance (cm/s), Y = ángulo máximo (grados). Baja de 40 parado a 12 a punta. */
+	/**
+	 * Curva de dirección: X = velocidad de avance (cm/s), Y = fracción del ángulo máximo. Plana a 1 (#606): antes bajaba de 40
+	 * grados parado a 12 a punta y el buggy apenas giraba.
+	 */
 	TORTUNABO_API TConstArrayView<FCurveKey> SteerCurveKeys();
 
-	/** Ángulo máximo de dirección (grados) a SpeedCms de avance (el signo no cuenta: marcha atrás, igual). */
-	TORTUNABO_API float MaxSteerAngleDeg(float SpeedCms);
+	/** Ángulo máximo de dirección (grados) a SpeedCms de avance con BaseAngleDeg parado (el signo no cuenta). */
+	TORTUNABO_API float MaxSteerAngleDeg(float SpeedCms, float BaseAngleDeg = DefaultSteerAngleDeg);
+
+	/**
+	 * Radio de giro cinemático (cm, centro del eje trasero) con la rueda interior a InnerSteerDeg y la exterior a AngleRatio de
+	 * ese ángulo: batalla / tan(media de los dos). Sin derrape; el radio real a 20 km/h sale algo mayor (subviraje).
+	 */
+	TORTUNABO_API float KinematicTurnRadiusCm(float WheelbaseCmIn, float InnerSteerDeg, float AngleRatio);
+
+	/** Radio de giro medido (cm) a partir de la velocidad horizontal y la guiñada: v / |guiñada|. 0 si no gira. */
+	TORTUNABO_API float TurnRadiusFromYawRate(float SpeedCms, float YawRateRad);
+
+	/**
+	 * Fracción de la dirección (0..1) que no pasa de MaxLateralAccelCms2 de aceleración lateral a SpeedCms con la geometría del
+	 * buggy (ángulo = atan(batalla · a / v²)). La usa el piloto IA para no volcar en las curvas (#606); 1 despacio.
+	 */
+	TORTUNABO_API float SafeSteerFraction(float SpeedCms, float MaxSteerDeg, float WheelbaseCmIn, float MaxLateralAccelCms2);
 
 	/** Par máximo de la versión anterior (N·m): la curva nueva da el mismo par absoluto desde el 80 % de MaxRPM. */
 	constexpr float LegacyMaxTorque = 850.f;
@@ -176,6 +200,28 @@ namespace TNBuggy
 
 	/** Curva antigua (OffroadCar_TorqueCurve de TP_VehicleAdvBP, interpolada lineal) para comparar en los tests. */
 	TORTUNABO_API TConstArrayView<FCurveKey> LegacyTorqueCurveKeys();
+
+	// ── Parrilla (#611) ─────────────────────────────────────────────────────────
+
+	struct FGridHoldTuning
+	{
+		/** Ganancia (1/s) con la que se devuelve el buggy a su sitio: con 12, en una rampa de 15 grados se aparta ~0,4 cm. */
+		float PositionGain = 12.f;
+		/** Tope de la velocidad de corrección (cm/s). */
+		float MaxCorrectionCms = 200.f;
+		/** Más lejos de su sitio que esto (cm) es otro sitio (lo han recolocado): se vuelve a anclar. */
+		float ReanchorDistanceCm = 200.f;
+	};
+
+	/**
+	 * Velocidad que deja el buggy quieto en su hueco de salida con el freno de la carrera (#611): conserva la componente a lo
+	 * largo de Up (la suspensión se asienta) y cambia la del plano del suelo por -PositionGain × la deriva en ese plano
+	 * (DriftCm = posición - ancla), con tope. Así no rueda cuesta abajo aunque la rueda bloqueada resbale.
+	 */
+	TORTUNABO_API FVector GridHoldVelocity(const FVector& Velocity, const FVector& Up, const FVector& DriftCm, const FGridHoldTuning& Tuning);
+
+	/** Velocidad angular sin el giro alrededor de Up (guiñada): el buggy frenado no rota en su sitio. */
+	TORTUNABO_API FVector GridHoldAngularVelocity(const FVector& AngularVelocity, const FVector& Up);
 
 	// ── Estabilidad (#288) ──────────────────────────────────────────────────────
 
@@ -245,6 +291,21 @@ namespace TNBuggy
 	 * debajo de esa punta y 0 al llegar a ella o al ir marcha atrás.
 	 */
 	TORTUNABO_API float BoostPushAccel(float ForwardSpeedCms, float BoostTopSpeedCms, float PushAccel, float FadeBandCms);
+
+	// ── Llama del turbo (#294) ──────────────────────────────────────────────────
+
+	/** Cono básico de /Engine/BasicShapes: 100 cm de alto y de diámetro, centrado en el origen y con la punta en +Z. */
+	constexpr float BasicConeSizeCm = 100.f;
+
+	/**
+	 * Transformación (relativa a la carrocería) del cono básico como llama: la base, de DiameterCm, en ExhaustLocal y la
+	 * punta a LengthCm * Flicker en la dirección DirLocal (se normaliza; nula = hacia atrás). Flicker se limita a [0,1; 2].
+	 */
+	TORTUNABO_API FTransform BoostFlameTransform(const FVector& ExhaustLocal, const FVector& DirLocal, float LengthCm,
+		float DiameterCm, float Flicker);
+
+	/** Parpadeo del largo de la llama, en [1 - Amount, 1 + Amount] (Amount en [0; 0,9]), sin repetición visible. */
+	TORTUNABO_API float BoostFlameFlicker(float TimeSeconds, float Amount);
 
 	// ── Cámara de la conductora (#298) ──────────────────────────────────────────
 

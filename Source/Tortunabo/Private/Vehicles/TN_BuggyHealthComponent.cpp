@@ -116,6 +116,7 @@ void UTN_BuggyHealthComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(RestoreTimer);
+		World->GetTimerManager().ClearTimer(SmokePuffTimer);
 	}
 	if (ATN_Buggy* Buggy = GetBuggy())
 	{
@@ -315,6 +316,38 @@ void UTN_BuggyHealthComponent::UpdateSmoke()
 		SmokeComponent->DestroyComponent();
 		SmokeComponent = nullptr;
 	}
+	// Sin Niagara, humo de malla propia: SpawnSmokePuff se reprograma solo mientras dure el humo.
+	if (bSmoke && !SmokeFX && !IsEmittingSmokePuffs())
+	{
+		SpawnSmokePuff();
+	}
+	else if (!bSmoke && IsEmittingSmokePuffs())
+	{
+		GetWorld()->GetTimerManager().ClearTimer(SmokePuffTimer);
+	}
+}
+
+bool UTN_BuggyHealthComponent::IsEmittingSmokePuffs() const
+{
+	const UWorld* World = GetWorld();
+	return World && World->GetTimerManager().IsTimerActive(SmokePuffTimer);
+}
+
+void UTN_BuggyHealthComponent::SpawnSmokePuff()
+{
+	ATN_Buggy* Buggy = GetBuggy();
+	UWorld* World = GetWorld();
+	const float PuffsPerSecond = TNRallyCombat::SmokePuffsPerSecond(Health, MaxHealth);
+	if (!Buggy || !World || PuffsPerSecond <= 0.f || Buggy->IsActorBeingDestroyed())
+	{
+		return;
+	}
+	const USceneComponent* From = Buggy->GetBody() ? static_cast<USceneComponent*>(Buggy->GetBody()) : Buggy->GetRootComponent();
+	// Un poco de dispersión para que las bocanadas no salgan en fila.
+	const FVector Jitter(FMath::FRandRange(-15.f, 15.f), FMath::FRandRange(-15.f, 15.f), 0.f);
+	const FVector Where = From->GetComponentTransform().TransformPosition(TNBuggyHealthDetail::SmokeOffset + Jitter);
+	ATN_RallyBurstFX::Spawn(World, ETNRallyBurstKind::Smoke, Where, SmokePuffRadiusCm);
+	World->GetTimerManager().SetTimer(SmokePuffTimer, this, &UTN_BuggyHealthComponent::SpawnSmokePuff, 1.f / PuffsPerSecond, false);
 }
 
 void UTN_BuggyHealthComponent::MulticastExplode_Implementation(FVector_NetQuantize Where)

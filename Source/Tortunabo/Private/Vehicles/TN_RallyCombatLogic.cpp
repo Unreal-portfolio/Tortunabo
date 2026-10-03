@@ -99,6 +99,16 @@ namespace TNRallyCombat
 		return Health > 0.f && Health <= MaxHealth * SmokeHealthFraction;
 	}
 
+	float SmokePuffsPerSecond(float Health, float MaxHealth)
+	{
+		if (!IsSmoking(Health, MaxHealth))
+		{
+			return 0.f;
+		}
+		const float Damage01 = 1.f - FMath::Clamp(Health / (MaxHealth * SmokeHealthFraction), 0.f, 1.f);
+		return FMath::Lerp(SmokeMinPuffsPerSecond, SmokeMaxPuffsPerSecond, Damage01);
+	}
+
 	bool IsDestroyed(float Health)
 	{
 		return Health <= 0.f;

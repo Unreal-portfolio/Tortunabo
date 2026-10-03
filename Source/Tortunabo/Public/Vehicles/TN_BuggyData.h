@@ -43,6 +43,29 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Buggy")
 	float HandbrakeRearFriction = 1.4f;
 
+	/**
+	 * Ángulo máximo de la rueda delantera interior (grados), el mismo a cualquier velocidad (#606: el de un buggy real, 35-40).
+	 * La exterior gira TNBuggy::SteerAngleRatio de esto. A mucha velocidad y con el volante a fondo puede volcar (el
+	 * enderezado lo recupera).
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dirección", meta = (ClampMin = "10", ClampMax = "45"))
+	float MaxSteerAngleDeg = 38.f;
+
+	/** Rapidez del volante: fracción del recorrido por segundo al girar (Chaos trae 2,5: 0,4 s de centro a tope). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dirección", meta = (ClampMin = "0.5"))
+	float SteerRiseRate = 7.f;
+
+	/** Rapidez al soltar o cambiar de lado (fracción por segundo; Chaos trae 5). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dirección", meta = (ClampMin = "0.5"))
+	float SteerFallRate = 9.f;
+
+	/**
+	 * Respuesta lineal del volante: media palanca, medio ángulo. Con false, la cuadrática de Chaos (media palanca = un cuarto),
+	 * que hacía que el buggy pareciera no girar con el mando.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dirección")
+	bool bLinearSteerResponse = true;
+
 	/** Contravolante añadido (fracción de la dirección) al llegar a MaxAssistAngleDeg de deriva. Con 0,8 sobrecorregía. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Buggy")
 	float CounterSteerAssist = 0.5f;
@@ -96,6 +119,13 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Turbo")
 	float BoostStartCharge = 0.5f;
+
+	/**
+	 * Freno de la parrilla (#611): ganancia (1/s) con la que el buggy vuelve a su hueco si resbala cuesta abajo antes de la
+	 * salida (TNBuggy::GridHoldVelocity). 0 = solo el freno de estacionamiento de Chaos.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Salida", meta = (ClampMin = "0"))
+	float GridHoldGain = 12.f;
 
 	/** Segundos volcado antes de poder enderezar pulsando R (o Y). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Enderezado")

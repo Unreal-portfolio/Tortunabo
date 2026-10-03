@@ -1,4 +1,5 @@
 #include "Game/TN_RunGameMode.h"
+#include "Game/TN_MatchStartRules.h"
 #include "Core/TN_Log.h"
 #include "Core/TN_CoopGameState.h"
 #include "Core/TN_CoopPlayerState.h"
@@ -6,6 +7,7 @@
 #include "Player/MP_GamePlayerController.h"
 #include "Player/TortugaCharacter.h"
 #include "Multiplayer/MP_GameInstance.h"
+#include "Multiplayer/TN_TravelFailureSubsystem.h"
 #include "World/TN_RescuePickup.h"
 #include "Player/TN_InventoryComponent.h"
 #include "World/TN_DeathZoneVolume.h"
@@ -57,7 +59,6 @@ void ATN_RunGameMode::BeginPlay()
 	}
 
 	NextFinishRank = 1;
-	bMatchStarted = false;
 
 	// Suscribirse a las CollectionZones del nivel para que el GameMode reaccione
 	// cuando completen su goal (sumar bonus, log, futuras señales de progresión).
@@ -104,7 +105,10 @@ void ATN_RunGameMode::BeginPlay()
 	GetWorldTimerManager().SetTimer(WaitingTimeoutTimerHandle, this,
 		&ATN_RunGameMode::OnWaitingTimeout, WaitingForPlayersTimeoutSeconds, false);
 
-	// Intentar arrancar de inmediato si el host ya cuenta como 1/1
+	// Abre la espera e intenta arrancar de inmediato si el host ya cuenta como 1/1. El PostLogin del jugador local
+	// pudo llegar antes de este BeginPlay (LoadMap hace SpawnPlayActor antes de UWorld::BeginPlay) y no arrancó.
+	const FTNMatchStartState Staged = TNMatchStartLogic::BeginStaging({ bStagingBegun, bMatchStarted });
+	bStagingBegun = Staged.bStagingBegun;
 	TryStartMatch();
 }
 
@@ -209,7 +213,9 @@ void ATN_RunGameMode::Logout(AController* Exiting)
 
 void ATN_RunGameMode::TryStartMatch()
 {
-	if (bMatchStarted)
+	// Antes del BeginPlay (PostLogin del host durante LoadMap) o con la partida ya empezada no hay nada que arrancar.
+	const FTNMatchStartState State{ bStagingBegun, bMatchStarted };
+	if (!TNMatchStartLogic::IsWaitingForPlayers(State))
 	{
 		return;
 	}
@@ -219,7 +225,7 @@ void ATN_RunGameMode::TryStartMatch()
 	UE_LOG(LogTortunabo, Log, TEXT("[RunGameMode] TryStartMatch: Connected=%d  Expected=%d"),
 		ConnectedNow, ExpectedPlayersFromLobby);
 
-	if (ConnectedNow >= ExpectedPlayersFromLobby)
+	if (TNMatchStartLogic::ShouldStart(State, ConnectedNow, ExpectedPlayersFromLobby))
 	{
 		OnWaitingTimeout(); // Reutiliza la misma función de arranque
 	}
@@ -1224,6 +1230,11 @@ void ATN_RunGameMode::HandleSeamlessTravelPlayer(AController*& C)
 	}
 
 	Super::HandleSeamlessTravelPlayer(C);
+}
+
+bool ATN_RunGameMode::CanServerTravel(const FString& URL, bool bAbsolute)
+{
+	return Super::CanServerTravel(URL, bAbsolute) && UTN_TravelFailureSubsystem::CanServerTravelTo(GetWorld(), URL, bAbsolute);
 }
 
 void ATN_RunGameMode::PostSeamlessTravel()

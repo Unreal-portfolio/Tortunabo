@@ -65,6 +65,10 @@ struct TORTUNABO_API FTNProcMapNetConfig
 	UPROPERTY(BlueprintReadOnly, Category = "ProcMap")
 	ETNProcDifficulty Difficulty = ETNProcDifficulty::Normal;
 
+	/** Supervivencia: dificultad 1–5 del nivel (0 = la que corresponde a Difficulty: 1, 3 o 5). */
+	UPROPERTY(BlueprintReadOnly, Category = "ProcMap")
+	int32 SurvivalDifficulty = 0;
+
 	/** Se incrementa en cada (re)generación, p. ej. entre rondas. 0 = sin mapa. */
 	UPROPERTY(BlueprintReadOnly, Category = "ProcMap")
 	int32 Generation = 0;
@@ -107,6 +111,9 @@ public:
 	/** Servidor: genera (o regenera) el mapa con esta semilla y lo replica a todos. */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "ProcMap")
 	void ServerGenerate(int32 InSeed, ETNProcGameMode InMode, ETNProcDifficulty InDifficulty);
+
+	/** Servidor: genera el mapa de Supervivencia con esta semilla y dificultad 1–5 (un nivel de la partida, #274). */
+	void ServerGenerateSurvival(int32 InSeed, int32 InSurvivalDifficulty);
 
 	/** Genera con los parámetros de edición. Botón en el panel Details. */
 	UFUNCTION(CallInEditor, BlueprintCallable, Category = "ProcMap")
@@ -215,8 +222,9 @@ public:
 	FOnProcMapGenerated OnMapGenerated;
 
 protected:
-	/** Configuración del mapa (biomas, perfiles, materiales). Opcional: hay valores greybox. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ProcMap")
+	/** Configuración del mapa (biomas, perfiles, materiales). Opcional: hay valores greybox. Se replica al entrar:
+	 * un generador creado en ejecución (Supervivencia) solo la recibe en el servidor (SetSettingsIfMissing). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Replicated, Category = "ProcMap")
 	TObjectPtr<UTN_ProcMapSettings> Settings;
 
 	/** Si ningún GameMode lo pide en X segundos, el servidor genera con los valores de edición. */
@@ -234,6 +242,10 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ProcMap|Editor")
 	ETNProcDifficulty EditorDifficulty = ETNProcDifficulty::Normal;
+
+	/** Dificultad 1–5 del mapa de Supervivencia (con EditorMode = Supervivencia). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ProcMap|Editor", meta = (ClampMin = "1", ClampMax = "5", EditCondition = "EditorMode == ETNProcGameMode::Survival"))
+	int32 EditorSurvivalDifficulty = 1;
 
 	/** Salta la vegetación (iterar rápido sobre la forma del mapa). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ProcMap|Debug")
@@ -301,7 +313,8 @@ private:
 	void SlidePool(const TNProcMap::FFeature& F, FVector2D& OutCenter, double& OutRadius, double& OutZ, FVector2D& OutFoot, FVector2D& OutFlow) const;
 	FVector TerrainNormalMap(const FVector2D& MapPoint) const;
 	double PathDistanceMap(const FVector2D& MapPoint) const;
-	UMaterialInterface* ResolveMaterial(UMaterialInterface* Preferred, const TCHAR* FallbackPath) const;
+	/** Preferred o, si es nulo, el material de color de vértice del proyecto (TNMaterials::VertexColor). */
+	UMaterialInterface* ResolveMaterial(UMaterialInterface* Preferred) const;
 	void ResolveBiomeColors(ETNProcBiome Biome, FLinearColor& Ground, FLinearColor& Path, FLinearColor& Rock, FLinearColor& Bed) const;
 	AActor* SpawnMapActor(UClass* Class, const FTransform& Transform, bool bTrackAsServer);
 

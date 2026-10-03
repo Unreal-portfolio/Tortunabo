@@ -38,7 +38,8 @@ namespace TNProcMap
 			P.PortalWidthMax = FMath::Max(P.PortalWidthMax, P.PortalWidthMin);
 		}
 		P.GridSize = FMath::Clamp(P.GridSize, 1, 10);
-		P.ModuleSize = FMath::Clamp(P.ModuleSize, 8000.0, 80000.0);
+		P.GridSizeX = FMath::Clamp(P.GridSizeX, 0, 10);
+		P.ModuleSize = FMath::Clamp(P.ModuleSize, 3000.0, 80000.0);
 		P.CellSize = FMath::Clamp(P.CellSize, 200.0, 1600.0);
 		P.Coverage = FMath::Clamp(P.Coverage, 0.1, 1.0);
 		P.NumCrossings = FMath::Clamp(P.NumCrossings, 0, 8);
@@ -87,7 +88,7 @@ namespace TNProcMap
 		const double Cell = 1000.0;
 		FTerrainBuilder TB;
 		TB.BuildCoarse(L, FVector2D(-25000.0, -25000.0), Cell,
-			FMath::CeilToInt((L.WorldSize + 50000.0) / Cell) + 1, FMath::CeilToInt((L.WorldSize + 55000.0) / Cell) + 1);
+			FMath::CeilToInt((L.WorldSizeX + 50000.0) / Cell) + 1, FMath::CeilToInt((L.WorldSize + 55000.0) / Cell) + 1);
 		for (FFeature& V : L.Features)
 		{
 			if (V.Type != EFeature::Volcano) { continue; }
@@ -139,7 +140,7 @@ namespace TNProcMap
 			const double Cell = 1000.0;
 			FTerrainBuilder TB;
 			TB.BuildCoarse(Out, FVector2D(-25000.0, -25000.0), Cell,
-				FMath::CeilToInt((Out.WorldSize + 50000.0) / Cell) + 1, FMath::CeilToInt((Out.WorldSize + 55000.0) / Cell) + 1);
+				FMath::CeilToInt((Out.WorldSizeX + 50000.0) / Cell) + 1, FMath::CeilToInt((Out.WorldSize + 55000.0) / Cell) + 1);
 			BuildCaves(Out, Root.Fork(19), [&TB](const FVector2D& P) { return TB.LandAt(P); });
 		}
 		BuildGaps(Out, Root.Fork(10));
