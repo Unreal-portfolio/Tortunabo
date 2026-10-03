@@ -861,6 +861,11 @@ void ATN_ProcMapGameMode::FinishRespawn(TWeakObjectPtr<APlayerController> WeakPC
 	Turtle->SetActorHiddenInGame(false);
 	Turtle->SetActorEnableCollision(true);
 	PC->ClientIgnoreMoveInput(false);
+	// Vuelve con la stamina entera y sin agotamiento.
+	if (UTN_StaminaComponent* Stamina = Turtle->GetStaminaComponent())
+	{
+		Stamina->RestoreStaminaToFull();
+	}
 	if (UCharacterMovementComponent* Move = Turtle->GetCharacterMovement())
 	{
 		Move->StopMovementImmediately();
