@@ -134,6 +134,8 @@ namespace TNGameSettingsDetail
 	/** Filas de controles del propio juego (no están en IMC_Player). */
 	const TCHAR* const TalkId = TEXT("Talk");
 	const TCHAR* const PauseId = TEXT("Pause");
+	/** «Cambiar de cámara» (tercera o primera persona sin gafas; la lee ATortugaCharacter cada fotograma). */
+	const TCHAR* const CameraId = TEXT("Camera");
 
 	/**
 	 * Lo que había en el proceso antes del primer subsistema: en PIE con varios jugadores hay un subsistema por jugador y
@@ -179,6 +181,7 @@ namespace TNGameSettingsDetail
 		S.UIScale = FMath::Clamp(S.UIScale, MinUIScale, MaxUIScale);
 		S.VRMode = static_cast<uint8>(FMath::Clamp<int32>(S.VRMode, 0, 2));
 		S.VRTurn = static_cast<uint8>(FMath::Clamp<int32>(S.VRTurn, 0, 2));
+		S.CameraView = static_cast<uint8>(FMath::Clamp<int32>(S.CameraView, 0, 1));
 		// Un idioma que ya no está en la lista (se quitó de la configuración): sin elegir, que toca el del sistema.
 		if (!S.Language.IsEmpty() && TNLanguage::IndexOf(S.Language) == INDEX_NONE)
 		{
@@ -194,6 +197,12 @@ namespace TNGameSettingsDetail
 		FixKey(S.PushToTalkPadKey, Defaults.PushToTalkPadKey);
 		FixKey(S.PauseKey, Defaults.PauseKey);
 		FixKey(S.PausePadKey, Defaults.PausePadKey);
+		FixKey(S.CameraKey, Defaults.CameraKey);
+		FixKey(S.CameraPadKey, Defaults.CameraPadKey);
+		// «Cambiar de cámara» nunca va con la tecla de hablar (con pulsar para hablar, hablar cambiaría la cámara): si
+		// coinciden, la cámara se queda sin ella (se le pone otra en Controles).
+		if (!S.CameraKey.IsNone() && S.CameraKey == S.PushToTalkKey) { S.CameraKey = NAME_None; }
+		if (!S.CameraPadKey.IsNone() && S.CameraPadKey == S.PushToTalkPadKey) { S.CameraPadKey = NAME_None; }
 		for (auto It = S.KeyOverrides.CreateIterator(); It; ++It)
 		{
 			if (!It.Value().IsNone() && !FKey(It.Value()).IsValid()) { It.RemoveCurrent(); }
@@ -237,7 +246,7 @@ namespace TNGameSettingsDetail
 
 	bool IsGameRow(const FTNKeyBinding& Row)
 	{
-		return Row.Id == TalkId || Row.Id == PauseId;
+		return Row.Id == TalkId || Row.Id == PauseId || Row.Id == CameraId;
 	}
 
 	/** Tecla que forma fila (teclas, botones y gatillos); los ejes (stick, ratón, rueda) no se cambian. */
@@ -466,6 +475,7 @@ void UTN_GameSettingsSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	CreateSoundClasses();
 	OriginalMapping = LoadObject<UInputMappingContext>(nullptr, TNGameSettingsDetail::PlayerMappingPath);
 	BuildDefaultBindings();
+	FreeCameraKeyConflicts();
 	RebuildRemappedMapping(PrimaryInput, Settings);
 	// El idioma va lo primero: antes de que salga ningún menú, ni siquiera el de carga.
 	SystemLanguage = TNLanguage::FindSystemLanguage();
@@ -887,6 +897,7 @@ void UTN_GameSettingsSubsystem::ResetGroup(ETNSettingsGroup Group)
 		Target.bFisheye = Defaults.bFisheye;
 		Target.VRMode = Defaults.VRMode;
 		Target.VRTurn = Defaults.VRTurn;
+		Target.CameraView = Defaults.CameraView;
 		break;
 	default:
 		// Gráficos: el brillo y el contador; la calidad se elige con «Calidad recomendada» (UGameUserSettings).
@@ -1752,8 +1763,15 @@ void UTN_GameSettingsSubsystem::BuildDefaultBindings()
 		UE_LOG(LogTortunabo, Warning, TEXT("[Ajustes] No se pudo cargar IMC_Player: no se pueden cambiar las teclas."));
 	}
 
-	// Las del propio juego: hablar (con pulsar para hablar) y el menú de pausa.
+	// Las del propio juego: cambiar de cámara (en «Jugando», detrás de las de IMC_Player), hablar (con pulsar para hablar)
+	// y el menú de pausa.
 	const FTNGameSettings Defaults;
+	FTNKeyBinding& Camera = DefaultBindings.AddDefaulted_GetRef();
+	Camera.Id = CameraId;
+	Camera.Label = NSLOCTEXT("TNSettings", "CameraRow", "Cambiar de cámara");
+	Camera.Defaults[0] = FKey(Defaults.CameraKey);
+	Camera.Defaults[1] = FKey(Defaults.CameraPadKey);
+	Camera.Order = 15000;
 	FTNKeyBinding& Talk = DefaultBindings.AddDefaulted_GetRef();
 	Talk.Id = TalkId;
 	Talk.Label = NSLOCTEXT("TNSettings", "TalkRow", "Hablar (pulsar para hablar)");
@@ -1815,6 +1833,7 @@ FKey UTN_GameSettingsSubsystem::GetBindingKey(const FTNGameSettings& Own, const 
 	const int32 Slot = FMath::Clamp(Device, 0, 1);
 	if (Row.Id == TalkId) { return FKey(Slot == 0 ? Own.PushToTalkKey : Own.PushToTalkPadKey); }
 	if (Row.Id == PauseId) { return FKey(Slot == 0 ? Own.PauseKey : Own.PausePadKey); }
+	if (Row.Id == CameraId) { return FKey(Slot == 0 ? Own.CameraKey : Own.CameraPadKey); }
 	if (const FName* Override = Own.KeyOverrides.Find(OverrideName(Row.Id, Slot)))
 	{
 		return FKey(*Override);
@@ -1835,6 +1854,11 @@ void UTN_GameSettingsSubsystem::SetBindingKey(FTNGameSettings& Own, const FTNKey
 	if (Row.Id == PauseId)
 	{
 		(Slot == 0 ? Own.PauseKey : Own.PausePadKey) = NewName;
+		return;
+	}
+	if (Row.Id == CameraId)
+	{
+		(Slot == 0 ? Own.CameraKey : Own.CameraPadKey) = NewName;
 		return;
 	}
 	const FString OverrideKey = OverrideName(Row.Id, Slot);
@@ -1983,6 +2007,8 @@ void UTN_GameSettingsSubsystem::ResetAllKeyBindings()
 	Target.PushToTalkPadKey = Defaults.PushToTalkPadKey;
 	Target.PauseKey = Defaults.PauseKey;
 	Target.PausePadKey = Defaults.PausePadKey;
+	Target.CameraKey = Defaults.CameraKey;
+	Target.CameraPadKey = Defaults.CameraPadKey;
 	OnKeyBindingsChanged();
 }
 
@@ -1991,7 +2017,43 @@ bool UTN_GameSettingsSubsystem::HasCustomKeys() const
 	const FTNGameSettings Defaults;
 	const FTNGameSettings& Target = GetEditedSettings();
 	return Target.KeyOverrides.Num() > 0 || Target.PushToTalkKey != Defaults.PushToTalkKey || Target.PushToTalkPadKey != Defaults.PushToTalkPadKey
-		|| Target.PauseKey != Defaults.PauseKey || Target.PausePadKey != Defaults.PausePadKey;
+		|| Target.PauseKey != Defaults.PauseKey || Target.PausePadKey != Defaults.PausePadKey
+		|| Target.CameraKey != Defaults.CameraKey || Target.CameraPadKey != Defaults.CameraPadKey;
+}
+
+FKey UTN_GameSettingsSubsystem::GetCameraToggleKey(bool bGamepad) const
+{
+	return FKey(bGamepad ? Settings.CameraPadKey : Settings.CameraKey);
+}
+
+void UTN_GameSettingsSubsystem::FreeCameraKeyConflicts()
+{
+	using namespace TNGameSettingsDetail;
+	const FTNKeyBinding* Camera = FindDefaultBinding(CameraId);
+	if (!Camera)
+	{
+		return;
+	}
+	for (int32 Device = 0; Device < 2; ++Device)
+	{
+		const FKey Key = GetBindingKey(Settings, *Camera, Device);
+		if (!Key.IsValid())
+		{
+			continue;
+		}
+		for (const FTNKeyBinding& Other : DefaultBindings)
+		{
+			if (Other.Id != Camera->Id && SamePhysicalKey(GetBindingKey(Settings, Other, Device), Key))
+			{
+				// Ajustes de antes de que existiera esta fila: otra ya iba con esa tecla, y esa manda. La cámara se queda sin
+				// ella en ese aparato (se le pone otra en Controles).
+				SetBindingKey(Settings, *Camera, Device, FKey());
+				UE_LOG(LogTortunabo, Log, TEXT("[Ajustes] Controles: %s ya es de %s; «Cambiar de cámara» se queda sin tecla en el %s."),
+					*Key.ToString(), *Other.Id, Device == 0 ? TEXT("teclado") : TEXT("mando"));
+				break;
+			}
+		}
+	}
 }
 
 void UTN_GameSettingsSubsystem::OnKeyBindingsChanged()
