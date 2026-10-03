@@ -28,7 +28,6 @@
 #include "Lobby/TN_TutorialCourse.h"
 #include "Lobby/TN_TutorialPlayerComponent.h"
 #include "Animation/SkeletalMeshActor.h"
-#include "Components/SkeletalMeshComponent.h"
 #include "Engine/SkinnedAsset.h"
 
 ATN_HQGameMode::ATN_HQGameMode()
