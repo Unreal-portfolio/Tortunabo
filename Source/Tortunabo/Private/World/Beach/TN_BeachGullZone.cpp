@@ -20,6 +20,7 @@
 #include "Player/TN_CarryComponent.h"
 #include "Player/TN_TurtleAnimInstance.h"
 #include "Player/TortugaCharacter.h"
+#include "Settings/TN_CombatTuning.h"
 
 namespace TNBeachGull
 {
@@ -47,10 +48,8 @@ namespace TNBeachGull
 	 */
 	constexpr float SplatRadius = TNBeachGullTuning::SplatRadius;
 	constexpr float DropScale = 1.5f;
-	/** Derribo de la manchada (s), su empujón (cm/s) y tiempo que la zona la deja en paz. */
-	constexpr float PoopKnock = 2.4f;
+	/** Empujón de la manchada (cm/s); su derribo y el tiempo que la zona la deja en paz, en UTN_CombatTuning. */
 	constexpr float PoopPush = 240.f;
-	constexpr float PoopIgnore = 6.f;
 	/** Radio con el que nace la sombra de la cagada (cm): lo bastante grande para leerse desde que se suelta. */
 	constexpr float PoopMarkerStartRadius = 90.f;
 
@@ -127,13 +126,10 @@ namespace TNBeachGull
 	constexpr float CarryHeight = 2600.f;
 	constexpr float CarryBack = 1500.f;
 	constexpr float CatchBlend = 0.15f;
-	/** Al soltarla: empujón de la bola hacia la salida (cm/s) y aturdimiento tras caer (s). */
+	/** Al soltarla: empujón de la bola hacia la salida (cm/s); el aturdimiento tras caer, en UTN_CombatTuning. */
 	constexpr float ReleaseLaunch = 350.f;
-	constexpr float AfterDropStun = 2.f;
-	constexpr float GrabIgnore = 12.f;
 	constexpr float DiveEndHit = StrikeTime + CarryTime + 2.4f;
 	constexpr float DiveEndMiss = StrikeTime + PeckHold + 2.9f;
-	constexpr float Gravity = 980.f;
 	/** Del hueso de la espalda de la tortuga (Spine2) a la superficie del caparazón que muerde el pico (cm). */
 	constexpr float ShellBack = 35.f;
 	/**
@@ -1096,8 +1092,8 @@ void ATN_BeachGullZone::ServerPoop(float Tau, float DeltaSeconds)
 				Away.Z = 0.0;
 				Away = Away.IsNearlyZero() ? Turtle->GetActorForwardVector() * -1.0 : Away.GetSafeNormal();
 				const FVector Spin = FVector::CrossProduct(FVector::UpVector, Away) * 200.0;
-				KnockDownTurtle(Turtle, PoopKnock, Away * PoopPush + FVector(0.0, 0.0, 120.0), Spin);
-				IgnoreTurtle(Turtle, PoopIgnore);
+				KnockDownTurtle(Turtle, UTN_CombatTuning::Get().GullZonePoopKnockSeconds, Away * PoopPush + FVector(0.0, 0.0, 120.0), Spin);
+				IgnoreTurtle(Turtle, UTN_CombatTuning::Get().GullZonePoopIgnoreSeconds);
 				Hit.Add(Turtle);
 			}
 		}
@@ -1181,7 +1177,7 @@ void ATN_BeachGullZone::ServerDive(float Tau, float DeltaSeconds)
 			Attack.Result = 1;
 			Attack.Hold = Caught->GetActorLocation();
 			bReleased = false;
-			IgnoreTurtle(Caught, GrabIgnore);
+			IgnoreTurtle(Caught, UTN_CombatTuning::Get().GullZoneGrabIgnoreSeconds);
 			// Si llevaba a otra en brazos, la suelta.
 			if (UTN_CarryComponent* Carry = Caught->GetCarryComponent())
 			{
@@ -1260,8 +1256,8 @@ void ATN_BeachGullZone::ReleaseCarried()
 		float GroundZ = static_cast<float>(Attack.Hold.Z);
 		GroundHeightAt(Carried->GetActorLocation(), GroundZ);
 		const float Height = FMath::Max(0.f, static_cast<float>(Carried->GetActorLocation().Z) - GroundZ);
-		const float FallSeconds = FMath::Sqrt(2.f * Height / Gravity);
-		StunTurtle(Carried, FallSeconds + AfterDropStun, CourseBack * ReleaseLaunch + FVector(0.0, 0.0, -50.0));
+		const float FallSeconds = FMath::Sqrt(2.f * Height / UTN_CombatTuning::Get().GullZoneGravity);
+		StunTurtle(Carried, FallSeconds + UTN_CombatTuning::Get().GullZoneAfterDropStunSeconds, CourseBack * ReleaseLaunch + FVector(0.0, 0.0, -50.0));
 	}
 	ForceNetUpdate();
 }

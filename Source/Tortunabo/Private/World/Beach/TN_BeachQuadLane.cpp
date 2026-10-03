@@ -9,6 +9,7 @@
 #include "Engine/World.h"
 #include "Net/UnrealNetwork.h"
 #include "Player/TortugaCharacter.h"
+#include "Settings/TN_CombatTuning.h"
 
 namespace TNBeachQuad
 {
@@ -24,11 +25,10 @@ namespace TNBeachQuad
 	/** Lo que recorre metido entre las palmeras antes de salir y después de entrar (cm). */
 	constexpr float PalmMargin = 1500.f;
 	/**
-	 * Atropello: derribo con ragdoll y mareo (s), espera antes de poder volver a golpear a la misma y lanzamiento del
+	 * Atropello (el derribo, en UTN_CombatTuning): espera antes de poder volver a golpear a la misma y lanzamiento del
 	 * ragdoll (cm/s: en el sentido del quad, hacia fuera de la rueda y hacia arriba) dando vueltas (grados/s). Moderado
 	 * para que el ragdoll no atraviese la arena al caer.
 	 */
-	constexpr float KnockSeconds = 3.f;
 	constexpr float HitCooldown = 1.2f;
 	constexpr float LaunchForward = 950.f;
 	constexpr float LaunchSide = 380.f;
@@ -325,7 +325,7 @@ void ATN_BeachQuadLane::ServerTick(float DeltaSeconds)
 				// Atropello: sale lanzada en ragdoll por delante de la rueda, dando vueltas de campana.
 				const FVector Push = Travel * TNBeachQuad::LaunchForward + Out * TNBeachQuad::LaunchSide + FVector(0.0, 0.0, TNBeachQuad::LaunchUp);
 				const FVector Spin = FVector::CrossProduct(FVector::UpVector, Travel) * TNBeachQuad::LaunchSpin;
-				KnockDownTurtle(Turtle, TNBeachQuad::KnockSeconds, Push, Spin);
+				KnockDownTurtle(Turtle, UTN_CombatTuning::Get().QuadLaneKnockSeconds, Push, Spin);
 				MulticastRunOver(Turtle);
 				break;
 			}
