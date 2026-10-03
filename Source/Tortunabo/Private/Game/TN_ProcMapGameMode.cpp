@@ -757,6 +757,8 @@ bool ATN_ProcMapGameMode::FindRespawnTransform(APlayerController* PlayerControll
 	{
 		ReachedOrder = *PlayerBest;
 	}
+	// La pila 0 está siempre en la salida: cuenta como alcanzada aunque nadie haya pasado junto a ella (#524).
+	ReachedOrder = FMath::Max(ReachedOrder, 0);
 
 	const bool bStorm = Storm && Storm->IsStormActive();
 	const float MinProgress = bStorm ? Storm->GetFrontProgress() + StormRespawnMargin : -TNumericLimits<float>::Max();
@@ -842,21 +844,30 @@ void ATN_ProcMapGameMode::FinishRespawn(TWeakObjectPtr<APlayerController> WeakPC
 		return;
 	}
 
-	Turtle->SetActorHiddenInGame(false);
-	Turtle->SetActorEnableCollision(true);
-	PC->ClientIgnoreMoveInput(false);
-
 	// Se recalcula: la tormenta ha podido pasar la pila durante la espera.
 	FTransform At;
 	if (!FindRespawnTransform(PC, At))
 	{
+		Turtle->SetActorHiddenInGame(false);
+		Turtle->SetActorEnableCollision(true);
+		PC->ClientIgnoreMoveInput(false);
 		UE_LOG(LogTortunabo, Log, TEXT("[ProcMapGameMode] %s: la tormenta ya pasó su pila → eliminado."), *GetNameSafe(PC));
 		Super::MarkPlayerDead(PC);
 		return;
 	}
 
+	// Primero a la pila y después visible y con colisión: con la colisión puesta donde cayó, el volumen de muerte
+	// la volvía a matar y el teletransporte la soltaba invisible y sin colisión (#519).
 	GrantReviveImmunity(PC);
 	Turtle->SetActorLocationAndRotation(At.GetLocation(), At.GetRotation(), false, nullptr, ETeleportType::TeleportPhysics);
+	Turtle->SetActorHiddenInGame(false);
+	Turtle->SetActorEnableCollision(true);
+	PC->ClientIgnoreMoveInput(false);
+	// Vuelve con la stamina entera y sin agotamiento.
+	if (UTN_StaminaComponent* Stamina = Turtle->GetStaminaComponent())
+	{
+		Stamina->RestoreStaminaToFull();
+	}
 	if (UCharacterMovementComponent* Move = Turtle->GetCharacterMovement())
 	{
 		Move->StopMovementImmediately();
