@@ -123,10 +123,6 @@ public:
 	UFUNCTION()
 	void OnRep_EquippedHelmetId();
 
-	/** @brief Fuerza la aplicación del casco a todos los clientes (evita la race condition del dirty-trick). */
-	UFUNCTION(NetMulticast, Reliable)
-	void MulticastForceApplyHelmet(FName HelmId);
-
 	/** ID del skin de personaje activo. NAME_None = aspecto por defecto del BP. */
 	UPROPERTY(BlueprintReadOnly, ReplicatedUsing = OnRep_EquippedSkinId, Category = "Cosmetics")
 	FName EquippedSkinId = NAME_None;
@@ -134,10 +130,6 @@ public:
 	/** @brief OnRep de EquippedSkinId: reaplica los materiales del skin en el pawn local. */
 	UFUNCTION()
 	void OnRep_EquippedSkinId();
-
-	/** @brief Fuerza la aplicación del skin en todos los clientes (cubre race condition post-travel). */
-	UFUNCTION(NetMulticast, Reliable)
-	void MulticastForceApplySkin(FName SkinId);
 
 	/**
 	 * Caparazón equipado (fila de DT_Skins de categoría Shell, de la tienda). Manda sobre la ranura del caparazón que
@@ -236,5 +228,4 @@ private:
 	 * @note Server/multicast-side. El intento inmediato y la asignación del Id replicado
 	 *       corren en el llamador; este helper solo cubre el camino de reintento con timer.
 	 */
-	void RetryApplyCosmetic(TFunction<void(ATortugaCharacter*)> Applier, const TCHAR* LogTag);
 };
