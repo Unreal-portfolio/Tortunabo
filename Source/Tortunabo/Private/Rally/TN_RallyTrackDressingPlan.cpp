@@ -458,6 +458,10 @@ namespace TNRallyDressing
 
 	double BaseOffsetCm(double RoadHalfCm, const FBarrierParams& Params)
 	{
+		if (Params.bHugRoad)
+		{
+			return RoadHalfCm + FMath::Max(0.0, Params.RoadEdgeMarginCm);
+		}
 		return FMath::Max(RoadHalfCm + Params.ShoulderCm, Params.MinOffsetCm);
 	}
 
@@ -489,6 +493,11 @@ namespace TNRallyDressing
 	double BarrierOffsetCm(double Curvature, int32 Side, double RoadHalfCm, const FBarrierParams& Params)
 	{
 		const double Base = BaseOffsetCm(RoadHalfCm, Params);
+		if (Params.bHugRoad)
+		{
+			// Pegada al borde (#303): la barrera dibuja la calzada, también en las curvas.
+			return Base;
+		}
 		const double Magnitude = FMath::Abs(Curvature);
 		const bool bInside = Magnitude > UE_DOUBLE_SMALL_NUMBER && ((Curvature > 0.0) == (Side == RightSide));
 		if (!bInside)
@@ -730,6 +739,8 @@ namespace TNRallyDressing
 		}
 		Data.FinishGate = Data.Gates.Num() == 0 ? INDEX_NONE : (Data.bClosed ? 0 : Data.Gates.Num() - 1);
 		Data.GateHalfWidthCm = Track.GetGateHalfExtent().Y;
+		// road_width_m del manifest (0 si no viene): la barrera va pegada a ese borde (#303).
+		Data.RoadWidthCm = Track.GetRoadWidthCm();
 		Data.bHasWater = Track.HasWaterZ();
 		Data.WaterZ = Track.GetWaterZ();
 		return Data;

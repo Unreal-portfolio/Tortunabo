@@ -117,16 +117,16 @@ bool FTNRallyFarDecorClearanceTest::RunTest(const FString& Parameters)
 		const FBarrierPlan Plan = PlanBarriers(Track, TArray<uint8>(), FBarrierParams());
 		const TArray<FSpot> Spots = PlanFarDecor(Track, Plan, FarEntries(), Params, 11, FlatGround);
 		TestTrue(TEXT("Hay decorado lejano"), Spots.Num() > 4);
-		// 15 m de borde base + 15 m de hueco: ninguna huella a menos de 30 m del eje, tampoco de otro tramo de la horquilla.
+		// Borde base (la barrera, #303) + 15 m de hueco: ninguna huella más cerca del eje, tampoco de otro tramo de la horquilla.
 		const double MinClear = FarMinAxisClearanceCm(Plan, Params);
-		TestTrue(TEXT("Hueco mínimo: el borde base más 15 m"), FMath::IsNearlyEqual(MinClear, 3000.0, 1.0));
+		TestTrue(TEXT("Hueco mínimo: el borde base más 15 m"), FMath::IsNearlyEqual(MinClear, Plan.BaseOffsetCm + 1500.0, 1.0));
 		int32 Inside = 0;
 		for (const FSpot& Spot : Spots)
 		{
 			Inside += AxisDistance(Track, Spot.Location) - Spot.RadiusCm < MinClear - 1.0 ? 1 : 0;
 			TestTrue(TEXT("Pieza lejana"), Spot.Kind == ESpotKind::Far);
 		}
-		TestEqual(TEXT("Ninguna huella a menos de 30 m del eje"), Inside, 0);
+		TestEqual(TEXT("Ninguna huella dentro del hueco mínimo"), Inside, 0);
 	}
 	return true;
 }

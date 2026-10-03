@@ -132,9 +132,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNRallyDressingStraightTest, "Tortunabo.Rally.
 bool FTNRallyDressingStraightTest::RunTest(const FString& Parameters)
 {
 	using namespace TNRallyDressingTestHelpers;
-	// Reglas de antes de #303 (límite solo en curvas y caídas), que siguen valiendo con bContinuous = false.
+	// Reglas de antes de #303 (límite solo en curvas y caídas, con arcén), que siguen valiendo con bContinuous y bHugRoad a false.
 	FBarrierParams Sparse;
 	Sparse.bContinuous = false;
+	Sparse.bHugRoad = false;
 	const FTrackData Track = Straight(50000.0);
 	const FBarrierPlan Plan = PlanBarriers(Track, TArray<uint8>(), Sparse);
 	TestEqual(TEXT("Recta llana: sin límite a la izquierda"), Plan.Sides[LeftSide].Runs.Num(), 0);
@@ -159,7 +160,7 @@ bool FTNRallyDressingContinuousTest::RunTest(const FString& Parameters)
 	{
 		TestEqual(TEXT("Recta: un solo tramo de punta a punta"), Plan.Sides[Side].Runs.Num(), 1);
 		TestEqual(TEXT("...que cubre todas las muestras"), Plan.Sides[Side].Runs[0].Num(), Track.Samples.Num());
-		TestEqual(TEXT("...a la distancia base"), Plan.Sides[Side].OffsetCm[60], 1500.0);
+		TestEqual(TEXT("...pegada al borde de la calzada (7 m + el margen)"), Plan.Sides[Side].OffsetCm[60], 700.0 + Params.RoadEdgeMarginCm);
 		TestEqual(TEXT("Sin huecos"), BarrierGapsCm(Track, Plan, Side).Num(), 0);
 	}
 	TestEqual(TEXT("Circuito cerrado entero: sin huecos"), BarrierGapsCm(Circle(8000.0, true), PlanBarriers(Circle(8000.0, true), TArray<uint8>(), Params), LeftSide).Num(), 0);
@@ -205,7 +206,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNRallyDressingCurveTest, "Tortunabo.Rally.Dre
 bool FTNRallyDressingCurveTest::RunTest(const FString& Parameters)
 {
 	using namespace TNRallyDressingTestHelpers;
-	const FBarrierParams Params;
+	// Reglas de escapatoria de antes de #303 (bHugRoad = false); la barrera pegada a la calzada se prueba en RoadEdgeBarrier.
+	FBarrierParams Params;
+	Params.bHugRoad = false;
 	const FTrackData Tight = Circle(2000.0, true);
 	const FBarrierPlan Plan = PlanBarriers(Tight, TArray<uint8>(), Params);
 	TestEqual(TEXT("Circuito en curva: un solo tramo por fuera que da la vuelta entera"), Plan.Sides[LeftSide].Runs.Num(), 1);
@@ -224,6 +227,42 @@ bool FTNRallyDressingCurveTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNRallyDressingRoadEdgeTest, "Tortunabo.Rally.Dressing.RoadEdgeBarrier",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNRallyDressingRoadEdgeTest::RunTest(const FString& Parameters)
+{
+	using namespace TNRallyDressingTestHelpers;
+	// #303 (director, 03-10): la barrera dibuja el ancho de la calzada, en recta, en curva, por dentro, por fuera y en las caídas.
+	const FBarrierParams Params;
+	TestTrue(TEXT("Pegada al borde es la de por defecto"), Params.bHugRoad);
+	for (const double Width : { 1000.0, 1400.0, 2000.0 })
+	{
+		const double Expected = 0.5 * Width + Params.RoadEdgeMarginCm;
+		for (FTrackData Track : { Straight(30000.0), Circle(2000.0, true), Circle(8000.0, false) })
+		{
+			Track.RoadWidthCm = Width;
+			const FBarrierPlan Plan = PlanBarriers(Track, DropsOn(Track.Samples.Num(), RightSide, 5, 15), Params);
+			TestEqual(*FString::Printf(TEXT("Calzada de %.0f m: el borde del corredor es la barrera"), Width / 100.0), Plan.BaseOffsetCm, Expected);
+			double Farthest = 0.0;
+			double Nearest = TNumericLimits<double>::Max();
+			for (int32 Side = LeftSide; Side <= RightSide; ++Side)
+			{
+				TestEqual(TEXT("Un solo tramo por lado"), Plan.Sides[Side].Runs.Num(), 1);
+				for (const double Offset : Plan.Sides[Side].OffsetCm)
+				{
+					Farthest = FMath::Max(Farthest, Offset);
+					Nearest = FMath::Min(Nearest, Offset);
+				}
+			}
+			TestTrue(*FString::Printf(TEXT("Calzada de %.0f m: todas las muestras a media calzada + %.0f cm (de %.1f a %.1f)"), Width / 100.0,
+				Params.RoadEdgeMarginCm, Nearest, Farthest), FMath::IsNearlyEqual(Nearest, Expected, 1.0) && FMath::IsNearlyEqual(Farthest, Expected, 1.0));
+		}
+	}
+	TestEqual(TEXT("Sin road_width_m, la calzada por defecto (14 m)"), RoadHalfWidthCm(FTrackData(), Params), 700.0);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNRallyDressingDropTest, "Tortunabo.Rally.Dressing.DropLimitsOneSide",
 	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
 
@@ -233,6 +272,7 @@ bool FTNRallyDressingDropTest::RunTest(const FString& Parameters)
 	const FTrackData Track = Straight(50000.0);
 	FBarrierParams Sparse;
 	Sparse.bContinuous = false;
+	Sparse.bHugRoad = false;
 	const FBarrierPlan Plan = PlanBarriers(Track, DropsOn(Track.Samples.Num(), RightSide, 40, 60), Sparse);
 	TestEqual(TEXT("Caída a la derecha: sin límite a la izquierda"), Plan.Sides[LeftSide].Runs.Num(), 0);
 	TestEqual(TEXT("Caída a la derecha: un tramo a la derecha"), Plan.Sides[RightSide].Runs.Num(), 1);
@@ -241,7 +281,9 @@ bool FTNRallyDressingDropTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("En la caída, el límite va al borde de la calzada (7 m + 2,5 m)"), FMath::IsNearlyEqual(Plan.Sides[RightSide].OffsetCm[50], 950.0, 1.0));
 
 	// Con la barrera continua (#303) la caída solo acerca el límite al borde: el resto de la recta también va cerrado.
-	const FBarrierPlan Continuous = PlanBarriers(Track, DropsOn(Track.Samples.Num(), RightSide, 40, 60), FBarrierParams());
+	FBarrierParams WithShoulder;
+	WithShoulder.bHugRoad = false;
+	const FBarrierPlan Continuous = PlanBarriers(Track, DropsOn(Track.Samples.Num(), RightSide, 40, 60), WithShoulder);
 	TestEqual(TEXT("Continua: la izquierda también tiene límite"), Continuous.Sides[LeftSide].Runs.Num(), 1);
 	TestTrue(TEXT("Continua: en la caída, al borde de la calzada"), FMath::IsNearlyEqual(Continuous.Sides[RightSide].OffsetCm[50], 950.0, 1.0));
 	TestTrue(TEXT("Continua: lejos de la caída, a la base"), FMath::IsNearlyEqual(Continuous.Sides[RightSide].OffsetCm[100], 1500.0, 1.0));
@@ -289,6 +331,7 @@ bool FTNRallyDressingHairpinTest::RunTest(const FString& Parameters)
 	FBarrierParams Params;
 	Params.DropEdgeMarginCm = 1.0e6;
 	Params.bContinuous = false;
+	Params.bHugRoad = false;
 	auto MiddleOffset = [&Params](double Separation)
 	{
 		const FTrackData Track = Hairpin(Separation, 30000.0);
@@ -381,7 +424,7 @@ bool FTNRallyDressingSpectatorTest::RunTest(const FString& Parameters)
 		const FVector Facing = FRotator(0.0, Spot.YawDeg, 0.0).Vector();
 		const FVector ToAxis(0.0, -FMath::Sign(Spot.Location.Y), 0.0);
 		TestTrue(TEXT("Mirando a la calzada"), FVector::DotProduct(Facing, ToAxis) > 0.9);
-		TestTrue(TEXT("Detrás del borde del corredor"), FMath::Abs(Spot.Location.Y) >= 1500.0 + Params.SpectatorSetbackCm - 1.0);
+		TestTrue(TEXT("Detrás del borde del corredor"), FMath::Abs(Spot.Location.Y) >= 700.0 + FBarrierParams().RoadEdgeMarginCm + Params.SpectatorSetbackCm - 1.0);
 	}
 
 	const double Radius = 8000.0;
@@ -390,7 +433,8 @@ bool FTNRallyDressingSpectatorTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Curva cerrada: hay grupos de público"), Curve.Num() >= Params.SpectatorsPerGroup);
 	for (const FSpot& Spot : Curve)
 	{
-		TestTrue(TEXT("Por fuera de la curva y detrás del límite"), FVector::Dist2D(Spot.Location, FVector(0.0, Radius, 0.0)) > Radius + 1500.0);
+		TestTrue(TEXT("Por fuera de la curva y detrás del límite"),
+			FVector::Dist2D(Spot.Location, FVector(0.0, Radius, 0.0)) > Radius + 700.0 + FBarrierParams().RoadEdgeMarginCm);
 	}
 	return true;
 }

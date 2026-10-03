@@ -12,7 +12,8 @@ namespace
 		// Medidas de SM_TN_BuggyTire (caja de 100,85 × 35 cm); lo comprueba Tortunabo.Rally.Buggy.Assets.
 		Wheel.WheelRadius = 50.4f;
 		Wheel.WheelWidth = 35.f;
-		Wheel.CorneringStiffness = 750.f;
+		// Más rígido que los 750 de HellYeah (#606): la rueda llega a su agarre con menos deriva y el giro rápido responde.
+		Wheel.CorneringStiffness = 1000.f;
 		Wheel.SuspensionMaxRaise = 25.f;
 		Wheel.SuspensionMaxDrop = 25.f;
 		Wheel.SuspensionDampingRatio = 0.25f;
@@ -32,7 +33,7 @@ UTN_BuggyWheelFront::UTN_BuggyWheelFront()
 	// El mismo a cualquier velocidad (#606); ATN_Buggy::ApplyWheelFriction lo cambia por UTN_BuggyData::MaxSteerAngleDeg.
 	MaxSteerAngle = TNBuggy::DefaultSteerAngleDeg;
 	// ATN_Buggy::ApplyWheelFriction lo sustituye por UTN_BuggyData::FrontFriction en cuanto hay simulación.
-	FrictionForceMultiplier = 3.f;
+	FrictionForceMultiplier = 3.6f;
 }
 
 UTN_BuggyWheelRear::UTN_BuggyWheelRear()
@@ -42,6 +43,6 @@ UTN_BuggyWheelRear::UTN_BuggyWheelRear()
 	bAffectedByHandbrake = true;
 	bAffectedByEngine = true;
 	MaxHandBrakeTorque = 6000.f;
-	// Igual o más que la delantera (UTN_BuggyData::RearFriction, que lo sustituye en cuanto hay simulación).
-	FrictionForceMultiplier = 3.4f;
+	// Igual que la delantera (UTN_BuggyData::RearFriction, que lo sustituye en cuanto hay simulación).
+	FrictionForceMultiplier = 3.6f;
 }

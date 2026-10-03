@@ -28,16 +28,16 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Buggy")
 	float FinalDriveRatio = 2.0f;
 
-	/** Multiplicador de fricción de las ruedas delanteras. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Buggy")
-	float FrontFriction = 3.0f;
-
 	/**
-	 * Multiplicador de fricción de las ruedas traseras. Mayor que el delantero: con el volante a fondo satura antes el
-	 * eje delantero (subviraje) y la trasera no se va; el derrape largo queda para el freno de mano.
+	 * Multiplicador de fricción de las ruedas delanteras. Igual que el trasero (#606): con 3,0 frente a 3,4 el eje delantero
+	 * saturaba antes y el buggy subviraba a mucha velocidad. Con este agarre, girar fuerte muy rápido vuelca antes que deslizar.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Buggy")
-	float RearFriction = 3.4f;
+	float FrontFriction = 3.6f;
+
+	/** Multiplicador de fricción de las ruedas traseras; el derrape largo queda para el freno de mano. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Buggy")
+	float RearFriction = 3.6f;
 
 	/** Fricción trasera con el freno de mano: más baja = más derrape. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Buggy")
@@ -74,9 +74,19 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Buggy")
 	float MaxAssistAngleDeg = 35.f;
 
-	/** Control de estabilidad sin freno de mano (TNBuggy::StabilityYawAccel): deriva a la que empieza (grados). */
+	/**
+	 * Deriva (grados) por debajo de la cual no hay contravolante (#606): la de un giro con agarre a mucha velocidad (unos
+	 * grados) restaba dirección y el buggy no giraba. Solo se asiste el derrape de verdad.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Buggy", meta = (ClampMin = "0"))
+	float CounterSteerStartSlipDeg = 12.f;
+
+	/**
+	 * Control de estabilidad sin freno de mano (TNBuggy::StabilityYawAccel): deriva a la que empieza (grados). 20 y no 6
+	 * (#606): con 6 frenaba la guiñada de cualquier curva rápida (subviraje); ahora solo ataja el trompo.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Estabilidad")
-	float StabilityStartSlipDeg = 6.f;
+	float StabilityStartSlipDeg = 20.f;
 
 	/** Muelle (1/s² por radián de deriva de más), amortiguador (1/s) y tope (rad/s²); muelle 0 lo desactiva. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Estabilidad")
@@ -160,6 +170,17 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Antivuelco")
 	float AntiRollMaxAccel = 25.f;
+
+	/**
+	 * Velocidad (cm/s) hasta la que el antivuelco corrige entero el alabeo con ruedas en el suelo (45 km/h) y a la que deja
+	 * de corregirlo (70 km/h): girar a tope muy rápido vuelca el buggy (#606, decisión del director del 03-10); el enderezado
+	 * (#104) lo recupera. El cabeceo y el aire no cambian.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Antivuelco", meta = (ClampMin = "0"))
+	float AntiRollGroundRollFullSpeedCms = 1250.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Antivuelco", meta = (ClampMin = "0"))
+	float AntiRollGroundRollZeroSpeedCms = 1950.f;
 
 	/** Subida mínima del suelo bajo la rueda (cm) en un frame para contar como escalón. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Suspension")

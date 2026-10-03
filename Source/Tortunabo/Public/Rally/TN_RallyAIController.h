@@ -42,10 +42,11 @@ public:
 
 	/**
 	 * Dirección acotada para no volcar (#606): con el ángulo de rueda SteerAngleDeg y la batalla WheelbaseCm del buggy, como
-	 * mucho MaxLateralAccelG de aceleración lateral (TNBuggy::SafeSteerFraction). Despacio gira a tope.
+	 * mucho MaxLateralAccelG de aceleración lateral (TNBuggy::SafeSteerFraction). Despacio gira a tope. 0,7 y no 0,9: por
+	 * encima de 70 km/h el antivuelco ya no sujeta el alabeo y girar fuerte vuelca (UTN_BuggyData::AntiRollGroundRollZeroSpeedCms).
 	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|IA", meta = (ClampMin = "0.1"))
-	float MaxLateralAccelG = 0.9f;
+	float MaxLateralAccelG = 0.7f;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|IA", meta = (ClampMin = "5", ClampMax = "60"))
 	float SteerAngleDeg = 38.f;

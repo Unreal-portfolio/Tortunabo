@@ -1,5 +1,5 @@
-// Límites y decorado del trazado del Rally (#303): barrera continua a los dos lados de todo el trazado (vallas de palos y
-// cuerda, sacos terreros, troncos y neumáticos apilados, por trozos) con un carril de colisión continuo y poco rozamiento,
+// Límites y decorado del trazado del Rally (#303): barrera continua de neumáticos apilados a los dos lados de todo el trazado,
+// pegada al borde de la calzada y apoyada en el suelo, con un carril de colisión continuo y poco rozamiento,
 // decorado de playa de la Carrera fuera de la valla (TNBeachDecorKit), decorado lejano de piezas grandes
 // (castillos, grupos de rocas, palmeras, pedruscos y conchas gigantes) a 15-60 m del borde, público en las curvas y en la meta y
 // los pórticos de /Game/Art/IA/rally en las puertas. Cada máquina lo construye igual a partir del eje de ATN_RallyTrack y
@@ -20,8 +20,8 @@ class UStaticMesh;
 struct FTNRallyDressingBatches;
 
 /**
- * Cómo se ve un tramo de límite (el carril de colisión es el mismo en todos). Castles queda para los Blueprints que lo usen: el
- * borde por defecto es de vallas y neumáticos y los castillos van como decorado fuera de la valla (#303).
+ * Cómo se ve un tramo de límite (el carril de colisión es el mismo en todos). El borde por defecto es solo de neumáticos
+ * apilados (#303, director, 03-10); los demás estilos quedan para los Blueprints que los usen.
  */
 UENUM(BlueprintType)
 enum class ETNRallyBarrierStyle : uint8
@@ -157,6 +157,13 @@ namespace TNRallyDressing
 		 * se monta encima. Con false, solo en las curvas y en las caídas (como antes).
 		 */
 		bool bContinuous = true;
+		/**
+		 * Barrera pegada al borde de la calzada (#303, director, 03-10): a media calzada más RoadEdgeMarginCm a los dos lados, en
+		 * recta y en curva, sin arcén ni escapatoria. Con false, las reglas de antes (arcén, escapatoria por fuera de las curvas).
+		 */
+		bool bHugRoad = true;
+		/** Del borde de la calzada al eje de la barrera: el radio de un neumático apilado y un poco de holgura. */
+		double RoadEdgeMarginCm = 70.0;
 		double DefaultRoadWidthCm = 1400.0;
 		/** Arcén entre el borde de la calzada y el límite en recta, y mínimo para no pisar los postes de las puertas. */
 		double ShoulderCm = 400.0;
@@ -211,7 +218,7 @@ namespace TNRallyDressing
 	/** Semilla derivada estable (igual en todas las máquinas, no negativa) para el elemento (A, B). */
 	TORTUNABO_API int32 SubSeed(int32 Seed, int32 A, int32 B);
 
-	/** Semiancho de la calzada y desplazamiento del límite en recta. */
+	/** Semiancho de la calzada y desplazamiento del límite en recta (con bHugRoad, en todas partes). */
 	TORTUNABO_API double RoadHalfWidthCm(const FTrackData& Track, const FBarrierParams& Params);
 	TORTUNABO_API double BaseOffsetCm(double RoadHalfCm, const FBarrierParams& Params);
 
@@ -393,6 +400,12 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Rally|Decorado")
 	int32 GetGateMeshCount() const { return GateMeshCount; }
 
+	/**
+	 * Base (centro en planta y cota de la cara de abajo del primer neumático) de cada pila de la barrera del lado Side
+	 * (TNRallyDressing::LeftSide o RightSide), en el orden de la carrera. La usan los tests de #303 (apoyada y sin huecos).
+	 */
+	const TArray<FVector>& GetTireStackBases(int32 Side) const { return TireStackBases[Side == TNRallyDressing::LeftSide ? 0 : 1]; }
+
 protected:
 	// ── Límites ──
 
@@ -408,7 +421,7 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Rally|Límites")
 	TArray<FTNRallyDressingGap> ShortcutGaps;
 
-	/** Estilos que se reparten por trozo de límite (con la semilla): vallas y neumáticos apilados (#303). */
+	/** Estilos que se reparten por trozo de límite (con la semilla). Por defecto, solo neumáticos apilados (#303, director). */
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Límites")
 	TArray<ETNRallyBarrierStyle> BarrierStyles;
 
@@ -452,6 +465,7 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Límites", meta = (ClampMin = "30"))
 	float TireDiameterCm = 120.f;
 
+	/** Pisos de cada pila; donde el suelo queda por debajo de la calzada se añaden los que falten para asomar lo mismo. */
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Límites", meta = (ClampMin = "1", ClampMax = "6"))
 	int32 TireStackCount = 3;
 
@@ -553,16 +567,28 @@ private:
 	bool IsWater(const TNRallyDressing::FTrackData& Track, double Z) const;
 	TArray<uint8> ProbeDrops(const TNRallyDressing::FTrackData& Track, double BaseOffsetCm) const;
 
-	/** Base de cada punto de un tramo de límite: el suelo si lo hay cerca y, si no (caída), la cota del eje. */
+	/**
+	 * Puntos de un tramo de límite a la cota de la calzada (OutEdge) y del carril de colisión: el suelo si lo hay cerca y está
+	 * más alto que la calzada y, si no (talud hacia abajo o caída), la cota de la calzada, para que el carril tape siempre.
+	 */
 	TArray<FVector> RunPoints(const TNRallyDressing::FTrackData& Track, const TNRallyDressing::FBarrierSide& Barrier, const TArray<int32>& Run,
-		int32 Side, TArray<bool>& OutGrounded) const;
+		int32 Side, TArray<FVector>& OutEdge) const;
+	/** Cada punto llevado al suelo cercano (si lo hay): base de los estilos de piezas sueltas. */
+	TArray<FVector> ProjectToGround(const TNRallyDressing::FTrackData& Track, const TArray<FVector>& Points) const;
+	/**
+	 * Cota de apoyo de una pila de neumáticos de radio RadiusCm centrada en Center (a la cota de la calzada): el suelo más bajo
+	 * bajo su centro y su contorno, para que no quede ningún lado en el aire; sin suelo cerca, el de más abajo o el agua.
+	 */
+	double TireStackGroundZ(const TNRallyDressing::FTrackData& Track, const FVector& Center, double YawDeg, double RadiusCm) const;
 	void AddRails(const TNRallyDressing::FTrackData& Track, const TNRallyDressing::FBarrierPlan& Plan, int32 Seed, FTNRallyDressingBatches& Batches);
 	void AddRailSegment(UStaticMesh* Cube, const FVector& A, const FVector& B, FTNRallyDressingBatches& Batches);
-	void AddBarrierRun(const TArray<FVector>& Points, ETNRallyBarrierStyle Style, int32 RunSeed, FTNRallyDressingBatches& Batches);
+	void AddBarrierRun(const TNRallyDressing::FTrackData& Track, const TArray<FVector>& Points, ETNRallyBarrierStyle Style, int32 Side,
+		int32 RunSeed, FTNRallyDressingBatches& Batches);
 	void AddPostRopeRun(const TArray<TNRallyDressing::FPolySpot>& Spots, int32 RunSeed, FTNRallyDressingBatches& Batches);
 	void AddPieceRun(const TArray<FVector>& Points, ETNBeachElement First, ETNBeachElement Second, float Size, int32 RunSeed,
 		FTNRallyDressingBatches& Batches);
-	void AddTireRun(const TArray<FVector>& Points, FTNRallyDressingBatches& Batches);
+	/** Pilas de neumáticos a lo largo de Points (a la cota de la calzada), cada una apoyada en su suelo. */
+	void AddTireRun(const TNRallyDressing::FTrackData& Track, const TArray<FVector>& Points, int32 Side, FTNRallyDressingBatches& Batches);
 	/**
 	 * Receta de playa: libre (giro, inclinación y hundimiento de su semilla) o alineada con ItemXf (límites). CullCm < 0 = la
 	 * distancia del kit; con bAllowCameraBlock = false, la colisión nunca bloquea la cámara.
@@ -608,6 +634,9 @@ private:
 
 	/** Puertas que han recibido pórtico (índice de puerta). */
 	TArray<bool> DressedGates;
+
+	/** Base de cada pila de neumáticos por lado (GetTireStackBases). */
+	TArray<FVector> TireStackBases[2];
 
 	bool bVisuals = true;
 	int32 RailSegmentCount = 0;

@@ -187,6 +187,7 @@ bool ATN_RallyTrack::BuildFromGates(const TArray<TNRally::FGateDef>& GateDefs, b
 		return false;
 	}
 	bClosed = bCircuit;
+	ManifestRoadWidthCm = FMath::Max(0.0, RoadWidthCm);
 	ActiveBorderOffsetCm = RoadWidthCm > 0.0 ? 0.5 * RoadWidthCm + BorderOutsideRoadCm : BorderOffsetCm;
 	if (RoadAxis.Num() >= 2)
 	{
