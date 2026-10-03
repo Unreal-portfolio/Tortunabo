@@ -56,8 +56,24 @@ namespace TNVRGrabDetail
 		return Map;
 	}
 
+	/**
+	 * Fuera las entradas de lo que ya no existe o de quien ya no existe: un objeto destruido mientras se llevaba (lo rompen,
+	 * cae al agua) no pasa por RemoveHolder y su entrada se quedaba para siempre.
+	 */
+	void PruneHolders()
+	{
+		for (auto It = Holders().CreateIterator(); It; ++It)
+		{
+			if (!It.Key().IsValid() || !It.Value().Grabber.IsValid())
+			{
+				It.RemoveCurrent();
+			}
+		}
+	}
+
 	void AddHolder(const UPrimitiveComponent* Component, UTN_VRGrabComponent* Grabber, int32 Hand)
 	{
+		PruneHolders();
 		FHolder& Holder = Holders().FindOrAdd(Component);
 		if (Holder.Grabber.Get() != Grabber)
 		{
@@ -167,6 +183,11 @@ UTN_VRGrabComponent* UTN_VRGrabComponent::FindHolder(const UPrimitiveComponent* 
 	return Grabber;
 }
 
+int32 UTN_VRGrabComponent::NumHolderEntries()
+{
+	return TNVRGrabDetail::Holders().Num();
+}
+
 UPrimitiveComponent* UTN_VRGrabComponent::GetHeld(int32 Hand) const
 {
 	return TNVRGrabDetail::IsValidHand(Hand) ? Held[Hand].Get() : nullptr;
@@ -270,18 +291,17 @@ FVector UTN_VRGrabComponent::GetReachEyes() const
 	return Location;
 }
 
-bool UTN_VRGrabComponent::CanReach(const AActor* Target, const FVector& Point) const
+FCollisionQueryParams UTN_VRGrabComponent::MakeReachParams(const AActor* Target) const
 {
-	const AActor* Owner = GetOwner();
-	if (!Owner)
-	{
-		return true;
-	}
 	// Como al parar las manos: solo el escenario, ni la tortuga ni lo que lleva encima o en las manos.
+	const AActor* Owner = GetOwner();
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(TNVRReach), false, Owner);
-	TArray<AActor*> Attached;
-	Owner->GetAttachedActors(Attached);
-	Params.AddIgnoredActors(Attached);
+	if (Owner)
+	{
+		TArray<AActor*> Attached;
+		Owner->GetAttachedActors(Attached);
+		Params.AddIgnoredActors(Attached);
+	}
 	for (int32 Hand = 0; Hand < 2; ++Hand)
 	{
 		if (const UPrimitiveComponent* HeldNow = GetHeld(Hand))
@@ -293,7 +313,16 @@ bool UTN_VRGrabComponent::CanReach(const AActor* Target, const FVector& Point) c
 	{
 		Params.AddIgnoredActor(Target);
 	}
-	return HasClearReach(GetWorld(), GetReachEyes(), Point, Params);
+	return Params;
+}
+
+bool UTN_VRGrabComponent::CanReach(const AActor* Target, const FVector& Point) const
+{
+	if (!GetOwner())
+	{
+		return true;
+	}
+	return HasClearReach(GetWorld(), GetReachEyes(), Point, MakeReachParams(Target));
 }
 
 UPrimitiveComponent* UTN_VRGrabComponent::FindGrabbable(const FVector& At) const
@@ -407,12 +436,22 @@ void UTN_VRGrabComponent::UpdateGrab(int32 Hand, const FTransform& HandWorld)
 
 void UTN_VRGrabComponent::Release(int32 Hand, const FVector& HandVelocity)
 {
-	if (!TNVRGrabDetail::IsValidHand(Hand) || !Held[Hand].IsValid())
+	if (!TNVRGrabDetail::IsValidHand(Hand))
 	{
-		if (TNVRGrabDetail::IsValidHand(Hand))
+		return;
+	}
+	if (!Held[Hand].IsValid())
+	{
+		// Ya no existe (destruido mientras se llevaba) o ya se soltó: se recoge lo que quede en esta máquina (el agarre, el
+		// registro). Lo que movía el servidor ya lo ha soltado él.
+		if (bHeldByServer[Hand])
 		{
 			Held[Hand].Reset();
 			bHeldByServer[Hand] = false;
+		}
+		else
+		{
+			ReleaseHere(Hand, FVector::ZeroVector);
 		}
 		return;
 	}
@@ -511,6 +550,11 @@ void UTN_VRGrabComponent::ReleaseHere(int32 Hand, const FVector& Velocity)
 		TNVRGrabDetail::RemoveHolder(Target, this, Hand);
 		SetOwnerIgnores(Target, false);
 	}
+	else if (!Held[Hand].IsExplicitlyNull())
+	{
+		// Se ha destruido mientras se llevaba: su entrada del registro ya no se encuentra por el objeto.
+		TNVRGrabDetail::PruneHolders();
+	}
 	// Servidor: el objeto con física vuelve a dormirse en red cuando se pare (su temporizador de siempre).
 	if (ATN_PhysicsObjectActor* Physics = Cast<ATN_PhysicsObjectActor>(AwakeActor[Hand].Get()))
 	{
@@ -573,12 +617,23 @@ void UTN_VRGrabComponent::ServerGrab_Implementation(uint8 Hand, UPrimitiveCompon
 	float HandDistance = Target->GetClosestPointOnCollision(HandLocation, Closest);
 	if (HandDistance < 0.f)
 	{
-		HandDistance = static_cast<float>(FVector::Dist(HandLocation, Target->GetComponentLocation()));
+		Closest = Target->GetComponentLocation();
+		HandDistance = static_cast<float>(FVector::Dist(HandLocation, Closest));
 	}
 	if (FVector::Dist(Owner->GetActorLocation(), HandLocation) > MaxServerReach
 		|| HandDistance > GrabRadius + TNVRGrabDetail::ServerGrabSlack)
 	{
 		UE_LOG(LogTortunabo, Verbose, TEXT("[VR] %s: agarre de %s rechazado (lejos)."), *GetNameSafe(Owner), *GetNameSafe(Target->GetOwner()));
+		ClientGrabLost(Hand, Target);
+		return;
+	}
+	// Que se vea, como en el dueño (un cliente no coge a través de una pared): desde los ojos del peón o, como los de verdad
+	// pueden estar algo apartados de la cápsula, pasando por la mano que manda (los ojos ven la mano y la mano ve el objeto).
+	const AActor* TargetActor = Target->GetOwner();
+	if (!CanReach(TargetActor, Closest)
+		&& !(CanReach(TargetActor, HandLocation) && HasClearReach(GetWorld(), HandLocation, Closest, MakeReachParams(TargetActor))))
+	{
+		UE_LOG(LogTortunabo, Verbose, TEXT("[VR] %s: agarre de %s rechazado (algo en medio)."), *GetNameSafe(Owner), *GetNameSafe(TargetActor));
 		ClientGrabLost(Hand, Target);
 		return;
 	}

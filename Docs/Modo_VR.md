@@ -90,6 +90,12 @@ Cómo se elige (lo de arriba manda sobre lo de abajo). `UTN_VRSubsystem` lo mira
 - **Manos que no atraviesan el escenario**: la punta de cada aleta se queda en la superficie de paredes, suelo y rocas
   (lo que para la cámara, `ECC_Camera`), con los brazos del cuerpo y lo que se coge; no se coge ni se pulsa nada a través
   de una pared. Lo que se coge, las tortugas y los interactuables no paran la mano.
+- **Solo se coge o se toca lo que se ve**: la mano coge a 22 cm de la punta y toca a 40, así que con la punta parada en una
+  pared fina llegaba a lo de detrás. Cada candidato (objeto con física, interactuable o compañero) tiene que verse desde los
+  ojos: un trazo `ECC_Camera` hasta su punto más cercano a la mano, sin contar el propio candidato, la tortuga, lo que lleva
+  encima ni lo que tiene en las manos (`UTN_VRGrabComponent::CanReach`). Con la mano dentro de la esfera de escaneo de un
+  decorado que se rebusca, el punto es el del decorado. El servidor lo vuelve a mirar al aceptar un agarre: desde los ojos
+  del peón o pasando por la mano que le manda el cliente (los ojos de verdad pueden estar algo apartados de la cápsula).
 - **Pulsar botones con la punta de la aleta**: los botones (`ATN_ButtonInteractable`) y los interruptores del mapa
   procedural (`ATN_ProcSwitch`) se pulsan tocándolos con la punta yendo hacia ellos (a más de 40 cm/s), sin apretar nada;
   dejar la mano apoyada no los repite (hay que alejarla 10 cm). Lo demás (cofres, puestos, objetos) sigue con el agarre o
@@ -98,7 +104,9 @@ Cómo se elige (lo de arriba manda sobre lo de abajo). `UTN_VRSubsystem` lo mira
   una pared o el suelo, cuando lo cogido se engancha y tira de la mano (más fuerte cuanto más se separa) o se escapa, al ser
   derribada (las dos manos) y con el láser al pasar por un botón y al pulsar. `TN.VR.Haptics` (0-1, 1 de serie).
 - **Viñeta de confort**: los bordes de la vista se oscurecen al andar deprisa, caer, salir lanzado (catapulta) o con el
-  giro suave; parada o girando a pasos, nada. `TN.VR.ComfortVignette` (0 la quita, 1 de serie, 2 el doble).
+  giro suave; parada, girando a pasos o con una rueda abierta, nada. Nunca baja de la que ya hay (la de la escena, 0,4 del
+  motor y los volúmenes como el de las tormentas, o la del caparazón): se nota cuando la supera, a partir de unos 4 m/s o
+  45°/s de giro suave. `TN.VR.ComfortVignette` (0 la quita, 1 de serie, 2 el doble).
 
 ## Controles (Meta Quest Touch)
 
@@ -195,11 +203,13 @@ ajuste). Con un menú o una rueda a la vista no cambia. Es la misma cámara que 
    distancia y escala del panel (`PanelPlacement`), botones de los mandos en los menús (`MenuKeys`), panel curvo
    (`CurvedPanel`), gatillos y agarres analógicos (`AnalogButton`), umbral del gatillo en el juego y gatillo apretado al
    abrir un menú (`TriggerThreshold`), velocidad de la mano respecto del cuerpo (`HandVelocity`), arco del menú sin gafas
-   (`SimulatedMenuArc`) y tecla de cambiar de cámara (`CameraKey`). Y diez de las manos (`TN_VRHandsTest.cpp`): media de la
+   (`SimulatedMenuArc`) y tecla de cambiar de cámara (`CameraKey`). Y doce de las manos (`TN_VRHandsTest.cpp`): media de la
    velocidad para lanzar (`HandVelocityWindow`), agarre enganchado (`GrabStrain`), viñeta de confort (`ComfortVignette`) sin
-   pisar la del caparazón ni quedarse puesta en pausa (`ComfortVignetteLayer`), sitio del HUD (`HudProbe`), botones con la punta (`Poke`), gatillo entre el menú y el juego (`TriggerMenuLatch`) y, con
-   un mundo de prueba, mano contra una pared (`HandBlock`), objeto que lleva otro (`GrabHolder`) y nada que coger al otro lado de una
-   pared fina (`GrabThroughWall`). Sin ventana:
+   bajar la de la escena ni pisar la del caparazón ni quedarse puesta en pausa (`ComfortVignetteLayer`), sitio del HUD
+   (`HudProbe`), botones con la punta (`Poke`), gatillo entre el menú y el juego (`TriggerMenuLatch`) y, con un mundo de
+   prueba, mano contra una pared (`HandBlock`), objeto que lleva otro (`GrabHolder`), nada que coger al otro lado de una
+   pared fina (`GrabThroughWall`), la caja más cercana que se ve y no la de detrás de la pared (`GrabNearestVisible`) y
+   objeto destruido en la mano, que sale del registro (`GrabDestroyedInHand`). Sin ventana:
    `UnrealEditor-Cmd Tortunabo.uproject -ExecCmds="Automation RunTests Tortunabo.VR; Quit" -nullrhi -unattended`.
 2. **Modo simulado** en PIE (1 o 2 jugadores): consola `TN.VR 2` en la ventana que quieras probar. Lista de pruebas abajo.
 3. **Meta XR Simulator** (opcional, para probar el modo gafas de verdad sin gafas): el simulador de Meta hace de gafas y
@@ -390,7 +400,9 @@ Con las Quest, lo arreglado en la revisión del 30-09-2026:
 Con las Quest, el pulido de las manos del 03-10-2026:
 
 38. Meter la mano en una pared o bajarla al suelo: la aleta (y el brazo de la tortuga) se queda en la superficie, con una
-    vibración corta al tocarla. Con la mano metida en la pared, al otro lado no se coge ni se pulsa nada.
+    vibración corta al tocarla. Con la mano metida en una pared fina (una valla, la pared de una caseta), al otro lado no se
+    coge una caja, no se recoge un objeto, no se rebusca, no se coge a un compañero ni se pulsa nada; asomando la mano por
+    encima o por un lado, sí. Lo mismo desde un cliente (el servidor también lo comprueba).
 39. Coger una caja con física y empujarla contra una pared: vibra cada vez más y, si se queda enganchada, se suelta sola
     (vibración fuerte); no atraviesa la pared. Lanzarla fuerte contra una pared fina: rebota, no la atraviesa.
 40. Con la caja en la mano, ponerla bajo los pies o delante y andar: la tortuga no se sube encima ni la empuja.
@@ -402,7 +414,8 @@ Con las Quest, el pulido de las manos del 03-10-2026:
     se lanza. Comparar a 72 y a 90 Hz (Ajustes de las Quest).
 45. Vibración: coger, soltar, lanzar, tocar la pared, el láser al pasar por un botón y al pulsar. `TN.VR.Haptics 0` la quita.
 46. Andar deprisa, caer desde alto, salir lanzado en una catapulta y el giro suave: los bordes se oscurecen; parada o a
-    pasos, no. `TN.VR.ComfortVignette 0` la quita y `2` la dobla. Comprobar que se nota sin molestar (si es poca, subir
+    pasos, no. Al empezar a andar despacio, los bordes no se aclaran ni un momento. Girando suave, abrir la rueda de emotes:
+    los bordes vuelven a su sitio mientras está abierta. `TN.VR.ComfortVignette 0` la quita y `2` la dobla. Comprobar que se nota sin molestar (si es poca, subir
     `TNVRHands::VignetteMaxIntensity`).
 47. HUD: mirar abajo andando por la playa: el suelo no tapa la parte de abajo del HUD (se acerca un poco). Con una caja en la
     mano delante de la cara, el HUD no se viene a la cara.

@@ -226,12 +226,17 @@ namespace TNVRHandsDetail
 			|| UseType == ETN_ItemUseType::Conch;
 	}
 
-	/** Distancia de un punto a una cápsula vertical (centro, radio y media altura). */
-	float DistanceToCapsule(const FVector& Point, const FVector& Center, float Radius, float HalfHeight)
+	/**
+	 * Distancia de un punto a una cápsula vertical (centro, radio y media altura) y el punto de su superficie más cercano
+	 * (OutClosest; el propio punto si está dentro).
+	 */
+	float DistanceToCapsule(const FVector& Point, const FVector& Center, float Radius, float HalfHeight, FVector& OutClosest)
 	{
 		const FVector Axis(0.0, 0.0, FMath::Max(0.f, HalfHeight - Radius));
-		const FVector Closest = FMath::ClosestPointOnSegment(Point, Center - Axis, Center + Axis);
-		return FMath::Max(0.f, static_cast<float>(FVector::Dist(Point, Closest)) - Radius);
+		const FVector OnAxis = FMath::ClosestPointOnSegment(Point, Center - Axis, Center + Axis);
+		const float FromAxis = static_cast<float>(FVector::Dist(Point, OnAxis));
+		OutClosest = FromAxis > Radius ? OnAxis + (Point - OnAxis) * (Radius / FromAxis) : Point;
+		return FMath::Max(0.f, FromAxis - Radius);
 	}
 }
 
@@ -343,7 +348,13 @@ ATN_InteractableBase* ATortugaCharacter::FindInteractableNearHand(const FVector&
 			if (ToCollision >= 0.f && ToCollision < Distance)
 			{
 				Distance = ToCollision;
-				Point = Closest;
+				// Con la mano dentro de una colisión solo de consulta (la esfera de escaneo de metro y medio de un decorado que
+				// se rebusca), el punto de la mano se vería siempre, aunque el decorado esté detrás de una pared: se mira su
+				// punto de interacción.
+				if (ToCollision > 0.f || Touched->GetCollisionEnabled() != ECollisionEnabled::QueryOnly)
+				{
+					Point = Closest;
+				}
 			}
 		}
 		// La mano se para en la pared, pero VRHandReach la pasa: lo que queda al otro lado no se toca.
@@ -378,7 +389,7 @@ ATortugaCharacter::EVRGrip ATortugaCharacter::VRGripPressed(bool bRight, const F
 		TryInteract();
 		return EVRGrip::Touched;
 	}
-	// Un compañero en el caparazón o aturdido, al alcance de la mano.
+	// Un compañero en el caparazón o aturdido, al alcance de la mano y que no esté al otro lado de una pared.
 	for (TActorIterator<ATortugaCharacter> It(GetWorld()); It; ++It)
 	{
 		const ATortugaCharacter* Other = *It;
@@ -387,9 +398,10 @@ ATortugaCharacter::EVRGrip ATortugaCharacter::VRGripPressed(bool bRight, const F
 		{
 			continue;
 		}
+		FVector Closest;
 		const float Distance = TNVRHandsDetail::DistanceToCapsule(HandLocation, Other->GetActorLocation(),
-			Capsule->GetScaledCapsuleRadius(), Capsule->GetScaledCapsuleHalfHeight());
-		if (Distance <= VRHandReach)
+			Capsule->GetScaledCapsuleRadius(), Capsule->GetScaledCapsuleHalfHeight(), Closest);
+		if (Distance <= VRHandReach && (!VRGrabComponent || VRGrabComponent->CanReach(Other, Closest)))
 		{
 			return CarryComponent && CarryComponent->TryGrabNearest() ? EVRGrip::Partner : EVRGrip::None;
 		}

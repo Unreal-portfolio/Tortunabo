@@ -26,7 +26,9 @@ struct FCollisionQueryParams;
  * Robustez (servidor y dueño): lo que lleva otra tortuga no se coge (un objeto, un dueño); una tortuga derribada, muerta,
  * en el caparazón o llevada no coge y suelta lo que llevaba; lo cogido que se queda enganchado lejos de la mano (una pared,
  * algo que lo sujeta) se suelta solo (TNVRHands::ShouldBreakGrab); la cápsula del dueño no choca con lo que lleva (no se
- * sube encima ni se empuja con ello) y lo cogido usa CCD (no atraviesa paredes finas al lanzarlo).
+ * sube encima ni se empuja con ello) y lo cogido usa CCD (no atraviesa paredes finas al lanzarlo). Solo se coge lo que se
+ * ve (CanReach): el dueño lo mira desde la cámara VR y el servidor, al aceptarlo, desde los ojos del peón directamente o
+ * pasando por la mano que le llega (los ojos de verdad pueden estar algo apartados de la cápsula).
  *
  * Lo usa ATN_VRRig; vive en la tortuga para que sus RPC vayan por la conexión de su dueño.
  */
@@ -65,6 +67,9 @@ public:
 
 	/** Quién lleva ahora ese componente en esta máquina (nullptr si nadie). */
 	static UTN_VRGrabComponent* FindHolder(const UPrimitiveComponent* Component);
+
+	/** Entradas del registro de quién lleva cada objeto en esta máquina (para las pruebas). */
+	static int32 NumHolderEntries();
 
 	/**
 	 * ¿Se puede coger con la mano aquí, donde simula? Con física, móvil, sin dueño pawn ni caparazón, sin NoVRGrab, con su
@@ -130,6 +135,8 @@ private:
 	bool IsGrabbableHere(UPrimitiveComponent* Component) const;
 	/** Desde dónde mira la tortuga (su cámara VR) o, sin ella, el punto de vista del actor. */
 	FVector GetReachEyes() const;
+	/** Lo que no tapa a Target al cogerlo o tocarlo: la tortuga, lo que lleva encima o en las manos y el propio Target. */
+	FCollisionQueryParams MakeReachParams(const AActor* Target) const;
 	/** Servidor de un actor replicado: despierto en red mientras lo lleve esta mano (ReleaseHere lo deja volver a dormirse). */
 	void KeepAwakeWhileHeld(int32 Hand, AActor* Target);
 	/** Coge en esta máquina (servidor, o local si el actor no se replica). */

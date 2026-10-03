@@ -232,11 +232,10 @@ máquina).
 | `TN.VR.LoadingDomeRadius 300` | Radio (cm) de la playa en 360 de la pantalla de carga (`0` la quita). |
 | `TN.VR.SmoothTurnSpeed 120` | Grados por segundo del giro suave. |
 | `TN.VR.Haptics 1` | Fuerza de la vibración de los mandos (0 la quita): coger, soltar, lanzar, tocar la pared, lo que se escapa, derribo y láser. |
-| `TN.VR.ComfortVignette 1` | Viñeta de confort al andar deprisa, caer, salir lanzado o con el giro suave (0 la quita, 2 la dobla). |
-
+| `TN.VR.ComfortVignette 1` | Viñeta de confort al andar deprisa, caer, salir lanzado o con el giro suave, sin bajar nunca la de la escena (0 la quita, 2 la dobla). |
 | `TN.Camera 1` / `TN.Camera 0` / `TN.Camera -1` | Sin gafas: primera persona / tercera persona / la del ajuste «Cámara». También con T o el clic del stick derecho (fila «Cambiar de cámara» de Controles). |
 | `TN.FirstPerson.ShellLight 0.2` | Luz que queda dentro del caparazón en primera persona y en VR (0 negro, 1 como fuera). |
-| `Automation RunTests Tortunabo.VR` | Pruebas automáticas del modo VR (puntero, panel curvo, HUD, giro, botones de los menús, gatillos analógicos y su umbral, velocidad de la mano, arco del menú sin gafas, tecla de cambiar de cámara). |
+| `Automation RunTests Tortunabo.VR` | Pruebas automáticas del modo VR (puntero, panel curvo, HUD, giro, botones de los menús, gatillos analógicos y su umbral, velocidad de la mano, arco del menú sin gafas, tecla de cambiar de cámara) y de las manos (lanzar, agarres enganchados, viñeta, HUD, botones con la punta, gatillo y, con un mundo de prueba, mano contra la pared, objeto que lleva otro, nada que coger detrás de una pared fina y objeto destruido en la mano). |
 
 ## Pantalla de carga del huevo
 

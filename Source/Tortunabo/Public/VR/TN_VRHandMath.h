@@ -242,21 +242,46 @@ namespace TNVRHands
 
 	/**
 	 * La viñeta de confort encima de la que pone otro en la misma cámara (la del caparazón, ATortugaCharacter::
-	 * ApplyShellDarkness): se pinta la más oscura de las dos sin pisar la otra. Si lo que tiene la cámara es lo que escribió
+	 * ApplyShellDarkness) o, si la cámara no pone ninguna, de la de la escena (SceneBase: 0,4 del motor y los volúmenes de
+	 * posproceso): se pinta la más oscura de las dos sin pisar la otra (antes, sin la del caparazón, la base era 0 y al
+	 * empezar a andar la vista se aclaraba). Si lo que tiene la cámara es lo que escribió
 	 * esta capa el fotograma anterior (nadie lo ha vuelto a poner: juego en pausa, la tortuga no ha hecho Tick), la base es la
 	 * que guardó, no su propio valor (antes se tomaba como base y la viñeta no bajaba nunca); al quitarse deja la cámara como
 	 * estaba.
 	 */
+	/**
+	 * Peso con el que un volumen de posproceso entra en la vista, como lo mezcla el motor (UWorld::AddPostProcessingSettings):
+	 * BlendWeight sin límites o dentro; fuera, bajando con la distancia hasta BlendRadius. DistanceToPoint: lo que da
+	 * EncompassesPoint (0 dentro, negativo si no se sabe).
+	 */
+	inline float PostProcessVolumeWeight(float BlendWeight, bool bUnbound, float DistanceToPoint, float BlendRadius)
+	{
+		float Weight = FMath::Clamp(BlendWeight, 0.f, 1.f);
+		if (bUnbound)
+		{
+			return Weight;
+		}
+		if (DistanceToPoint < 0.f || DistanceToPoint > BlendRadius)
+		{
+			return 0.f;
+		}
+		if (BlendRadius >= 1.f)
+		{
+			Weight *= 1.f - DistanceToPoint / BlendRadius;
+		}
+		return FMath::Clamp(Weight, 0.f, 1.f);
+	}
+
 	struct FVignetteLayer
 	{
 		/** bOverride y Value: los de la cámara (bOverride_VignetteIntensity, VignetteIntensity); los cambia. */
-		void Apply(bool& bOverride, float& Value, float Comfort, float MinVisible)
+		void Apply(bool& bOverride, float& Value, float Comfort, float MinVisible, float SceneBase)
 		{
 			const bool bStillOurs = Written >= 0.f && bOverride && Value == Written;
 			if (!bStillOurs)
 			{
 				bBaseOverride = bOverride;
-				Base = bOverride ? Value : 0.f;
+				Base = bOverride ? Value : SceneBase;
 			}
 			if (Comfort <= MinVisible)
 			{
@@ -280,6 +305,8 @@ namespace TNVRHands
 		}
 
 		bool HasWritten() const { return Written >= 0.f; }
+		/** La base no cambia mientras siga lo que escribió esta capa: solo hace falta la de la escena si no. */
+		bool NeedsSceneBase(bool bOverride, float Value) const { return !bOverride && !(Written >= 0.f && Value == Written); }
 
 	private:
 		bool bBaseOverride = false;

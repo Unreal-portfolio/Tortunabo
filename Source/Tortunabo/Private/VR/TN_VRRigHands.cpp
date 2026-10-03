@@ -22,6 +22,7 @@
 #include "HAL/IConsoleManager.h"
 #include "HAL/PlatformTime.h"
 #include "InputCoreTypes.h"
+#include "Interfaces/Interface_PostProcessVolume.h"
 #include "MotionControllerComponent.h"
 
 static TAutoConsoleVariable<float> CVarTNVRHaptics(TEXT("TN.VR.Haptics"), 1.f,
@@ -43,6 +44,43 @@ namespace TNVRRigHandsDetail
 	EControllerHand ToControllerHand(int32 Hand)
 	{
 		return Hand == 0 ? EControllerHand::Left : EControllerHand::Right;
+	}
+
+	/**
+	 * Viñeta de la escena en ViewLocation sin la de la cámara: la del motor (0,4) con los volúmenes de posproceso encima,
+	 * mezclados como los mezcla el motor (UWorld::AddPostProcessingSettings, de menos a más prioridad). Las tormentas la suben.
+	 */
+	float SceneVignetteAt(UWorld* World, const FVector& ViewLocation)
+	{
+		static const float EngineDefault = FPostProcessSettings().VignetteIntensity;
+		float Vignette = EngineDefault;
+		if (!World)
+		{
+			return Vignette;
+		}
+		for (IInterface_PostProcessVolume* Volume : World->PostProcessVolumes)
+		{
+			if (!Volume)
+			{
+				continue;
+			}
+			const FPostProcessVolumeProperties Properties = Volume->GetProperties();
+			if (!Properties.bIsEnabled || !Properties.Settings || !Properties.Settings->bOverride_VignetteIntensity)
+			{
+				continue;
+			}
+			float Distance = 0.f;
+			if (!Properties.bIsUnbound)
+			{
+				Volume->EncompassesPoint(ViewLocation, 0.f, &Distance);
+			}
+			const float Weight = TNVRHands::PostProcessVolumeWeight(Properties.BlendWeight, Properties.bIsUnbound, Distance, Properties.BlendRadius);
+			if (Weight > 0.f)
+			{
+				Vignette = FMath::Lerp(Vignette, Properties.Settings->VignetteIntensity, Weight);
+			}
+		}
+		return Vignette;
 	}
 }
 
@@ -307,7 +345,8 @@ void ATN_VRRig::HoldGrip(int32 Hand, APlayerController* PC, ATortugaCharacter* T
 		}
 		else
 		{
-			// Se ha escapado: enganchado, rechazado por el servidor o roto.
+			// Se ha escapado: enganchado, rechazado por el servidor, roto o destruido (lo que quedara del agarre, fuera).
+			Grab->Release(Hand, FVector::ZeroVector);
 			GripUse[Hand] = EGripUse::None;
 			PulseHaptic(Hand, TNVRHands::Haptics::Slip);
 		}
@@ -473,11 +512,15 @@ void ATN_VRRig::ApplyComfortVignette(UCameraComponent* Camera, float Intensity)
 		return;
 	}
 	// La tortuga pone la viñeta del caparazón (ATortugaCharacter::ApplyShellDarkness, en su Tick, antes que el rig): se queda
-	// la más oscura de las dos, y la capa sabe qué puso ella aunque la tortuga no vuelva a ponerla (en pausa).
+	// la más oscura de las dos, y la capa sabe qué puso ella aunque la tortuga no vuelva a ponerla (en pausa). Sin la del
+	// caparazón, la de la escena (0,4 del motor y los volúmenes): la de confort nunca la baja.
 	FPostProcessSettings& Post = Camera->PostProcessSettings;
 	bool bOverride = Post.bOverride_VignetteIntensity != 0;
 	float Value = Post.VignetteIntensity;
-	ComfortVignetteLayer.Apply(bOverride, Value, Intensity, TNVRRigHandsDetail::VignetteMinVisible);
+	const float SceneBase = Intensity > TNVRRigHandsDetail::VignetteMinVisible && ComfortVignetteLayer.NeedsSceneBase(bOverride, Value)
+		? TNVRRigHandsDetail::SceneVignetteAt(GetWorld(), Camera->GetComponentLocation())
+		: 0.f;
+	ComfortVignetteLayer.Apply(bOverride, Value, Intensity, TNVRRigHandsDetail::VignetteMinVisible, SceneBase);
 	Post.bOverride_VignetteIntensity = bOverride;
 	Post.VignetteIntensity = Value;
 }
