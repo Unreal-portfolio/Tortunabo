@@ -1736,9 +1736,11 @@ resto no lo usa.
   bisagras y pegatina; hasta 300 de ancho y 28 de grueso), según la semilla.
 - **Tambaleo** (la tabla es una base móvil): se ladea 4,5° por tortuga según dónde pise (hasta 7°, `MaxRollDeg`),
   cabecea hasta 2°, se mece al andar y los aterrizajes (caída > 250 cm/s) la sacuden; muelle poco amortiguado (~1,2 Hz).
-  Crujidos al pisar y al andar. El muelle solo lo mueve el servidor, con las tortugas que ve él: alabeo y cabeceo en int8
-  y hundimiento en uint8 (`NetRoll`, `NetPitch`, `NetSag`), hasta 15 veces por segundo mientras cambian (despierta la
-  réplica dormida); los clientes los siguen suavizados y el temblor de la grieta solo está en la malla (issue #20).
+  Crujidos al pisar y al andar. El muelle solo lo mueve el servidor, con las tortugas que ve él, y manda `NetPose` en
+  siete bytes: alabeo y cabeceo en int8 y hundimiento en uint8, y de cada eje del muelle su velocidad y hacia dónde tira
+  (int8), hasta 15 veces por segundo mientras cambian (despierta la réplica dormida) y en el acto si un aterrizaje la
+  sacude. Cada cliente mueve el mismo muelle desde la última muestra, adelantada media ida y vuelta (suavizarla la dejaba
+  unos 90 ms detrás: hasta 9,6 cm en el borde al aterrizar). El temblor de la grieta solo está en la malla (issue #20).
 - **Rotura** (servidor): con 2 o más tortugas a la vez (`BreakRiders`) la grieta sube y en 1,1 s (`CrackSeconds`) se
   parte; si se bajan, baja a 0,45/s. Mientras, tiembla, se hunde unos centímetros y cruje cada vez más agudo y seguido,
   soltando astillas. Al partirse: chasquido, astillas, «¡CRAC!», las mitades resbalan 70 cm hacia dentro y caen (0,5 s,
