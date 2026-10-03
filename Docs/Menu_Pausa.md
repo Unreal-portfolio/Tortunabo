@@ -65,7 +65,7 @@ o una partida local) y los jugadores con su cara, su
 nombre, «Tú», «Anfitrión» (corona) o su ping, y su icono de voz: micrófono para ti y altavoz para los demás, que late
 cuando habla y sale tachado si está silenciado.
 
-**Portada**: Continuar, Ajustes, Controles, Sala (en red), Volver al lobby, Menú principal (anfitrión) o Salir de la
+**Portada**: Continuar, Ajustes, Controles, Créditos ([Créditos](Creditos.md)), Sala (en red), Volver al lobby, Menú principal (anfitrión) o Salir de la
 partida (invitado) y Salir al escritorio. Abajo, la ayuda de la opción enfocada y los atajos.
 
 **Sala** (partidas en red; ver [Salas](Salas.md)): nombre, pública o privada, el código (se copia), «Entrada: Abierta /
