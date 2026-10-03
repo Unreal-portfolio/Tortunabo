@@ -1,6 +1,7 @@
 #include "Multiplayer/TN_SteamGamepadInput.h"
 #include "Core/TN_Log.h"
 #include "Async/Async.h"
+#include "HAL/IConsoleManager.h"
 #include "Misc/CoreDelegates.h"
 #include "OnlineSubsystem.h"
 #include "OnlineSubsystemNames.h"
@@ -99,6 +100,42 @@ namespace TNSteamGamepadInputDetail
 			static_cast<uint32>(FMath::Max(1, Request.MaxChars)), Existing.Get());
 	}
 #endif
+
+#if !UE_BUILD_SHIPPING
+	/**
+	 * Teclado de Steam simulado, para probar el código de sala sin Steam Deck ni Big Picture: TN.Steam.FakeKeyboard 1 (el de
+	 * pantalla completa) o 2 (el flotante) hace que abrirlo funcione, y TN.Steam.KeyboardText <texto|cancelar> lo cierra
+	 * como si se hubiera escrito ese texto (o cancelado).
+	 */
+	TAutoConsoleVariable<int32> CVarFakeKeyboard(TEXT("TN.Steam.FakeKeyboard"), 0,
+		TEXT("Teclado de Steam simulado: 0 el de verdad, 1 el de pantalla completa, 2 el flotante."), ECVF_Cheat);
+
+	TOptional<ETNSteamKeyboard> OpenFakeKeyboard(bool bUsingGamepad, TFunction<void(bool, const FString&)>& OnText)
+	{
+		const int32 Fake = CVarFakeKeyboard.GetValueOnGameThread();
+		if (Fake <= 0 || !bUsingGamepad)
+		{
+			return {};
+		}
+		const ETNSteamKeyboard Kind = Fake == 2 ? ETNSteamKeyboard::Floating : ETNSteamKeyboard::Overlay;
+		PendingText = Kind == ETNSteamKeyboard::Overlay ? MoveTemp(OnText) : nullptr;
+		UE_LOG(LogTortunabo, Log, TEXT("[Steam] Teclado en pantalla simulado abierto (%s)."),
+			Kind == ETNSteamKeyboard::Floating ? TEXT("flotante") : TEXT("pantalla completa"));
+		return Kind;
+	}
+
+	void FakeKeyboardText(const TArray<FString>& Args)
+	{
+		const FString Text = FString::Join(Args, TEXT(" "));
+		const bool bCancelled = Text.IsEmpty() || Text == TEXT("cancelar");
+		UE_LOG(LogTortunabo, Log, TEXT("[Steam] Teclado simulado cerrado: %s."), bCancelled ? TEXT("cancelado") : *Text);
+		DeliverText(!bCancelled, bCancelled ? FString() : Text);
+	}
+
+	FAutoConsoleCommand CmdFakeKeyboardText(TEXT("TN.Steam.KeyboardText"),
+		TEXT("TN.Steam.KeyboardText <texto|cancelar>: cierra el teclado de Steam simulado con ese texto (o cancelado)."),
+		FConsoleCommandWithArgsDelegate::CreateStatic(&FakeKeyboardText));
+#endif
 }
 
 bool TNSteamGamepadInput::IsSteamActive()
@@ -165,8 +202,14 @@ TArray<ETNSteamKeyboard> TNSteamGamepadInput::KeyboardOrder(bool bSteamActive, b
 TOptional<ETNSteamKeyboard> TNSteamGamepadInput::OpenKeyboard(const FTNSteamKeyboardRequest& Request, bool bUsingGamepad,
 	TFunction<void(bool, const FString&)> OnText)
 {
-#if TN_WITH_STEAMWORKS
 	using namespace TNSteamGamepadInputDetail;
+#if !UE_BUILD_SHIPPING
+	if (const TOptional<ETNSteamKeyboard> Fake = OpenFakeKeyboard(bUsingGamepad, OnText))
+	{
+		return Fake;
+	}
+#endif
+#if TN_WITH_STEAMWORKS
 	const bool bSteam = IsSteamActive();
 	for (const ETNSteamKeyboard Kind : KeyboardOrder(bSteam, bSteam && IsOnSteamDeck(), bUsingGamepad))
 	{

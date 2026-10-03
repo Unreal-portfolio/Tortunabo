@@ -315,6 +315,8 @@ mando y Steam (Steam Deck o Big Picture), A en las casillas del código de sala 
 | `TN.Input.Press <tecla> [segundos]` | Pulsa (y mantiene) una tecla o un botón como si viniera del aparato, por Slate: `TN.Input.Press Gamepad_DPad_Up` pasa los avisos a mando y `TN.Input.Press ScrollLock`, a teclado. |
 | `TN.Later <segundos> <comando>` | Ejecuta el comando pasado ese tiempo, como escrito en la consola del jugador (para encadenar pruebas en `-ExecCmds`, también `shot showui`). |
 | `tn.HUD.Prompt 1` | Enseña el aviso de interacción sin nada al alcance, con la tecla o el botón de interactuar del aparato de ahora. |
+| `TN.Steam.FakeKeyboard 1\|2` | Teclado de Steam simulado (sin Steam Deck ni Big Picture): con mando, A en las casillas del código de sala lo «abre» (1 el de pantalla completa, 2 el flotante). |
+| `TN.Steam.KeyboardText <texto\|cancelar>` | Cierra el teclado simulado con ese texto: `TN.Steam.KeyboardText k7m2p` deja K7M2P en las casillas y entra en la sala, como «Hecho» en el de Steam. |
 
 Ejemplo sin mando (captura de cada estado en `Saved/Screenshots`):
 `-ExecCmds="tn.HUD.Prompt 1, TN.Later 8 TN.Tutorial.Station 7, TN.Later 12 shot showui, TN.Later 13 TN.Input.Press Gamepad_DPad_Up, TN.Later 13.3 shot showui, TN.Later 15 TN.Input.PadFamily 2, TN.Later 16 shot showui"`.
