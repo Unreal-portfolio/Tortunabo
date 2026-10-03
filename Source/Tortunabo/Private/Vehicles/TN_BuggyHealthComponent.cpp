@@ -11,6 +11,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "GameFramework/ProjectileMovementComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
@@ -354,7 +355,22 @@ void UTN_BuggyHealthComponent::OnChassisHit(UPrimitiveComponent* HitComp, AActor
 		TryRunOver(Turtle);
 		return;
 	}
+	if (!IsCrashContact(GetOwner(), OtherActor))
+	{
+		return;
+	}
 	HandleCrash(OtherActor, NormalImpulse, Hit);
+}
+
+bool UTN_BuggyHealthComponent::IsCrashContact(const AActor* Owner, const AActor* Other)
+{
+	if (!Other || Other == Owner)
+	{
+		return false;
+	}
+	// Un coco que da en el chasis ya quita su daño en ReceiveAmmoHit; contarlo además como choque sumaba CrashMaxDamage
+	// por su velocidad de cierre (#296).
+	return !Other->IsA<ATN_RallyProjectile>() && !Other->FindComponentByClass<UProjectileMovementComponent>();
 }
 
 void UTN_BuggyHealthComponent::HandleCrash(AActor* OtherActor, const FVector& NormalImpulse, const FHitResult& Hit)

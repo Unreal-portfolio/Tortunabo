@@ -55,6 +55,12 @@ public:
 	/** Quita Amount de vida (nada durante la invulnerabilidad tras reventar). Con 0, revienta. */
 	void ApplyDamage(float Amount);
 
+	/**
+	 * Si el contacto del chasis de Owner con Other puede ser un choque. No lo son el propio buggy ni un proyectil (la
+	 * munición ya quita su daño en ReceiveAmmoHit) ni nada con movimiento de proyectil (objetos lanzados).
+	 */
+	static bool IsCrashContact(const AActor* Owner, const AActor* Other);
+
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	// ── Ajuste y efectos (EditDefaultsOnly; sin asset, solo la ráfaga básica) ─
