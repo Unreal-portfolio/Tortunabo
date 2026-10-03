@@ -555,6 +555,13 @@ namespace TNRally
 		return FMath::Lerp(MaxKmh, MinKmh, T);
 	}
 
+	float ApproachSpeedKmh(float CornerKmh, double DistanceCm, double DecelCms2)
+	{
+		const double CornerCms = FMath::Max(0.0, static_cast<double>(CornerKmh)) / 0.036;
+		const double Room = 2.0 * FMath::Max(0.0, DecelCms2) * FMath::Max(0.0, DistanceCm);
+		return static_cast<float>(CmsToKmh(FMath::Sqrt(CornerCms * CornerCms + Room)));
+	}
+
 	ETeamCleanup DecideTeamCleanup(bool bVehicleValid, bool bOccupied, bool bBeforeStart, bool bRetired)
 	{
 		if (bVehicleValid && bOccupied)

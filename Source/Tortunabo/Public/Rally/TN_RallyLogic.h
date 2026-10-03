@@ -264,6 +264,12 @@ namespace TNRally
 	/** Velocidad objetivo (km/h) para una curva: ángulo entre la tangente actual y la de más adelante. */
 	TORTUNABO_API float CornerSpeedKmh(const FVector& TangentNow, const FVector& TangentAhead, float MaxKmh, float MinKmh);
 
+	/**
+	 * Velocidad (km/h) a la que se puede ir ahora para llegar a CornerKmh en DistanceCm frenando con DecelCms2 (cm/s²):
+	 * sqrt(v² + 2·a·d). Con distancia 0, la de la curva. El piloto IA toma la menor de las curvas que vienen (#606).
+	 */
+	TORTUNABO_API float ApproachSpeedKmh(float CornerKmh, double DistanceCm, double DecelCms2);
+
 	// ---- Equipos y armas ----
 
 	/** Qué hace la carrera con un equipo: seguir, quitarlo (antes de la salida) o retirarlo (ya en marcha). */

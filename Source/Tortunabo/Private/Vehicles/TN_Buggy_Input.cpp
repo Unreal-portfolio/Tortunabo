@@ -84,7 +84,8 @@ void ATN_Buggy::OnBrake(const FInputActionValue& Value)
 {
 	if (UChaosWheeledVehicleMovementComponent* Move = GetWheeledMovement())
 	{
-		Move->SetBrakeInput(Value.Get<float>());
+		// En la parrilla frena el estacionamiento (ApplyRaceBrake): el pedal, parado, metería la marcha atrás (#611).
+		Move->SetBrakeInput(bRaceBrakeHeld ? 0.f : Value.Get<float>());
 	}
 }
 

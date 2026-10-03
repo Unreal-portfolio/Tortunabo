@@ -201,16 +201,54 @@ namespace TNBuggy
 
 	TConstArrayView<FCurveKey> SteerCurveKeys()
 	{
-		// 80 km/h (2222 cm/s) quedan en ~15 grados: las curvas del trazado se toman sin que el eje delantero muerda de más.
-		static const FCurveKey Keys[] = {
-			{ 0.f, SteerAngleAtRestDeg }, { 500.f, 36.f }, { 1000.f, 28.f }, { 1700.f, 19.f }, { 2400.f, 14.f },
-			{ 3050.f, SteerAngleAtTopDeg } };
+		// El mismo ángulo a cualquier velocidad (#606). Dos claves: Chaos muestrea la curva hasta la última X.
+		static const FCurveKey Keys[] = { { 0.f, 1.f }, { 4000.f, 1.f } };
 		return Keys;
 	}
 
-	float MaxSteerAngleDeg(float SpeedCms)
+	float MaxSteerAngleDeg(float SpeedCms, float BaseAngleDeg)
 	{
-		return EvalLinearKeys(SteerCurveKeys(), FMath::Abs(SpeedCms));
+		return BaseAngleDeg * EvalLinearKeys(SteerCurveKeys(), FMath::Abs(SpeedCms));
+	}
+
+	float KinematicTurnRadiusCm(float WheelbaseCmIn, float InnerSteerDeg, float AngleRatio)
+	{
+		const float MeanDeg = 0.5f * FMath::Abs(InnerSteerDeg) * (1.f + FMath::Clamp(AngleRatio, 0.f, 1.f));
+		const float TanMean = FMath::Tan(FMath::DegreesToRadians(FMath::Min(MeanDeg, 89.f)));
+		return TanMean > UE_KINDA_SMALL_NUMBER ? FMath::Max(0.f, WheelbaseCmIn) / TanMean : 0.f;
+	}
+
+	float TurnRadiusFromYawRate(float SpeedCms, float YawRateRad)
+	{
+		const float Yaw = FMath::Abs(YawRateRad);
+		return Yaw > UE_KINDA_SMALL_NUMBER ? FMath::Abs(SpeedCms) / Yaw : 0.f;
+	}
+
+	float SafeSteerFraction(float SpeedCms, float MaxSteerDeg, float WheelbaseCmIn, float MaxLateralAccelCms2)
+	{
+		const float Speed = FMath::Abs(SpeedCms);
+		if (MaxSteerDeg <= 0.f || Speed < 1.f || MaxLateralAccelCms2 <= 0.f)
+		{
+			return 1.f;
+		}
+		// Radio mínimo R = v² / a; ángulo de esa curva para la batalla: atan(L / R).
+		const float SafeDeg = FMath::RadiansToDegrees(FMath::Atan(FMath::Max(0.f, WheelbaseCmIn) * MaxLateralAccelCms2 / FMath::Square(Speed)));
+		return FMath::Clamp(SafeDeg / MaxSteerDeg, 0.f, 1.f);
+	}
+
+	FVector GridHoldVelocity(const FVector& Velocity, const FVector& Up, const FVector& DriftCm, const FGridHoldTuning& Tuning)
+	{
+		const FVector Normal = Up.GetSafeNormal(UE_SMALL_NUMBER, FVector::UpVector);
+		const FVector AlongUp = Normal * (Velocity | Normal);
+		const FVector PlaneDrift = DriftCm - Normal * (DriftCm | Normal);
+		const FVector Correction = (-FMath::Max(0.f, Tuning.PositionGain) * PlaneDrift).GetClampedToMaxSize(FMath::Max(0.f, Tuning.MaxCorrectionCms));
+		return AlongUp + Correction;
+	}
+
+	FVector GridHoldAngularVelocity(const FVector& AngularVelocity, const FVector& Up)
+	{
+		const FVector Normal = Up.GetSafeNormal(UE_SMALL_NUMBER, FVector::UpVector);
+		return AngularVelocity - Normal * (AngularVelocity | Normal);
 	}
 
 	TConstArrayView<FCurveKey> LegacyTorqueCurveKeys()

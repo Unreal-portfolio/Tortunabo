@@ -287,6 +287,11 @@ bool FTNRallyArcWindowTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("IA: objetivo a la derecha → dirección positiva"), SteerToward(FVector::ForwardVector, FVector(1, 1, 0), 45.f) > 0.99f);
 	TestTrue(TEXT("IA: objetivo a la izquierda → dirección negativa"), SteerToward(FVector::ForwardVector, FVector(1, -0.2, 0), 45.f) < 0.f);
 	TestTrue(TEXT("IA: frena más en curva cerrada"), CornerSpeedKmh(FVector(1, 0, 0), FVector(0, 1, 0), 90.f, 35.f) < CornerSpeedKmh(FVector(1, 0, 0), FVector(1, 0.1, 0), 90.f, 35.f));
+	// #606: frena antes de la curva cerrada. A 0,5 g, de 90 a 30 km/h hacen falta ~56 m.
+	TestEqual(TEXT("IA: en la curva, su velocidad"), ApproachSpeedKmh(30.f, 0.0, 490.5), 30.f, 0.01f);
+	TestTrue(TEXT("IA: a 10 m de una curva a 30 km/h no se puede ir a 90"), ApproachSpeedKmh(30.f, 1000.0, 490.5) < 50.f);
+	TestTrue(TEXT("IA: a 70 m, sí"), ApproachSpeedKmh(30.f, 7000.0, 490.5) > 90.f);
+	TestTrue(TEXT("IA: cuanto más cerca de la curva, más despacio"), ApproachSpeedKmh(30.f, 2000.0, 490.5) < ApproachSpeedKmh(30.f, 4000.0, 490.5));
 	return true;
 }
 

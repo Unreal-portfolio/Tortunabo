@@ -29,8 +29,8 @@ UTN_BuggyWheelFront::UTN_BuggyWheelFront()
 	ApplySharedWheelSetup(*this);
 	AxleType = EAxleType::Front;
 	bAffectedBySteering = true;
-	// Ángulo parado: la curva de dirección del movimiento (TNBuggy::SteerCurveKeys) lo baja a 12 grados a punta.
-	MaxSteerAngle = TNBuggy::SteerAngleAtRestDeg;
+	// El mismo a cualquier velocidad (#606); ATN_Buggy::ApplyWheelFriction lo cambia por UTN_BuggyData::MaxSteerAngleDeg.
+	MaxSteerAngle = TNBuggy::DefaultSteerAngleDeg;
 	// ATN_Buggy::ApplyWheelFriction lo sustituye por UTN_BuggyData::FrontFriction en cuanto hay simulación.
 	FrictionForceMultiplier = 3.f;
 }
