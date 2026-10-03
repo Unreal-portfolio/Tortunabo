@@ -305,7 +305,7 @@ Detalle en `Docs/Tienda_Probador.md` («Buggy del Rally»).
 |---|---|
 | `TN.Shop.AddShells [conchas]` | Suma conchas al perfil local (5000 si no se dice), para comprar buggies y pinturas en la tienda. |
 | `TNShop` / `TNBooth` | Abre la tienda o entra en el probador libre más cercano (pestaña y página BUGGY con Q/E). |
-| `TN.Rally.DebugBuggy <modelo\|-> [pintura\|-] [espera]` | En el Rally: la jugadora local manda ese buggy al servidor como si lo hubiera comprado (`BuggyModel_Caiman`, `BuggyModel_Laud`, `BuggyPaint_Lava`...; `-` = el de serie). No toca el guardado. |
-| `TN.Buggy.Photos [carpeta] [tamaño] [espera]` | Fotos PNG del escaparate (los tres modelos desde varios lados y todas las pinturas) y cierra el juego. |
+| `TN.Rally.DebugBuggy <modelo\|-> [pintura\|-] [espera]` | En el Rally: la jugadora local manda ese buggy al servidor como si lo hubiera comprado (`BuggyModel_Clasico`, `BuggyModel_Caiman`, `BuggyModel_Laud`, `BuggyPaint_Lava`...; `-` = el de serie de Art/Source o la pintura de serie). No toca el guardado. |
+| `TN.Buggy.Photos [carpeta] [tamaño] [espera]` | Fotos PNG del escaparate (los cuatro modelos desde varios lados, todas las pinturas en el de serie y en el clásico y las miniaturas de la tienda) y cierra el juego. |
 | `TN.Buggy.WorldShots [carpeta] [espera]` | En el Rally (mejor con `?Bots=5`): congela el tiempo, saca fotos sin interfaz del buggy propio de cerca, de lejos y la parrilla, y cierra el juego. |
 | `TN.Shop.UIShots [carpeta] [espera]` | En el lobby: compra un Caimán y la pintura de lava de prueba y saca capturas de la tienda y del probador con la interfaz. |
