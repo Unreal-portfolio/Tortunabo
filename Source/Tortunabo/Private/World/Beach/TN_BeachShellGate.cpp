@@ -1,4 +1,5 @@
 #include "World/Beach/TN_BeachShellGate.h"
+#include "World/Beach/TN_BeachTickWakeSubsystem.h"
 #include "World/Beach/TN_BeachTrapSynthComponent.h"
 #include "Core/TN_Log.h"
 #include "Components/BoxComponent.h"
@@ -31,6 +32,8 @@ namespace TNBeachShellGateDetail
 	constexpr double WallHeight = 440.0;
 	constexpr double OpenTime = 0.45;
 	constexpr double CloseTime = 0.7;
+	/** Tras cerrarse, segundos que sigue despierta (chispas y golpe de las hojas) antes de poder dormirse de lejos. */
+	constexpr double SettleTail = 1.0;
 
 	FLinearColor Driftwood(int32 Index)
 	{
@@ -472,7 +475,23 @@ void ATN_BeachShellGate::ServerUpdate(float DeltaSeconds, double ServerTime)
 
 void ATN_BeachShellGate::OnRep_GateState()
 {
+	// Dormida por distancia (UTN_BeachTickWakeSubsystem): se abre o se cierra ya, sin esperar a la siguiente mirada.
+	if (!IsActorTickEnabled())
+	{
+		SetActorTickEnabled(true);
+	}
 	HandleStateChanged();
+}
+
+float ATN_BeachShellGate::GetTickWakeDistance() const
+{
+	return GetFootprintRadius() + 0.5f * FMath::Max(0.f, Spec.Extent) + TNBeachTickWake::ReachMargin;
+}
+
+bool ATN_BeachShellGate::IsTickBusy() const
+{
+	const double SinceChange = TNBeachTrapKit::ServerNow(GetWorld()) - static_cast<double>(GateState.ChangedAt);
+	return GateState.bOpen || SinceChange < TNBeachShellGateDetail::CloseTime + TNBeachShellGateDetail::SettleTail;
 }
 
 void ATN_BeachShellGate::HandleStateChanged()

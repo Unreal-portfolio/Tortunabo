@@ -5,6 +5,7 @@
 #include "Camera/PlayerCameraManager.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
 #include "ProceduralMeshComponent.h"
 #include "UObject/Package.h"
@@ -247,6 +248,8 @@ void ATN_BeachMovingPlatform::ApplySpec()
 		BuildFerry(Fit, Seed);
 	}
 	LastAlpha = -1.0;
+	LiftPlacedAt = -1.0;
+	bLiftCatchingUp = false;
 	PlaceRide(TNBeachTrapKit::ServerNow(GetWorld()));
 }
 
@@ -551,8 +554,27 @@ void ATN_BeachMovingPlatform::PlaceRide(double Now)
 	const double T = Now + Phase;
 	if (bElevator)
 	{
-		const double Alpha = TNBeachRideKit::ShuttleAlpha(T, LiftDwellBottom, Travel / FMath::Max(50.0, static_cast<double>(LiftSpeed)), LiftDwellTop);
-		const double Z = BottomTopZ + Travel * Alpha;
+		const double Speed = FMath::Max(50.0, static_cast<double>(LiftSpeed));
+		const double Alpha = TNBeachRideKit::ShuttleAlpha(T, LiftDwellBottom, Travel / Speed, LiftDwellTop);
+		const double Scheduled = BottomTopZ + Travel * Alpha;
+		double Z = Scheduled;
+		if (LiftPlacedAt >= 0.0)
+		{
+			if (bLiftCatchingUp)
+			{
+				// Tras soltar a quien tenía debajo vuelve a su horario a la velocidad del ascensor, sin caer de golpe.
+				Z = FMath::Max(Scheduled, LiftZ - Speed * FMath::Max(0.0, Now - LiftPlacedAt));
+			}
+			// Se colocaba sin barrido y atravesaba a quien estuviera debajo al bajar: ahora se apoya en su cabeza.
+			const double Floor = LiftFloorUnderneath();
+			if (Floor > Z)
+			{
+				Z = FMath::Min(Floor, BottomTopZ + Travel);
+			}
+		}
+		bLiftCatchingUp = Z > Scheduled + 0.5;
+		LiftZ = Z;
+		LiftPlacedAt = Now;
 		const double Yaw = bRideRound ? FMath::Fmod(T * 12.0, 360.0) : 0.0;
 		RideRoot->SetRelativeLocationAndRotation(FVector(LiftX, 0.0, Z), FRotator(0.0, Yaw, 0.0));
 		LastAlpha = Alpha;
@@ -565,6 +587,42 @@ void ATN_BeachMovingPlatform::PlaceRide(double Now)
 	const double Yaw = bRideRound ? FMath::Fmod(T * 14.0, 360.0) : 0.0;
 	RideRoot->SetRelativeLocationAndRotation(FVector(-0.5 * Travel + Travel * Alpha, 0.0, RideTopZ + Bob), FRotator(0.0, Yaw, Roll));
 	LastAlpha = Alpha;
+}
+
+double ATN_BeachMovingPlatform::LiftFloorUnderneath() const
+{
+	double Floor = -UE_DOUBLE_BIG_NUMBER;
+	UWorld* World = GetWorld();
+	if (!bElevator || !World)
+	{
+		return Floor;
+	}
+	const FTransform FrameXf = Frame->GetComponentTransform();
+	const double Bottom = LiftZ - RideThick;
+	for (TActorIterator<ACharacter> It(World); It; ++It)
+	{
+		const ACharacter* Walker = *It;
+		const UCapsuleComponent* Capsule = IsValid(Walker) ? Walker->GetCapsuleComponent() : nullptr;
+		if (!Capsule)
+		{
+			continue;
+		}
+		const FVector Feet = TNBeachRideKit::FeetIn(FrameXf, Walker);
+		const double Radius = Capsule->GetScaledCapsuleRadius();
+		const double Dx = FMath::Abs(Feet.X - LiftX);
+		const double Dy = FMath::Abs(Feet.Y);
+		const bool bUnder = bRideRound ? FMath::Square(Dx) + FMath::Square(Dy) < FMath::Square(RideHalfX + Radius)
+			: Dx < RideHalfX + Radius && Dy < RideHalfY + Radius;
+		const double Head = Feet.Z + 2.0 * Capsule->GetScaledCapsuleHalfHeight();
+		// Quien va encima (pies por encima de la cara de abajo) o la cruza de lado (cabeza por encima de la de arriba) no la
+		// sostiene: de eso ya se encarga el movimiento del personaje.
+		if (!bUnder || Feet.Z >= Bottom || Head > LiftZ)
+		{
+			continue;
+		}
+		Floor = FMath::Max(Floor, Head + RideThick + 2.0);
+	}
+	return Floor;
 }
 
 void ATN_BeachMovingPlatform::UpdateRopes()

@@ -82,12 +82,13 @@ necesita espera a que esté lista.
 | `TN.Beach.Place GiantCrab` | Un cangrejo gigante delante: andando te alcanza, corriendo se te escapa poco a poco; al levantar la pinza, salta (lo pasa por encima: `salta por encima del mazazo` en el registro) o corre hacia otro lado. |
 | `TN.Beach.Quad.Now` | Todos los pasos de quads avisan y pasan ya. |
 | `TN.Beach.Storm.Start [metros detrás=30] [cm/s=180]` | Arranca la tormenta de bañistas. |
-| `TN.Beach.Storm.Here [jugador] [metros=4]` | Pone el frente de la tormenta 4 m (o `metros`) por delante de tu tortuga o de la del jugador N (índice en `PlayerArray`: así se prueba la del cliente desde el anfitrión): se queda dentro y un bañista le da la patada. Acaba sí o sí en arena abierta ~20 m por delante del frente: en bola si el arco está libre, de un salto con polvo si no (o si está a más de 45 m). Con `metros` = 30 o 60 se prueban la patada larga y el salto. Sin tormenta, crea una. Ver `Docs/Modo_Carrera.md`, «La patada que no puede entrar en bucle». |
+| `TN.Beach.Storm.Here [jugador] [metros=4]` | Pone el frente de la tormenta 4 m (o `metros`) por delante de tu tortuga o de la del jugador N (índice en `PlayerArray`: así se prueba la del cliente desde el anfitrión): se queda dentro y un bañista le da la patada. Acaba sí o sí en arena abierta ~20 m por delante del frente, siempre en bola por el aire: con arco libre, chocando; si no (una pared delante, nadando o a más de 45 m), atravesando lo que haya hasta bajar sobre su sitio. Con `metros` = 30 o 60 se prueban la patada larga y la que atraviesa; pegada a la pared de un castillo o de una fortaleza, la que no tiene arco libre. Sin tormenta, crea una. Ver `Docs/Modo_Carrera.md`, «La patada que no puede entrar en bucle». |
 | `TN.Beach.Storm.Stop` | La para. |
 | `TN.Beach.Storm.Info` | Distancia y velocidad de la tormenta respecto a la última tortuga. |
 | `TN.Beach.Lizard <huidizo\|generoso\|mordedor>` | Un lagarto de ese carácter 22 m delante de ti, mirándote. El generoso (motas doradas) deja premio al huir; el mordedor (cresta roja) se lanza a morderte. `TN.Beach.Place clear` lo quita. |
 | `TN.Beach.StunNearest [segundos=3]` | Marea al enemigo más cercano a tu tortuga (pajaritos, sin atacar). Los quads, no. Con el ermitaño rodando lo para en seco; con el pulpo agarrando, suelta; las pulgas se dispersan; el tanque echa humo y la antena da vueltas. |
 | `TN.Beach.Worm [jugador=0]` | Un gusano de arena se come ya a esa tortuga. |
+| `TN.Beach.Mine.Blast <jugador> [metros=0] [veces=1] [cada=6] [espera=cada]` | Solo en el servidor. Pone una mina a esos metros detrás de la tortuga del jugador (índice en `PlayerArray` del anfitrión: 1 = el primer cliente) y la hace saltar; lo repite «veces» veces cada «cada» segundos (la primera, a los «espera»), esperando a que la tortuga esté libre. Con 0 m sale en bola; con 2-6 m, empujón. Para la red (#18): con `p.NetShowCorrections 1` en las dos máquinas y `NetEmulation.PktLag 120` en el cliente, el empujón no debe dar ninguna línea `*** Client: Error` ni `*** Server: Error` tras `explota`. Con `-game` (donde `-ExecCmds` no corre), `-TNMineBlast=1_3_6_6_30` en la línea de órdenes del servidor. |
 | `TN.Beach.Enemy.Stats` | Cuántos enemigos hay y cuántos van a ritmo lento por estar lejos. |
 | `TN.Beach.Enemy.Debug 1` | Dibuja radios de visión, oído y patrulla, y estados. |
 
@@ -138,6 +139,7 @@ necesita espera a que esté lista.
 | `TN.Beach.Perf` | Tiempos de la última ronda (reparto, asientos, decorado, actores, botín y fotogramas), decorado local (piezas, instancias, con colisión y con sombra, partes que se mueven, componentes), actores de la playa (con dormancy, siempre relevantes, relevancia media), rebuscables (puntos, usados, actores ahora), objetos, conchas y la lista de red. En la ventana donde se escribe y, en PIE, también el servidor. |
 | `TN.Beach.BuildBudgetMs 6` | Milisegundos por fotograma para montar la ronda (asientos, decorado local y actores). |
 | `TN.Beach.AsyncBuild 0` | Monta la ronda entera en un fotograma, como antes (para comparar); `1` vuelve a por partes. |
+| `TN.Perf.BeachTickWake 0` | Minas, algas y puertas de conchas con el Tick siempre encendido, como antes de #59 (para comparar); con `1` (lo normal) lo apagan sin tortuga, caparazón ni cámara cerca (40 m las minas, ~100 m las algas, ~35 m las puertas) y lo mantienen mientras tienen algo en marcha (mecha, explosión, tortuga enganchada, puerta abierta). En `-game`: `-dpcvars=TN.Perf.BeachTickWake=0`. Actores con Tick en reposo en `TN.Stress control` (Saved/Stress, `ticking_actors`). |
 
 ## Objetos de carrera (tipo Mario Kart)
 
@@ -250,6 +252,8 @@ No existen en la build Shipping.
 |---|---|
 | `TN.Rooms.FakeError <locked\|full\|kicked\|other>` | Simula que el servidor no te deja entrar (sala cerrada, llena, expulsado u otro motivo): pantalla de vuelta al menú y el aviso en «Unirse». Sin segunda instancia. |
 | `TN.Rooms.FakeError <joinfull\|gone\|noaddress>` | Simula que falla la entrada en la sesión (llena, ya no existe, sin dirección del anfitrión): el aviso sale en el menú de salas sin recargarlo. |
+| `TN.Travel.Fail [/Game/Ruta/Mapa \| motor] [segundos]` | Solo en el anfitrión: pide un `ServerTravel` a un mapa que no existe (por defecto `/Game/Maps/TN_MapaQueNoExiste`), que `CanServerTravel` para sin mandar a los invitados; con `motor`, simula un fallo de `UEngine::OnTravelFailure` (un mapa que existe pero no carga), con la desconexión que pide el motor. Con segundos, lo hace pasado ese tiempo (para que entren invitados en una prueba sin ventana con `-ExecCmds`). En los dos casos, el registro debe dar un solo `Fallo de viaje ... (fallo 1 seguido)` y el anfitrión debe seguir en el lobby (o recargarlo) con su sesión. Antes `net.AllowPIESeamlessTravel 1` si se prueba en PIE el viaje sin cortes. Ver [Salas](Salas.md#viaje-de-mapa-fallido). |
+| `Automation RunTests Tortunabo.Net.TravelFailure` | Prueba automática de lo que se hace ante un viaje fallido (anfitrión, invitado, menú, lobby en pie, segundo fallo) y de si el `ServerTravel` ha arrancado de verdad. |
 
 ## Cooperativo (mapa procedural y lobby)
 

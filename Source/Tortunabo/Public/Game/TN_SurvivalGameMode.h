@@ -8,12 +8,14 @@
 class ATN_ChunkManager;
 
 /**
- * @brief Modo Supervivencia: niveles cortos del Clásico (LVL_Run, chunks) uno tras otro hasta que queda una tortuga.
+ * @brief Modo Supervivencia: niveles cortos uno tras otro hasta que queda una tortuga.
  *
- * Se juega en LVL_Run con ?game=Survival (alias en DefaultGame.ini). ATN_ChunkManager pasa al modo por niveles:
- * cada nivel son ChunksPerLevel chunks al azar y el final con la meta, más difíciles cuanto más alto el nivel.
+ * Se juega en LVL_Run con ?game=Survival (alias en DefaultEngine.ini). ATN_ChunkManager pasa al modo por niveles: cada
+ * nivel es un mapa de Supervivencia generado entero (ATN_ProcMapGenerator, #274), con semilla y dificultad crecientes
+ * (nivel N: semilla + N - 1 y dificultad min(N, 5)). La semilla del nivel 1 es al azar o la de ?SurvivalSeed=N.
+ *  - La espera del lobby es en el corral de LVL_Run; al empezar, todos salen desde la salida del mapa del nivel 1.
  *  - Quien llega a la meta espera como espectador; cuando todos los vivos han llegado, se genera el siguiente
- *    nivel y vuelven a salir desde los PlayerStart.
+ *    nivel y, en cuanto su suelo tiene colisión, vuelven a salir desde la salida del mapa nuevo.
  *  - Morir es definitivo (sin DBNO ni rescate; el tótem sí salva) y los muertos espectan.
  *  - En grupo gana la última viva; si las últimas mueren en el mismo nivel, la que murió más cerca de la meta.
  *    En solitario dura hasta que muere.
@@ -32,6 +34,9 @@ public:
 
 	virtual void Logout(AController* Exiting) override;
 
+	/** La salida del mapa del nivel (los PlayerStart del generador); sin mapa, los del corral de LVL_Run. */
+	virtual AActor* ChoosePlayerStart_Implementation(AController* Player) override;
+
 	virtual void MarkPlayerFinished(APlayerController* PlayerController) override;
 
 	virtual void MarkPlayerDead(APlayerController* PlayerController) override;
@@ -43,6 +48,10 @@ protected:
 	/** Segundos entre que llega el último vivo y sale el siguiente nivel. */
 	UPROPERTY(EditDefaultsOnly, Category = "Survival", meta = (ClampMin = "0.5"))
 	float LevelTransitionSeconds = 3.f;
+
+	/** Espera máxima a que el suelo del mapa nuevo tenga colisión antes de soltar a los jugadores en él. */
+	UPROPERTY(EditDefaultsOnly, Category = "Survival", meta = (ClampMin = "1.0"))
+	float LevelReadyTimeoutSeconds = 10.f;
 
 	virtual void OnWaitingTimeout() override;
 
@@ -71,12 +80,23 @@ private:
 	int32 CurrentLevel = 1;
 	int32 StartingPlayers = 1;
 	bool bMatchOver = false;
+	/** Entre que se genera un mapa y se suelta a los jugadores en él: el nivel aún no se evalúa. */
+	bool bLevelLoading = false;
+	float LevelLoadStartTime = 0.f;
 	FTimerHandle LevelTransitionTimerHandle;
+	FTimerHandle LevelReadyPollHandle;
 
 	ATN_ChunkManager* FindChunkManager() const;
 
 	/** Estado de los jugadores que siguen en la partida, para TNSurvivalLogic. */
 	TArray<FTNSurvivalPlayer> GatherPlayers() const;
+
+	/** Espera a que el suelo de la salida del mapa tenga colisión (o LevelReadyTimeoutSeconds) y suelta a los vivos. */
+	void BeginLevelWhenReady();
+	void PollLevelReady();
+
+	/** Lleva a los vivos a la salida del mapa del nivel, con el pawn que tenían o uno nuevo. */
+	void SendSurvivorsToLevelStart();
 
 	/** Siguiente nivel: lo genera y devuelve a los vivos a la salida. */
 	void AdvanceLevel();

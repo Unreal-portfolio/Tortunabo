@@ -13,10 +13,9 @@
 
 | Documento | Contenido |
 |---|---|
-| [`Docs/LDD_Tortunabo.md`](Docs/LDD_Tortunabo.md) | Level Design Document. |
+| [`Docs/README.md`](Docs/README.md) | Índice de la documentación: documento de referencia por tema. |
 | [`Docs/Inventario_Scripts.md`](Docs/Inventario_Scripts.md) | Inventario completo de los 73 archivos `.h` del módulo, por dominio, con descripción y autores. |
-| [`Docs/Plan_Correccion_Fases.md`](Docs/Plan_Correccion_Fases.md) | Plan de correccion por fases del sprint en curso. |
-| [`Docs/Mapa_Procedural.md`](Docs/Mapa_Procedural.md) | Mapa procedural por módulos (`World/ProcMap`): generación, modos Coop/Carrera/2vs2, nado, coger y lanzar, cómo probarlo. |
+| [`Docs/Mapa_Procedural.md`](Docs/Mapa_Procedural.md) | Framework `World/ProcMap` (el Coop pasa a mapas fijos): generación, modos Coop/Carrera/2vs2, nado, coger y lanzar, cómo probarlo. |
 
 ## Setup paso a paso
 

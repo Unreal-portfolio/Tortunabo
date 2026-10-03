@@ -7,11 +7,11 @@ siempre de un saltito («¡puf!»); si no, una nubecilla del color del suelo del
 
 ## Cómo se juega
 
-1. Al acercarse al borde de un decorado buscable (por cualquier lado, a 3,5 m como mucho) sale el aviso
+1. Al acercarse al borde de un decorado buscable (por cualquier lado, a 2,5 m como mucho) sale el aviso
    **«Mantén para rebuscar»** con la tecla dentro de un aro vacío. Los buscables tienen alguna chispita dorada al pie
-   cuando la cámara está a menos de 18 m (más de una a la vez en los grandes) y, con la tortuga a menos de 11 m del
-   borde, el anillo dorado de los objetos del suelo marca en el suelo el punto del borde por el que rebuscaría (ver
-   «Brillo de lo que se coge»).
+   cuando la cámara está a menos de 18 m (más de una a la vez en los grandes) y, mientras quede por buscar y la cámara
+   esté a menos de 90 m, el anillo dorado de los objetos del suelo, **fijo alrededor del decorado** y del tamaño de su
+   huella (ver «Brillo de lo que se coge»): no se mueve al rodearlo.
 2. Al **mantener E** el aro se llena en dorado (1,3 s), saltan tierra y piedrecitas del borde hacia la tortuga y suena
    un rebuscar de arena y chinitas (lo oyen los que estén cerca). **Soltar antes cancela** (y se puede volver a
    empezar). También se corta si la tortuga se aleja del decorado, se mete en el caparazón, queda tumbada, muere o la
@@ -113,6 +113,8 @@ rebuscar. Ya rebuscado, se aplasta y **queda aplanado y quieto**.
 - Barato para cientos: lejos, quietos e instanciados (sin sombra, hasta 120 m); cerca de una cámara (45 m, los 16 más
   cercanos) los mueve un componente de una reserva, como las partes animadas del decorado de la playa. Nada en el
   servidor dedicado.
+- El anillo dorado fijo del rebuscable (ver «Brillo de lo que se coge») se centra en su montículo, a ras de su arena y
+  algo mayor que él (cada actor `ATN_BeachSearchSpot` sabe el índice de su montículo).
 - Detalle, cifras y pruebas: `Docs/Modo_Carrera.md`, «Montículos de arena».
 
 **Cooperativo (mapa procedural): pendiente, anotado.** Los buscables del mapa procedural (`ATN_ProcSearchSpot`) no lo
@@ -152,11 +154,41 @@ Todo lo que se puede coger lleva la misma marca, para que se entienda igual en e
   - Ajustes por Blueprint en `PickupGlow`: `RingRadius` (0 = según el objeto), `BeamHeight` (0 = sin columna),
     `bFloatAndSpin`, `FloatLift`, `FloatBob`, `SpinTurnsPerSecond`, `LightLumens` (0 = sin luz), `LightRadius` y las
     distancias (`LightRange`, `SparkleRange`, `AnimRange`, `RingDrawDistance`, `BeamDrawDistance`).
-- **Decorados que se rebuscan** (`ATN_ProcSearchSpot`, también el cofre del lobby y los de la playa): las mismas chispitas
-  doradas por el borde (en los grandes, una más por cada 30 m de perímetro, hasta cuatro a la vez) y, cuando la tortuga
-  de esta máquina está a menos de `MarkerDistance` del borde (11 m; en la playa, 18 m), **el mismo anillo dorado** en el
-  suelo, en el punto del borde por el que rebuscaría: la sigue alrededor del decorado, gira deprisa y late mientras ella
-  rebusca y se va al buscarse (o si rebusca otra). Radio `MarkerRadius` (85 cm; 105 en la playa).
+- **Decorados que se rebuscan** (`ATN_ProcSearchSpot`, también el cofre del lobby, el montículo del tutorial y los de la
+  playa): las mismas chispitas doradas por el borde (en los grandes, una más por cada 30 m de perímetro, hasta cuatro a
+  la vez) y **el mismo anillo dorado** de los objetos del suelo (#214), ahora **fijo**: centrado en el propio decorado, a
+  ras de su suelo, sin seguir a nadie.
+  - **Tamaño**: abarca la huella entera. La huella es una cápsula (`FTNSearchSpotShape`: radio y semilargo) y cabe en un
+    círculo de radio `Radius + HalfLength`; el anillo se escala para que sus guiones (la corona 87-99 de la malla)
+    empiecen 25 cm más allá de ese borde, así que se ve alrededor del decorado y no debajo de él. En los alargados (la
+    barca, la vagoneta, el barco) es un solo círculo que los abarca: uno por el centro quedaría tapado por el propio
+    decorado. Mínimo `MarkerRadius` (85 cm) para los diminutos. Ejemplos: un montículo del tutorial (huella de 135 cm) da
+    un anillo de 184 cm de radio; el cofre de la playa (155 cm), 207 cm; el barco varado (hasta 10,6 m de huella), 12,5 m.
+  - **Playa: en el montículo de arena.** Cada rebuscable de la playa tiene su montículo que vibra (`ATN_BeachSearchRegistry`,
+    «Montículos de arena»), y el anillo se centra en él, no en la huella del decorado: a ras de su arena y algo mayor que
+    su base (radio de la base = 1,1 × 100 cm × el tamaño del montículo, 0,8-1,25; los guiones empiezan 25 cm más allá: de
+    130 a 187 cm de radio de anillo). Cómo se enlazan: el punto `i` del registro tiene el montículo `i`, y el servidor le
+    pone ese índice al actor `ATN_BeachSearchSpot` (`SetMoundIndex`, replicado una vez). Cada máquina saca el sitio y el
+    tamaño del montículo que ella misma monta a partir de lo replicado (`ATN_BeachSearchRegistry::GetMoundFoot`), así que
+    es el mismo en todas; mientras el registro no haya montado ese montículo en una máquina, allí no sale anillo. El gancho
+    es `GetMarkerAnchor` (`Footprint` por defecto, `Point` en el montículo, `Pending` si aún no llega). Sin montículo
+    propio (el cofre de la playa, el cooperativo, el lobby y el tutorial) el anillo abarca la huella, como arriba.
+  - **Suelo**: no se puede trazar al centro (el decorado lo ocupa), así que se mira el suelo en cuatro puntos de la
+    propia circunferencia del anillo (fuera de la huella) y el anillo se apoya a la altura media y se inclina con el plano
+    que forman (con la pendiente muy empinada, plano). Una sola vez al salir; si falta algún punto porque la colisión del
+    terreno aún se está cocinando, se repite cada segundo hasta seis veces. Un punto muy distinto del centro (un escalón)
+    cuenta como el suelo del centro.
+  - **Movimiento**: gira despacio al revés y respira igual que el de los objetos (`TNLootGlow::RingPose`, compartida con
+    `UTN_PickupGlowComponent`: -24 °/s, respiración del 4,5 % cada 2,6 s), cada decorado con su desfase (sacado de su
+    sitio, no al azar: igual en todas las máquinas). Mientras alguien
+    rebusca, gira cinco veces más deprisa y late (lo ven todas las máquinas, no solo quien rebusca).
+  - **Visibilidad**: la de los objetos: solo en máquinas con pantalla y hasta `MarkerDrawDistance` (90 m) de la cámara
+    local, igual en todas (ya no depende de dónde esté la tortuga); aparece creciendo y se va al agotarse el rebuscable
+    (`IsSpent`; en los repetibles, durante el respiro). Se anima cada fotograma a menos de 40 m; más lejos, al ritmo
+    lento del tick del decorado (0,3 s). En la playa el actor solo existe a menos de 50 m de alguna tortuga, así que allí
+    sale desde que aparece el actor.
+  - Lo que antes hacía de «marca que sigue al jugador» no era más que visual: el punto del borde por el que se rebusca
+    (`GetInteractionPointFor`, `RimPointToward`), de donde salen la tierra y el objeto, no cambia.
 - **Conchas de puntos** (`ATN_ScorePickup`): siguen con su brillo propio (la vieira que gira, destellos, halo, luz y
   columna de su color): se cogen al pasar, sin tecla, y así se distinguen.
 
@@ -167,8 +199,10 @@ cámara el componente mira la distancia cada 0,35 s y nada más.
 
 **Probar**: tirar un objeto (soltar el equipado) y la bola (al pararse sale su anillo); rebuscar con `tn.Search.Luck 1`
 (el objeto salta sin anillo y, al aterrizar, aparece creciendo); acercarse y alejarse (luz a 18 m, chispitas a 30 m,
-flotar a 40 m, anillo a 90 m, columna a 150 m); recogerlo (se apaga). En el lobby, el cofre: el anillo delante de él al
-acercarse. Con dos jugadores, cada uno ve el anillo del rebuscable solo alrededor de su tortuga.
+flotar a 40 m, anillo a 90 m, columna a 150 m); recogerlo (se apaga). En un rebuscable, el anillo fijo alrededor del
+decorado: rodearlo sin que se mueva, verlo desde lejos (hasta 90 m en el cooperativo), que gire más deprisa mientras se
+rebusca y que se vaya al buscarse. En el lobby, el cofre: el anillo a su alrededor. Con dos jugadores, los dos ven el
+mismo anillo, en el mismo sitio.
 
 ## Qué decorados se pueden rebuscar
 
@@ -214,7 +248,8 @@ Los decorados del mapa los dejan como están; el cofre del lobby los usa.
 | `MaxLootLying` | 0 (sin límite) | Objetos sin recoger que pueden quedar a la vez; al pasarse, `SpawnLoot` destruye el más viejo. Lo recogido no cuenta: el pickup se destruye al cogerlo. |
 | `RummagePitch` | 1 | Multiplica el tono del sonido de rebuscar. |
 | `HintDistance` | 18 m | Distancia de la cámara al borde a la que salen las chispitas de «aquí se puede rebuscar». |
-| `MarkerDistance`, `MarkerRadius` | 11 m, 85 cm | Distancia de la tortuga local al borde a la que sale el anillo que marca dónde rebuscar (0 = nunca) y su radio. |
+| `MarkerDrawDistance`, `MarkerRadius` | 90 m, 85 cm | Distancia de la cámara local al borde del anillo fijo hasta la que se dibuja (0 = sin anillo) y su radio mínimo (el anillo abarca la huella: `Radius + HalfLength` más un margen). |
+| `ReachSlack` | 85 cm | Margen sobre el alcance de interacción (250 cm) mientras se rebusca, antes de cancelar por alejarse (antes 120 cm con 350). |
 | `GetLuck()` | `LootChance` o `tn.Search.Luck` | Probabilidad de que salga algo. |
 | `GetLootWeight(Fila, Objeto)` | `LootWeights` por fila o `ItemId`, o 1 | Peso de cada objeto del catálogo en el sorteo (0 lo quita). La playa usa el de la carrera. |
 | `GetLootOrigin(Pawn)` | borde hacia la tortuga, a 40 cm | De dónde sale el objeto o la nube. |
@@ -229,7 +264,11 @@ Los decorados del mapa los dejan como están; el cofre del lobby los usa.
 - **Servidor autoritativo.** El cliente solo avisa de que empieza (`ServerBeginHoldInteract`, con la misma
   validación de distancia y holgura por ping que `ServerTryInteract`) y de que suelta. El tiempo lo cuenta el
   decorado en el servidor (su tick, cada fotograma mientras alguien rebusca), que además vigila que la tortuga siga a
-  su alcance (+1,2 m) y en condiciones. El cliente no puede adelantar el final.
+  su alcance (2,5 m + 0,85 m de margen) y en condiciones. El cliente no puede adelantar el final.
+- **Alcance** (#214): el escaneo de la tortuga (`ATortugaCharacter::MaxInteractionDistance`) y el del rebuscable
+  (`TNSearchSpotDetail::Reach`) salen de la misma cifra, `ATortugaCharacter::DefaultInteractionDistance` = **250 cm**
+  (antes 350). El servidor acepta hasta `max(250, el del interactuable) + 100 + holgura por ping` (25 % del ping, hasta
+  120 cm) al empezar, o sea 100 cm más de lo que deja el escaneo del cliente: la misma holgura de antes, sin cambios.
 - **Estado replicado** (`FTNSearchSpotState`, un solo struct para que llegue entero): quién rebusca y desde qué hora
   del servidor (el aro de cada cliente se calcula con `GetServerWorldTimeSeconds`), el resultado y su hora, de dónde
   sale y dónde cae el objeto, el pickup y la cuenta de búsquedas completadas (`SearchCount`). Los efectos salen de

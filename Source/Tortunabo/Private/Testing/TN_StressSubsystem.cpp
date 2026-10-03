@@ -30,6 +30,9 @@ namespace TNStressDetail
 	/** Segundos al principio de cada fase que no cuentan en el promedio (el propio parón de crear los actores). */
 	constexpr double SettleSeconds = 1.5;
 
+	/** Clases con Tick que salen en el informe de cada fase (actores y componentes juntos, de más a menos). */
+	constexpr int32 TopTickingClasses = 30;
+
 	UTN_StressSubsystem* FromWorld(UWorld* World)
 	{
 		return World ? World->GetSubsystem<UTN_StressSubsystem>() : nullptr;
@@ -388,9 +391,9 @@ void UTN_StressSubsystem::EndPhase(int32 Index)
 		Phase.TopTicking.Add(TPair<FString, int32>(Pair.Key, Pair.Value));
 	}
 	Phase.TopTicking.Sort([](const TPair<FString, int32>& A, const TPair<FString, int32>& B) { return A.Value > B.Value; });
-	if (Phase.TopTicking.Num() > 12)
+	if (Phase.TopTicking.Num() > TNStressDetail::TopTickingClasses)
 	{
-		Phase.TopTicking.SetNum(12);
+		Phase.TopTicking.SetNum(TNStressDetail::TopTickingClasses);
 	}
 }
 

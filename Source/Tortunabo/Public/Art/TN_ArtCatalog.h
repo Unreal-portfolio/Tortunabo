@@ -61,8 +61,16 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Arte", meta = (ForceInlineRow))
 	TMap<FName, FTNArtOverride> Pieces;
 
+	/**
+	 * Botón del catálogo: vuelve a leer los catálogos, avisa de las piezas con malla que no existen y rehace en el editor lo
+	 * que se ve sin jugar (castillo, valle). Editar en el panel ya lo hace solo y cada Play vuelve a leerlos; sirve tras
+	 * cambiar el catálogo con Python (catalog.apply_changes()) o recargarlo.
+	 */
+	UFUNCTION(CallInEditor, BlueprintCallable, Category = "Arte", meta = (DisplayName = "Aplicar cambios"))
+	void ApplyChanges();
+
 #if WITH_EDITOR
-	/** Un cambio en el catálogo vacía la caché de sustitutos: se ve al volver a construir el nivel o al darle al Play. */
+	/** Un cambio en el catálogo vacía la caché de sustitutos y rehace en el editor lo que se ve sin jugar (ApplyChanges). */
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 #endif
 };

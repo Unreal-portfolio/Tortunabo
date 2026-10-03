@@ -1,4 +1,5 @@
 #include "World/Beach/TN_BeachEnemy.h"
+#include "Game/TN_BeachRaceDecisions.h"
 #include "World/Beach/TN_BeachCameraShake.h"
 #include "World/Beach/TN_BeachEnemySynth.h"
 #include "World/Beach/TN_BeachRaceGenerator.h"
@@ -529,9 +530,7 @@ bool ATN_BeachEnemy::IsRaceLive(const UObject* WorldContext)
 	const ATN_BeachRaceGameState* GS = World ? World->GetGameState<ATN_BeachRaceGameState>() : nullptr;
 	// Solo se para al acabar la cuenta de meta (gusanos y «¡TODAS AL AGUA!»), en el recuento, en el título del sprint final
 	// y en el podio: si la fase se quedara en Waiting por lo que sea, se sigue atacando.
-	return !GS || (GS->RacePhase != ETNBeachRacePhase::RoundResults && GS->RacePhase != ETNBeachRacePhase::Champion
-		&& GS->RacePhase != ETNBeachRacePhase::SprintIntro && GS->FinishCountdown != ETNBeachFinishCountdown::TimeUp
-		&& GS->FinishCountdown != ETNBeachFinishCountdown::AllIn);
+	return !GS || TNBeachRaceRules::IsRaceLive(GS->RacePhase, GS->FinishCountdown);
 }
 
 bool ATN_BeachEnemy::TraceGround(const UObject* WorldContext, const FVector& Where, float& OutZ, FVector* OutNormal, float Up, float Down)
@@ -554,6 +553,41 @@ bool ATN_BeachEnemy::TraceGround(const UObject* WorldContext, const FVector& Whe
 		return true;
 	}
 	return false;
+}
+
+bool ATN_BeachEnemy::TraceDropSurface(const UObject* WorldContext, const FVector& Where, float& OutZ, FVector* OutNormal, const AActor* Ignore,
+	float Up, float Down)
+{
+	const UWorld* World = WorldContext ? WorldContext->GetWorld() : nullptr;
+	if (!World)
+	{
+		return false;
+	}
+	// Por el canal de visibilidad: lo que se ve (la arena, el decorado y las fortalezas, que son colisión dinámica y una traza
+	// de solo lo estático cruzaba), sin los muros invisibles ni los volúmenes. Las tortugas y sus bolas no paran lo que cae
+	// sobre ellas: lo que importa es dónde están de pie.
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(BeachDropSurface), false, Ignore);
+	TArray<ATortugaCharacter*> Turtles;
+	GatherTurtles(WorldContext, Turtles);
+	for (const ATortugaCharacter* Turtle : Turtles)
+	{
+		Params.AddIgnoredActor(Turtle);
+		if (const UTN_ShellComponent* Shell = Turtle->GetShellComponent())
+		{
+			Params.AddIgnoredActor(Shell->GetBody());
+		}
+	}
+	FHitResult Hit;
+	if (!World->LineTraceSingleByChannel(Hit, Where + FVector(0.0, 0.0, Up), Where - FVector(0.0, 0.0, Down), ECC_Visibility, Params) || Hit.bStartPenetrating)
+	{
+		return false;
+	}
+	OutZ = static_cast<float>(Hit.ImpactPoint.Z);
+	if (OutNormal)
+	{
+		*OutNormal = Hit.ImpactNormal;
+	}
+	return true;
 }
 
 float ATN_BeachEnemy::LocalViewDistance(const UObject* WorldContext, const FVector& Where)

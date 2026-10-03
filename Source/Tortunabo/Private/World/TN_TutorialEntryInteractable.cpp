@@ -1,6 +1,7 @@
 #include "World/TN_TutorialEntryInteractable.h"
 #include "Core/TN_Log.h"
 #include "Lobby/TN_TutorialCourse.h"
+#include "Player/TortugaCharacter.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerStart.h"
@@ -9,7 +10,8 @@
 ATN_TutorialEntryInteractable::ATN_TutorialEntryInteractable()
 {
 	PromptText        = NSLOCTEXT("TNTutorial", "ReplayPrompt", "Repetir el tutorial");
-	InteractionDistance = 300.f;
+	// Como el alcance de la tortuga (250; antes 300, pero el escaneo ya solo encontraba lo que estuviera a 350).
+	InteractionDistance = ATortugaCharacter::DefaultInteractionDistance;
 	CooldownSeconds   = 1.0f;
 }
 

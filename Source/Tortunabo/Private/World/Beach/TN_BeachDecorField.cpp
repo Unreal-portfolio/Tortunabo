@@ -140,6 +140,7 @@ void ATN_BeachDecorField::BeginBuild(const TNBeachLayout::FRoundLayout& Layout, 
 		}
 		PendingItems.Add(Item);
 		PendingLayoutIndex.Add(i);
+		PendingXf.Add(TNBeachDecorKit::ItemPlacement(Layout, Item));
 	}
 	PendingRound = Round;
 	BuildSeconds = 0.0;
@@ -169,7 +170,7 @@ bool ATN_BeachDecorField::StepBuild(double BudgetSeconds)
 		{
 			if (NextPending < PendingItems.Num())
 			{
-				AddItem(PendingItems[NextPending], PendingLayoutIndex[NextPending]);
+				AddItem(PendingItems[NextPending], PendingLayoutIndex[NextPending], PendingXf[NextPending]);
 				++NextPending;
 				continue;
 			}
@@ -221,6 +222,7 @@ void ATN_BeachDecorField::ClearDecor()
 	AnimItems.Reset();
 	PendingItems.Reset();
 	PendingLayoutIndex.Reset();
+	PendingXf.Reset();
 	NextPending = 0;
 	NextBatch = 0;
 	BuiltRound = 0;
@@ -246,7 +248,7 @@ int32 ATN_BeachDecorField::BatchFor(uint32 Key, ETNBeachElement Element, UStatic
 	return Index;
 }
 
-void ATN_BeachDecorField::AddItem(const TNBeachLayout::FItem& LayoutItem, int32 LayoutIndex)
+void ATN_BeachDecorField::AddItem(const TNBeachLayout::FItem& LayoutItem, int32 LayoutIndex, const FTransform& ItemXf)
 {
 	const ETNBeachElement Element = LayoutItem.Element;
 	const int32 ItemIndex = Items.AddDefaulted();
@@ -259,8 +261,7 @@ void ATN_BeachDecorField::AddItem(const TNBeachLayout::FItem& LayoutItem, int32 
 	Item.Axis = LayoutItem.Axis();
 	Item.Radius = LayoutItem.Radius;
 	Item.HalfLength = LayoutItem.HalfLength;
-	// A la cota de su asiento (la arena natural de su centro), girado como en el reparto: lo mismo que SpawnElement.
-	Item.ItemXf = FTransform(FRotator(0.0, LayoutItem.Yaw, 0.0), FVector(LayoutItem.Pos.X, LayoutItem.Pos.Y, TNBeachLayout::PlacementZ(LayoutItem)));
+	Item.ItemXf = ItemXf;
 	if (ItemOfLayout.IsValidIndex(LayoutIndex))
 	{
 		ItemOfLayout[LayoutIndex] = ItemIndex;

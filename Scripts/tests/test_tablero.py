@@ -27,8 +27,68 @@ def test_slug_no_termina_en_guion_al_cortar():
 
 
 def test_issues_de_pr_lee_cuerpo_y_rama():
-    pr = {"body": "Arregla el puente.\n\nCloses #19\nRefs #33", "headRefName": "fix/19-puente-tambaleante"}
-    assert tablero.issues_de_pr(pr) == {19, 33}
+    pr = {"body": "Arregla el puente.\n\nCloses #19\nFixes #21\nRefs #33", "headRefName": "fix/20-puente-tambaleante"}
+    assert tablero.issues_de_pr(pr) == {19, 20, 21}
+    assert tablero.issues_de_pr(pr, menciones=True) == {19, 20, 21, 33}
+
+
+def test_issues_de_pr_solo_palabras_completas():
+    pr = {"body": "Ver hotfix #5 y prefs #6; cierra #7", "headRefName": "nube/x"}
+    assert tablero.issues_de_pr(pr, menciones=True) == {7}
+
+
+def _pr_abierta(numero, cuerpo, rama="feat/x"):
+    return {"number": numero, "baseRefName": "dev", "headRefName": rama, "body": cuerpo, "mergeable": "MERGEABLE",
+            "author": {"login": "Mokius"}}
+
+
+def _item(estado, *etiquetas, **valores):
+    return {"state": "OPEN", "valores": {"Status": estado, **valores},
+            "labels": {"nodes": [{"name": e} for e in ("tarea", *etiquetas)]}}
+
+
+def test_refs_no_mueve_la_issue_citada_y_closes_si(monkeypatch):
+    """#356 solo citada con «Refs» no pasa a In review; #12, que la PR cierra, sí."""
+    monkeypatch.setattr(tablero, "prs_abiertas", lambda: [_pr_abierta(400, "Closes #12\nRefs #356")])
+    monkeypatch.setattr(tablero, "prs_fusionadas", lambda: [])
+    proyecto = {"items": {12: _item("In progress"), 356: _item("Ready")}}
+    cambios, avisos = [], []
+    tablero.reconciliar_prs(proyecto, cambios, avisos)
+    assert [texto for texto, _ in cambios] == ["#12 → In review (PR #400)"]
+    assert not avisos
+
+
+def test_pr_abierta_no_mueve_una_issue_con_decision_pendiente(monkeypatch):
+    monkeypatch.setattr(tablero, "prs_abiertas", lambda: [_pr_abierta(400, "Closes #12")])
+    monkeypatch.setattr(tablero, "prs_fusionadas", lambda: [])
+    proyecto = {"items": {12: _item("Ready", "decision")}}
+    cambios, avisos = [], []
+    tablero.reconciliar_prs(proyecto, cambios, avisos)
+    assert not cambios
+    assert avisos == ["#12 tiene PR abierta (#400) pero espera una decisión (`decision`): no pasa a In review"]
+
+
+def test_refs_en_una_pr_fusionada_no_cuenta_como_fusion(monkeypatch):
+    pr = {"number": 401, "baseRefName": "dev", "headRefName": "feat/x", "body": "Refs #356"}
+    monkeypatch.setattr(tablero, "prs_fusionadas", lambda: [pr])
+    proyecto = {"items": {356: _item("In review", **{"Revisión IA": "Aprobada", "Editor": "Funciona"})}}
+    cambios, avisos = [], []
+    tablero.reconciliar_fusiones(proyecto, [], cambios, avisos)
+    assert not cambios
+    assert not tablero.esta_fusionada(356, [pr], [])
+    assert tablero.esta_fusionada(12, [{**pr, "body": "Closes #12"}], [])
+
+
+def test_lote_enlazado_con_refs_se_cierra_al_fusionar(monkeypatch):
+    pr = {"number": 402, "baseRefName": "dev", "headRefName": "feat/440-x", "body": "Closes #440\nRefs #439"}
+    monkeypatch.setattr(tablero, "prs_fusionadas", lambda: [pr])
+    monkeypatch.setattr(tablero, "prs_abiertas", lambda: [])
+    monkeypatch.setattr(tablero, "tiene_resumen", lambda n: True)
+    lote = {"state": "OPEN", "valores": {}, "labels": {"nodes": [{"name": "lote"}]},
+            "blockedBy": {"nodes": [{"number": 440, "state": "CLOSED"}, {"number": 441, "state": "CLOSED"}]}}
+    cambios, avisos = [], []
+    tablero.reconciliar_lotes({"items": {439: lote}}, cambios, avisos)
+    assert [texto for texto, _ in cambios] == ["lote #439 se cierra: PR #402 fusionada y todos sus miembros cerrados"]
 
 
 def test_issues_de_pr_sin_referencias():
@@ -180,3 +240,73 @@ def test_fusion_de_la_pr_de_un_lote_no_da_status_al_lote(monkeypatch):
     cambios, avisos = [], []
     tablero.reconciliar_fusiones(proyecto, [], cambios, avisos)
     assert [texto for texto, _ in cambios] == ["#144 → QA editor (PR #166 fusionada en dev)"]
+
+
+def test_issue_en_done_antes_de_fusionar_se_cierra(monkeypatch):
+    """#436: el ciclo de #282 pasa la issue a Done antes de fusionar y `Closes #n` no cierra en dev."""
+    pr = {"number": 279, "baseRefName": "dev", "headRefName": "feat/271-mapa", "body": "Closes #271"}
+    monkeypatch.setattr(tablero, "prs_fusionadas", lambda: [pr])
+    monkeypatch.setattr(tablero, "tiene_resumen", lambda n: n != 272)
+    validada = {"Status": "Done", "Revisión IA": "Aprobada", "Editor": "Funciona"}
+    proyecto = {"items": {
+        271: {"state": "OPEN", "valores": dict(validada), "labels": {"nodes": [{"name": "tarea"}]}},
+    }}
+    cambios, avisos = [], []
+    tablero.reconciliar_fusiones(proyecto, [], cambios, avisos)
+    assert [texto for texto, _ in cambios] == ["#271 → Done (PR #279 fusionada en dev; ya estaba en Done: se cierra)"]
+    assert not avisos
+
+    pr["body"] = "Closes #272"
+    proyecto["items"] = {272: {"state": "OPEN", "valores": dict(validada), "labels": {"nodes": [{"name": "tarea"}]}}}
+    cambios, avisos = [], []
+    tablero.reconciliar_fusiones(proyecto, [], cambios, avisos)
+    assert len(cambios) == 1 and avisos == ["#272 se cierra sin comentario **Resumen**: añádelo con `resumen 272`"]
+
+
+def test_miembro_de_lote_en_done_se_cierra_en_done_al_fusionar(monkeypatch):
+    """#436 (puente 03-10): el mismo `sync` lo pasaba a Validada por el lote y lo cerraba sin volver a Done."""
+    pr = {"number": 438, "baseRefName": "dev", "headRefName": "fix/436-sync", "body": "Closes #436\nRefs #439"}
+    monkeypatch.setattr(tablero, "prs_fusionadas", lambda: [pr])
+    monkeypatch.setattr(tablero, "prs_abiertas", lambda: [])
+    monkeypatch.setattr(tablero, "tiene_resumen", lambda n: True)
+    estados, cerradas = {}, []
+    monkeypatch.setattr(tablero, "poner_campo", lambda proyecto, n, campo, valor: estados.__setitem__((n, campo), valor))
+    monkeypatch.setattr(tablero, "comentar", lambda n, texto: None)
+    monkeypatch.setattr(tablero, "gh", lambda *args: cerradas.append(int(args[2])) if args[:2] == ("issue", "close") else "")
+    lote = {"number": 439, "state": "OPEN", "labels": {"nodes": [{"name": "lote"}]}}
+    miembro = _item("Done", **{"Revisión IA": "Aprobada", "Editor": "Funciona"})
+    miembro["blocking"] = {"nodes": [lote]}
+    proyecto = {"items": {436: miembro}}
+    cambios, avisos = [], []
+    tablero.reconciliar_lotes(proyecto, cambios, avisos)
+    tablero.reconciliar_fusiones(proyecto, [], cambios, avisos)
+    assert [texto for texto, _ in cambios] == ["#436 → Done (PR #438 fusionada en dev; ya estaba en Done: se cierra)"]
+    for _texto, accion in cambios:
+        accion()
+    assert estados == {(436, "Status"): "Done"}
+    assert cerradas == [436]
+
+
+def test_miembro_de_lote_sin_fusionar_sigue_pasando_a_validada(monkeypatch):
+    monkeypatch.setattr(tablero, "prs_fusionadas", lambda: [])
+    monkeypatch.setattr(tablero, "prs_abiertas", lambda: [_pr_abierta(438, "Closes #436\nRefs #439")])
+    miembro = _item("In review", **{"Revisión IA": "Aprobada", "Editor": "Funciona"})
+    miembro["blocking"] = {"nodes": [{"number": 439, "state": "OPEN", "labels": {"nodes": [{"name": "lote"}]}}]}
+    cambios, avisos = [], []
+    tablero.reconciliar_lotes({"items": {436: miembro}}, cambios, avisos)
+    assert [texto for texto, _ in cambios] == ["#436 → Validada (aprobada y probada; espera al resto de su lote)"]
+
+
+@pytest.mark.parametrize("valores, abiertas", [
+    ({"Status": "Done", "Revisión IA": "Aprobada", "Editor": "Sin probar"}, []),
+    ({"Status": "Done", "Revisión IA": "Pendiente", "Editor": "Funciona"}, []),
+    ({"Status": "Done", "Revisión IA": "Aprobada", "Editor": "Funciona"},
+     [{"number": 300, "body": "Closes #271", "headRefName": "fix/271-otra"}]),
+])
+def test_done_sin_las_dos_validaciones_o_con_pr_abierta_no_se_cierra(monkeypatch, valores, abiertas):
+    pr = {"number": 279, "baseRefName": "dev", "headRefName": "feat/271-mapa", "body": "Closes #271"}
+    monkeypatch.setattr(tablero, "prs_fusionadas", lambda: [pr])
+    proyecto = {"items": {271: {"state": "OPEN", "valores": valores, "labels": {"nodes": [{"name": "tarea"}]}}}}
+    cambios, avisos = [], []
+    tablero.reconciliar_fusiones(proyecto, abiertas, cambios, avisos)
+    assert not cambios

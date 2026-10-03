@@ -1,5 +1,7 @@
 # Mapa procedural por módulos (World/ProcMap)
 
+> **Estado (2026-10-02):** el plan maestro (`Docs/2026-09-29-Plan-Maestro-Modos-y-Mapas.md`) retira la generación procedural del Coop: el Coop usa mapas volumétricos fijos (`Source=Prepared` en `ATN_ProcMapGenerator`). Este documento sigue describiendo el framework `World/ProcMap` (GameMode, salida, nado, red); la generación procedural de §3 ya no es el camino vigente.
+
 Sistema nuevo de generación de mapas: una rejilla de **módulos irregulares de 400 m**
 por la que serpentea un camino largo y natural, con biomas por regiones, cruces
 colosales (puentes y murallas con puerta que pasan por encima o por debajo de un tramo ya

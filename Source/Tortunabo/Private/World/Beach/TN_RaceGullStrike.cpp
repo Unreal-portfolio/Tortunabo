@@ -292,6 +292,7 @@ void ATN_RaceGullStrike::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	DOREPLIFETIME(ATN_RaceGullStrike, Target);
 	DOREPLIFETIME(ATN_RaceGullStrike, AimPoint);
+	DOREPLIFETIME(ATN_RaceGullStrike, Stained);
 }
 
 void ATN_RaceGullStrike::Tick(float DeltaSeconds)
@@ -411,8 +412,14 @@ void ATN_RaceGullStrike::ServerImpact()
 {
 	using namespace TNRaceGullStrikeDetail;
 	bImpactDone = true;
-	// Donde cae de verdad: la arena bajo el blanco, congelado desde ahora.
+	// Donde cae de verdad, congelado desde ahora: lo primero firme sobre la arena del blanco (la arena, o lo alto de un
+	// castillo o de una fortaleza, donde se ha visto su sombra).
 	AimServer.Z = static_cast<double>(GroundHeightAt(AimServer, static_cast<float>(AimServer.Z)));
+	float SurfaceZ = static_cast<float>(AimServer.Z);
+	if (ATN_BeachEnemy::TraceDropSurface(this, AimServer, SurfaceZ, nullptr, this))
+	{
+		AimServer.Z = static_cast<double>(SurfaceZ);
+	}
 	AimPoint = FVector_NetQuantize10(AimServer);
 	const FVector Impact(AimPoint);
 
@@ -482,6 +489,13 @@ void ATN_RaceGullStrike::ServerImpact()
 		MainVictim = Victims[0];
 	}
 	UE_LOG(LogTortunabo, Log, TEXT("[Carrera] La gaviota justiciera de %s suelta su cagada: %d tortugas derribadas."), *GetNameSafe(GetOwnerTurtle()), Victims.Num());
+	// Los pegotes como estado replicado (OnRep_Stained): los ve también quien entra ahora o pierde la multicast.
+	Stained.Reset();
+	for (ATortugaCharacter* Victim : Victims)
+	{
+		Stained.Add(Victim);
+	}
+	ForceNetUpdate();
 	MulticastSplat(FVector_NetQuantize10(Impact), MainVictim);
 	for (ATortugaCharacter* Extra : Victims)
 	{
@@ -578,6 +592,19 @@ void ATN_RaceGullStrike::MulticastStain_Implementation(ATortugaCharacter* Victim
 	TNBeachKit::BurstAt(Droplets, Victim->GetActorLocation() + FVector(0.0, 0.0, 120.0), FVector::UpVector, 14);
 }
 
+void ATN_RaceGullStrike::OnRep_Stained()
+{
+	if (!bHasScreen)
+	{
+		return;
+	}
+	// Los que ya tienen el pegote (por la multicast) no repiten: SpawnShellSplat lo comprueba.
+	for (ATortugaCharacter* Victim : Stained)
+	{
+		SpawnShellSplat(Victim);
+	}
+}
+
 void ATN_RaceGullStrike::ShowSplat(const FVector& Where, ATortugaCharacter* Hit)
 {
 	using namespace TNRaceGullStrikeDetail;
@@ -658,10 +685,12 @@ void ATN_RaceGullStrike::SpawnShellSplat(ATortugaCharacter* Victim)
 {
 	using namespace TNRaceGullStrikeDetail;
 	using TNProcMesh::FTNProcMeshBuffers;
-	if (!IsValid(Victim))
+	// Uno por tortuga: puede llegar por la multicast y por OnRep_Stained.
+	if (!IsValid(Victim) || ShellSplatShown.Contains(TWeakObjectPtr<ATortugaCharacter>(Victim)))
 	{
 		return;
 	}
+	ShellSplatShown.Add(TWeakObjectPtr<ATortugaCharacter>(Victim));
 	UStaticMesh* StainMesh = TNBeachKit::CachedMesh(TEXT("Beach.ShellSplat"), [](FTNProcMeshBuffers& M) { TNBeachMeshes::BuildShellSplat(M); });
 	UStaticMeshComponent* Comp = TNBeachKit::AddPart(this, GetRootComponent(), StainMesh, FVector::ZeroVector, false);
 	if (!Comp)
@@ -993,23 +1022,30 @@ void ATN_RaceGullStrike::VisualTick(float DeltaSeconds)
 	bool bShowDrop = false;
 	if (Dropping && bDropStartValid && !bSplatShown && AgeSeconds >= static_cast<double>(ArriveSeconds) && AgeSeconds < static_cast<double>(ImpactAge))
 	{
-		const float FallC = FMath::Clamp(static_cast<float>((AgeSeconds - static_cast<double>(ArriveSeconds)) / static_cast<double>(FallSeconds)), 0.f, 1.f);
-		const float Along = FMath::Pow(FallC, 1.8f);
-		const double Across = static_cast<double>(Smooth01(FallC * 2.f));
-		const FVector DropAt(FMath::Lerp(DropStart.X, ShownAim.X, Across), FMath::Lerp(DropStart.Y, ShownAim.Y, Across),
-			FMath::Lerp(DropStart.Z, ShownAim.Z + 40.0, static_cast<double>(Along)));
-		Dropping->SetWorldTransform(FTransform(FRotator(8.f * FMath::Sin(AnimClock * 9.f), AnimClock * 60.f, 0.f), DropAt, FVector(static_cast<double>(DropScale))));
-		bShowDrop = true;
-
+		// Donde cae de verdad: lo primero firme desde arriba (la arena, o lo alto de un castillo o de una fortaleza), con la
+		// misma traza que el impacto del servidor (ServerImpact). La sombra y la cagada van ahí, no a la arena de debajo.
 		DropNormalTimer -= Dt;
 		if (DropNormalTimer <= 0.f)
 		{
 			DropNormalTimer = 0.1f;
-			DropNormal = GroundNormalAt(ShownAim);
+			float SurfaceZ = static_cast<float>(ShownAim.Z);
+			FVector SurfaceNormal = FVector::UpVector;
+			DropLift = ATN_BeachEnemy::TraceDropSurface(this, ShownAim, SurfaceZ, &SurfaceNormal, this) ? SurfaceZ - static_cast<float>(ShownAim.Z) : 0.f;
+			// En la arena, su cuesta de siempre; encima de algo, la cara en la que cae (si es más o menos plana).
+			DropNormal = FMath::Abs(DropLift) < 30.f ? GroundNormalAt(ShownAim) : (SurfaceNormal.Z > 0.5 ? SurfaceNormal : FVector::UpVector);
 		}
+		const FVector Landing = ShownAim + FVector(0.0, 0.0, static_cast<double>(DropLift));
+		const float FallC = FMath::Clamp(static_cast<float>((AgeSeconds - static_cast<double>(ArriveSeconds)) / static_cast<double>(FallSeconds)), 0.f, 1.f);
+		const float Along = FMath::Pow(FallC, 1.8f);
+		const double Across = static_cast<double>(Smooth01(FallC * 2.f));
+		const FVector DropAt(FMath::Lerp(DropStart.X, Landing.X, Across), FMath::Lerp(DropStart.Y, Landing.Y, Across),
+			FMath::Lerp(DropStart.Z, Landing.Z + 40.0, static_cast<double>(Along)));
+		Dropping->SetWorldTransform(FTransform(FRotator(8.f * FMath::Sin(AnimClock * 9.f), AnimClock * 60.f, 0.f), DropAt, FVector(static_cast<double>(DropScale))));
+		bShowDrop = true;
+
 		const float Grow = 0.45f * FallC + 0.55f * FMath::Pow(FallC, 1.6f);
 		const float FadeIn = FMath::Clamp(static_cast<float>(AgeSeconds - static_cast<double>(ArriveSeconds)) / MarkerFadeIn, 0.f, 1.f);
-		PlaceDropMarker(DropShadow, ShownAim, DropNormal, bNear ? FMath::Lerp(MarkerStartRadius, ImpactRadius, Grow) : 0.f, MarkerOpacity * FadeIn);
+		PlaceDropMarker(DropShadow, Landing, DropNormal, bNear ? FMath::Lerp(MarkerStartRadius, ImpactRadius, Grow) : 0.f, MarkerOpacity * FadeIn);
 
 		// Estela de gotitas tras la cagada.
 		TrailTimer -= Dt;
@@ -1031,7 +1067,14 @@ void ATN_RaceGullStrike::VisualTick(float DeltaSeconds)
 	// Seguro: si a esta máquina no le ha llegado el multicast del impacto, lo pinta ella (sin pegote en la víctima).
 	if (!bSplatShown && AgeSeconds >= static_cast<double>(ImpactAge + SplatFallbackDelay))
 	{
-		ShowSplat(ShownAim, nullptr);
+		// Encima de lo que haya, como el impacto del servidor (el blanco ya puede traer esa altura replicada).
+		FVector Where = ShownAim;
+		float SurfaceZ = static_cast<float>(Where.Z);
+		if (ATN_BeachEnemy::TraceDropSurface(this, Where, SurfaceZ, nullptr, this))
+		{
+			Where.Z = static_cast<double>(SurfaceZ);
+		}
+		ShowSplat(Where, nullptr);
 	}
 
 	TNBeachKit::TickEmitterIfBusy(Droplets, DeltaSeconds, View);

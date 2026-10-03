@@ -5,6 +5,7 @@
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "Game/TN_BeachRaceDecisions.h"
 #include "Game/TN_BeachRaceGameState.h"
 #include "Player/TortugaCharacter.h"
 #include "Player/TN_CarryComponent.h"
@@ -64,9 +65,7 @@ namespace TNBeachRideKit
 	{
 		const UWorld* World = WorldContext ? WorldContext->GetWorld() : nullptr;
 		const ATN_BeachRaceGameState* GameState = World ? World->GetGameState<ATN_BeachRaceGameState>() : nullptr;
-		return !GameState || (GameState->RacePhase != ETNBeachRacePhase::RoundResults && GameState->RacePhase != ETNBeachRacePhase::Champion
-			&& GameState->RacePhase != ETNBeachRacePhase::SprintIntro && GameState->FinishCountdown != ETNBeachFinishCountdown::TimeUp
-			&& GameState->FinishCountdown != ETNBeachFinishCountdown::AllIn);
+		return !GameState || TNBeachRaceRules::IsRaceLive(GameState->RacePhase, GameState->FinishCountdown);
 	}
 
 	/**

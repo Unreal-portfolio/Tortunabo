@@ -1,4 +1,5 @@
 #include "Player/TN_TurtleFaceComponent.h"
+#include "Core/TN_ProjectMaterials.h"
 #include "Components/SceneComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Core/TN_CoopGameState.h"
@@ -190,8 +191,7 @@ namespace TNTurtleFaceDetail
 			return Parts;
 		}
 		bOutWetAlpha = false;
-		UMaterialInterface* Fallback = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Cosmetics/Materials/M_CosmeticVertexColor.M_CosmeticVertexColor"), nullptr, LOAD_NoWarn);
-		return Fallback ? Fallback : LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
+		return TNMaterials::VertexColor();
 	}
 
 	/**

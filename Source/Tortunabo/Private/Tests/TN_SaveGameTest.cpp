@@ -136,4 +136,37 @@ bool FTNSaveGameQuarantineTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNSaveGameBackupTest,
+	"Tortunabo.SaveGame.BackupKeepsOriginal",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNSaveGameBackupTest::RunTest(const FString& Parameters)
+{
+	ISaveGameSystem* SaveSystem = IPlatformFeaturesModule::Get().GetSaveGameSystem();
+	if (!TestNotNull(TEXT("Hay sistema de guardado"), SaveSystem))
+	{
+		return false;
+	}
+	TNCleanTestSlots(*SaveSystem);
+
+	// La copia de un guardado de una build más nueva (antes de que esta lo reescriba): mismos bytes, original intacto.
+	const FString Backup = TNSaveLogic::BuildNewerBuildBackupSlotName(TN_TEST_SLOT, 9);
+	TestFalse(TEXT("Sin original no hay copia"), TNSaveGameIO::BackupSlot(TN_TEST_SLOT, Backup, 0, TEXT("Test")));
+	TestFalse(TEXT("Sin original no se crea la ranura de la copia"), SaveSystem->DoesSaveGameExist(*Backup, 0));
+
+	const TArray<uint8> Bytes = { 1, 2, 3, 4, 5 };
+	SaveSystem->SaveGame(false, TN_TEST_SLOT, 0, Bytes);
+	TestTrue(TEXT("Con original se copia"), TNSaveGameIO::BackupSlot(TN_TEST_SLOT, Backup, 0, TEXT("Test")));
+
+	TArray<uint8> Copied;
+	TArray<uint8> Original;
+	SaveSystem->LoadGame(false, *Backup, 0, Copied);
+	SaveSystem->LoadGame(false, TN_TEST_SLOT, 0, Original);
+	TestTrue(TEXT("La copia guarda los bytes del original"), Copied == Bytes);
+	TestTrue(TEXT("El original queda como estaba"), Original == Bytes);
+
+	TNCleanTestSlots(*SaveSystem);
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

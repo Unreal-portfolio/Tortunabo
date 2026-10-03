@@ -109,4 +109,23 @@ namespace TNSaveGameIO
 			What, *Slot);
 		return false;
 	}
+
+	bool BackupSlot(const FString& Slot, const FString& Backup, int32 UserIndex, const TCHAR* What)
+	{
+		ISaveGameSystem* SaveSystem = TNGetSaveSystem();
+		TArray<uint8> RawBytes;
+		if (!SaveSystem || !SaveSystem->LoadGame(false, *Slot, UserIndex, RawBytes) || RawBytes.Num() == 0)
+		{
+			UE_LOG(LogTortunabo, Warning, TEXT("[SaveGame] %s: no se ha podido leer '%s' para copiarlo a '%s'."),
+				What, *Slot, *Backup);
+			return false;
+		}
+		if (!SaveSystem->SaveGame(false, *Backup, UserIndex, RawBytes))
+		{
+			UE_LOG(LogTortunabo, Warning, TEXT("[SaveGame] %s: no se ha podido copiar '%s' a '%s'."), What, *Slot, *Backup);
+			return false;
+		}
+		UE_LOG(LogTortunabo, Log, TEXT("[SaveGame] %s: copia de '%s' en '%s' (%d bytes)."), What, *Slot, *Backup, RawBytes.Num());
+		return true;
+	}
 }
