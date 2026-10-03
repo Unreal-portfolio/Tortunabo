@@ -50,6 +50,7 @@ necesita espera a que esté lista.
     - Con dos tortugas (o dos ventanas / un cliente): una metida en su caparazón dentro del cazo y la otra que entra andando y arma la catapulta. La bola no debe moverse aunque la otra la roce, y las dos salen lanzadas. En el cliente la bola debe volar igual que en el anfitrión, sin tirones ni saltos al salir. Una bola aturdida (la que deja un golpe de mina o de enemigo) no cuenta. En el log del anfitrión: `[Playa] Catapulta … dispara: N lanzadas (M ya en su bola)`.
   - `Mine`: mina.
   - `Trampoline`: trampolín (4 variantes por semilla).
+    - Caídas en red (#21): `TN.Beach.Drop <metros>[/<metros>...] [veces=1] [cada=3 s] [jugador=anfitrión]` en el anfitrión deja caer esa tortuga sobre lo más alto del trampolín de `TN.Beach.Place` más cercano (si no hay, crea uno de gelatina). Con `p.NetShowCorrections 1` y `NetEmulation.PktLag 120` en el cliente, `TN.Beach.Drop 5/7 10 4 1` hace diez caídas alternas de 5 y 7 m del jugador 1: tiene que rebotar igual en los dos y sin correcciones (solo las del propio teletransporte). La primera espera una vuelta para que el jugador acabe de entrar.
   - `FortressMedium`, `FortressLarge`, `FortressColossal`: fortaleza de arena con premio en la cima (lanzador potenciado, cofre y conchas de 50 y 100). Mira hacia donde miras (lanza hacia allí) y sale lejos: la colosal, a ~54 m. Por ejemplo `TN.Beach.Place FortressColossal 1 0 7`; semillas seguidas cambian catapulta o trampolín y el lado de la espiral.
 - **Lanzadores potenciados** (los de la cima de las fortalezas): `TN.Beach.PlaceBoosted <Catapult|Trampoline> [Tamaño=1] [Semilla]`, delante de ti y mirando hacia donde miras. `TN.Beach.Place clear` también los borra.
 - **Subir a la cima:** `TN.Beach.Fortress.Top [jugador=0]` lleva a esa tortuga a la cima de la fortaleza más cercana, detrás del lanzador y mirando hacia él.
@@ -269,6 +270,25 @@ los resultados con ocho filas. `TN.Proc.StartStyle 0|1` fuerza cómo se sale.
 | `TN.Fauna.Enable 0` / `TN.Fauna.Stats 1` | Esconde la fauna ambiental / saca sus métricas en el log. |
 | `TN.Lobby.Castle 0` / `TN.Lobby.Valley 0` | Esconde el castillo o el valle del lobby (al recargarlo). |
 | `TN.Storm.Cough 1` / `TN.Storm.Cough 2` | Carraspeos sueltos (`1`) o tos fuerte (`2`) de la tormenta sin tormenta; `0` la apaga. |
+
+## Capturas de arte sin abrir el editor
+
+Desde la línea de órdenes (no Shipping), con `-game -windowed`. Por cada clase encuadra el ejemplar del mapa más
+cercano a `-TNArtShotsAt` (o crea uno allí), guarda `<clase>.png` y deja en el registro `[ArtShot] <clase>: marcadores
+visibles=N, medidas=…`: N tiene que ser 0 (ninguna malla del motor a la vista; ver `Public/World/TN_PlaceholderArt.h`).
+
+```bash
+MSYS2_ARG_CONV_EXCL="*" UnrealEditor-Win64-DebugGame.exe Tortunabo.uproject /Game/Maps/Lobby/LVL_HQ -game -windowed \
+  -ResX=1600 -ResY=900 -nosound -NoSteam -TNQuitWhenDone -TNArtShotsAt=-1000:3250 -TNArtShotsOut=<carpeta> \
+  "-TNArtShots=/Game/Blueprints/Gameplay/Cosmetics/BP_SkinStatue.BP_SkinStatue_C;/Game/Blueprints/Gameplay/Items/BP_JellyfishActor.BP_JellyfishActor_C"
+```
+
+| Opción | Qué hace |
+|---|---|
+| `-TNArtShots=<clase>;<clase>` | Rutas completas de las clases (`/Game/.../BP_X.BP_X_C`). |
+| `-TNArtShotsAt=X:Y` | Claro del mapa donde nacen las que no están (dos puntos: la coma corta el valor). Sin él, delante del jugador. |
+| `-TNArtShotsOut=<carpeta>` | Dónde guarda las capturas (por defecto `Saved/ArtShots`). |
+| `-TNArtShotsWarmup=4` | Segundos de espera antes de la primera. |
 
 ## Tortuga: cara, voz, HUD y panzazo
 
