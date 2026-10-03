@@ -340,7 +340,7 @@ FString ATN_Buggy::DebugMeasureTurretFit() const
 	const TArray<FVector> Mount = Samples(FromBuilder(TurretMount, &TNBuggyTurretMesh::BuildMount));
 	const TArray<FVector> Gun = Samples(FromBuilder(TurretGun, &TNBuggyTurretMesh::BuildGun));
 	const TArray<FVector> Barrel = Samples(FromBuilder(TurretBarrel, &TNBuggyTurretMesh::BuildBarrel));
-	// El aro va sujeto a las barandillas: sus abrazaderas tocan la carrocería a propósito.
+	// El aro no se mide contra la carrocería: los pies de sus patas apoyan en el suelo trasero a propósito.
 	const FResult MountBody = Measure(Mount, BodySoup);
 	const FResult GunBody = Measure(Gun, BodySoup);
 	const FResult BarrelBody = Measure(Barrel, BodySoup);
@@ -350,6 +350,12 @@ FString ATN_Buggy::DebugMeasureTurretFit() const
 		const FTransform Frame(GetMesh()->GetComponentQuat(), Turret->GetComponentLocation());
 		Dump(Gunner, Frame, FPaths::Combine(DumpFolder, FString::Printf(TEXT("gunner_y%.0f_p%.0f.txt"), Aim.Yaw, Aim.Pitch)));
 		Dump(BodySoup, Frame, FPaths::Combine(DumpFolder, TEXT("body.txt")));
+		// Aro, carro y cañón tal como están en esta puntería, para ver qué parte toca.
+		Dump(FromBuilder(TurretRing, &TNBuggyTurretMesh::BuildRing), Frame, FPaths::Combine(DumpFolder, TEXT("ring.txt")));
+		Dump(FromBuilder(TurretMount, &TNBuggyTurretMesh::BuildMount), Frame,
+			FPaths::Combine(DumpFolder, FString::Printf(TEXT("mount_y%.0f_p%.0f.txt"), Aim.Yaw, Aim.Pitch)));
+		Dump(FromBuilder(TurretGun, &TNBuggyTurretMesh::BuildGun), Frame,
+			FPaths::Combine(DumpFolder, FString::Printf(TEXT("gun_y%.0f_p%.0f.txt"), Aim.Yaw, Aim.Pitch)));
 	}
 	// Silueta de la artillera en los ejes del chasis con origen en el pivote: radio máximo y X mínima y máxima por franja de
 	// 5 cm de altura (para dimensionar el aro y el cañón).
