@@ -10,6 +10,7 @@
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
 #include "Kismet/GameplayStatics.h"
+#include "Rally/TN_RallyHitReport.h"
 #include "Rally/TN_RallyLogic.h"
 #include "Rally/TN_RallyPlayerState.h"
 #include "Rally/TN_RallyVehicle.h"
@@ -38,6 +39,11 @@ namespace TNRallyHUD
 	const FLinearColor LightRed(0.95f, 0.16f, 0.12f, 1.f);
 	const FLinearColor LightGreen(0.2f, 0.9f, 0.35f, 1.f);
 	const FLinearColor InkColor(0.03f, 0.02f, 0.06f, 1.f);
+	/** Marca de acierto: roja si cuenta, celeste si la para el escudo. */
+	const FLinearColor HitColor(1.f, 0.22f, 0.16f, 1.f);
+	const FLinearColor BlockedColor(0.45f, 0.9f, 1.f, 1.f);
+	/** La marca nace algo más grande y se encoge hasta su tamaño (fracción extra al aparecer). */
+	constexpr float HitMarkerPop = 0.35f;
 
 	FText AmmoName(ETNRallyAmmo Ammo)
 	{
@@ -193,12 +199,15 @@ void UTN_RallyHUDWidget::BuildTree()
 	Place(Canvas, SpectateHintText, FVector2D(0.5f, 1.f), FVector2D(0.f, -54.f));
 	Crosshair = MakeText(Tree, TNLocText::Literal(TEXT("+")), TEXT("Bold"), 48, FLinearColor::White);
 	Place(Canvas, Crosshair, FVector2D(0.5f, 0.5f), FVector2D::ZeroVector);
+	// «×» (U+00D7) sobre el «+» del punto de mira.
+	HitMarker = MakeText(Tree, TNLocText::Literal(TEXT("×")), TEXT("Bold"), 64, TNRallyHUD::HitColor);
+	Place(Canvas, HitMarker, FVector2D(0.5f, 0.5f), FVector2D::ZeroVector);
 
 	BuildTurretPanel();
 
 	BuildResults();
 
-	for (UWidget* Hidden : TArray<UWidget*>{ SpectateText, SpectateHintText, WrongWayText, RespawnText, RespawnHintText, Crosshair, AmmoText, CenterText, StatusText,
+	for (UWidget* Hidden : TArray<UWidget*>{ SpectateText, SpectateHintText, WrongWayText, RespawnText, RespawnHintText, Crosshair, HitMarker, AmmoText, CenterText, StatusText,
 		ResultsPanel, BoostLabel, BoostBar ? BoostBar->GetParent() : nullptr, HealthLabel, HealthBar ? HealthBar->GetParent() : nullptr,
 		KnockText })
 	{
@@ -300,6 +309,7 @@ void UTN_RallyHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
 	PullFromLocalBuggy();
+	TickHitMarker(InDeltaTime);
 	const float InkOpacity = FMath::Clamp(InkSeconds / TNRallyHUD::InkFadeSeconds, 0.f, 1.f) * 0.94f;
 	for (UImage* Ink : InkSplats)
 	{
@@ -318,6 +328,34 @@ void UTN_RallyHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTi
 	{
 		TextAccumulator = 0.f;
 		Refresh(*RallyState);
+	}
+}
+
+void UTN_RallyHUDWidget::ShowHitMarker(bool bBlocked)
+{
+	if (!HitMarker || !Crosshair || !Crosshair->IsVisible())
+	{
+		return;
+	}
+	HitMarkerSeconds = TNRallyHitLog::MarkerSeconds;
+	HitMarker->SetColorAndOpacity(FSlateColor(bBlocked ? TNRallyHUD::BlockedColor : TNRallyHUD::HitColor));
+	TNRallyHUD::Show(HitMarker, true);
+	TickHitMarker(0.f);
+}
+
+void UTN_RallyHUDWidget::TickHitMarker(float DeltaTime)
+{
+	if (!HitMarker || HitMarkerSeconds <= 0.f)
+	{
+		return;
+	}
+	HitMarkerSeconds = FMath::Max(0.f, HitMarkerSeconds - DeltaTime);
+	const float Alpha = HitMarkerSeconds / TNRallyHitLog::MarkerSeconds;
+	HitMarker->SetRenderScale(FVector2D(1.f + TNRallyHUD::HitMarkerPop * Alpha));
+	HitMarker->SetRenderOpacity(FMath::Clamp(Alpha * 2.f, 0.f, 1.f));
+	if (HitMarkerSeconds <= 0.f)
+	{
+		TNRallyHUD::Show(HitMarker, false);
 	}
 }
 

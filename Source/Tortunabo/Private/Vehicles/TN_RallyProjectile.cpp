@@ -1,4 +1,5 @@
 #include "Vehicles/TN_RallyProjectile.h"
+#include "Rally/TN_RallyHitReport.h"
 #include "Vehicles/TN_Buggy.h"
 #include "Vehicles/TN_BuggyHealthComponent.h"
 #include "Vehicles/TN_BuggyMath.h"
@@ -347,7 +348,13 @@ void ATN_RallyProjectile::HitBuggyWith(ATN_Buggy* HitBuggy, const FVector& Where
 	}
 	if (UTN_BuggyHealthComponent* Health = HitBuggy->FindComponentByClass<UTN_BuggyHealthComponent>())
 	{
-		Health->ReceiveAmmoHit(Ammo, Where, Dir, bGunnerHit);
+		// Tras reaparecer es un fantasma: el impacto no existe y no se avisa a nadie (#332).
+		const bool bGhost = HitBuggy->IsRespawnProtected();
+		const bool bLanded = Health->ReceiveAmmoHit(Ammo, Where, Dir, bGunnerHit);
+		if (!bGhost)
+		{
+			TNRallyHitLog::NotifyServer(Shooter.Get(), HitBuggy, Ammo, Where, !bLanded);
+		}
 		return;
 	}
 	// Sin componente de vida (un buggy de otra clase): los efectos de siempre, sin daño ni empujón en el punto.

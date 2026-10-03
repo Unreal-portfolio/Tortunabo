@@ -4,8 +4,8 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Game\n"
-"POT-Creation-Date: 2026-10-02 00:31\n"
-"PO-Revision-Date: 2026-10-02 00:31\n"
+"POT-Creation-Date: 2026-10-03 02:38\n"
+"PO-Revision-Date: 2026-10-03 02:38\n"
 "Language-Team: \n"
 "Language: es-ES\n"
 "MIME-Version: 1.0\n"
@@ -3569,215 +3569,264 @@ msgctxt "Rally,BotName"
 msgid "Tortuga IA {0}"
 msgstr "Tortuga IA {0}"
 
-#. Key:	SpeedUnit
-#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(165)
-#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(165)
-msgctxt "Rally,SpeedUnit"
-msgid "km/h"
-msgstr "km/h"
-
-#. Key:	Boost
-#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(167)
-#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(167)
-msgctxt "Rally,Boost"
-msgid "Turbo"
-msgstr "Turbo"
-
-#. Key:	WrongWay
-#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(180)
-#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(180)
-msgctxt "Rally,WrongWay"
-msgid "¡CONTRAMANO!"
-msgstr "¡CONTRAMANO!"
-
-#. Key:	RespawnHint
-#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(184)
-#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(184)
-msgctxt "Rally,RespawnHint"
-msgid "Mantén R para volver a la pista"
-msgstr "Mantén R para volver a la pista"
-
-#. Key:	SpectateHint
-#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(189)
-#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(189)
-msgctxt "Rally,SpectateHint"
-msgid "A / D · LB / RB: cambiar de vista"
-msgstr "A / D · LB / RB: cambiar de vista"
-
-#. Key:	TurretHeat
-#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(237)
-#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(237)
-msgctxt "Rally,TurretHeat"
-msgid "Torreta"
-msgstr "Torreta"
-
-#. Key:	BuggyHealth
-#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(244)
-#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(244)
-msgctxt "Rally,BuggyHealth"
-msgid "Buggy"
-msgstr "Buggy"
-
-#. Key:	ResultsTitle
-#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(277)
-#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(277)
-msgctxt "Rally,ResultsTitle"
-msgid "Resultados"
-msgstr "Resultados"
-
-#. Key:	TurretOverheated
-#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(351)
-#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(351)
-msgctxt "Rally,TurretOverheated"
-msgid "¡Torreta sobrecalentada!"
-msgstr "¡Torreta sobrecalentada!"
-
-#. Key:	Respawning
-#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(362)
-#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(362)
-msgctxt "Rally,Respawning"
-msgid "Reapareciendo… {0}"
-msgstr "Reapareciendo… {0}"
-
-#. Key:	Go
-#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(405)
-#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(405)
-msgctxt "Rally,Go"
-msgid "¡YA!"
-msgstr "¡YA!"
-
-#. Key:	WaitingForOthers
-#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(432)
-#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(432)
-msgctxt "Rally,WaitingForOthers"
-msgid "Esperando a los demás…"
-msgstr "Esperando a los demás…"
-
-#. Key:	Spectating
-#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(435)
-#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(435)
-msgctxt "Rally,Spectating"
-msgid "Mirando la carrera"
-msgstr "Mirando la carrera"
-
-#. Key:	FinishCountdown
-#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(438)
-#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(438)
-msgctxt "Rally,FinishCountdown"
-msgid "Fin de la carrera en {0} s"
-msgstr "Fin de la carrera en {0} s"
-
 #. Key:	AmmoCoco
-#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(45)
-#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(45)
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHitReport.cpp(11)
+#: Source/Tortunabo/Private/Rally/TN_RallyHitReport.cpp(11)
 msgctxt "Rally,AmmoCoco"
 msgid "Coco"
 msgstr "Coco"
 
 #. Key:	AmmoAlga
-#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(46)
-#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(46)
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHitReport.cpp(12)
+#: Source/Tortunabo/Private/Rally/TN_RallyHitReport.cpp(12)
 msgctxt "Rally,AmmoAlga"
 msgid "Alga"
 msgstr "Alga"
 
-#. Key:	NextRace
-#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(461)
-#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(461)
-msgctxt "Rally,NextRace"
-msgid "Carrera nueva en {0} s"
-msgstr "Carrera nueva en {0} s"
-
 #. Key:	AmmoBurbuja
-#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(47)
-#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(47)
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHitReport.cpp(13)
+#: Source/Tortunabo/Private/Rally/TN_RallyHitReport.cpp(13)
 msgctxt "Rally,AmmoBurbuja"
 msgid "Burbuja"
 msgstr "Burbuja"
 
 #. Key:	AmmoMortero
-#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(48)
-#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(48)
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHitReport.cpp(14)
+#: Source/Tortunabo/Private/Rally/TN_RallyHitReport.cpp(14)
 msgctxt "Rally,AmmoMortero"
 msgid "Mortero"
 msgstr "Mortero"
 
-#. Key:	NotFinished
-#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(483)
-#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(483)
-msgctxt "Rally,NotFinished"
-msgid "Sin llegar"
-msgstr "Sin llegar"
-
-#. Key:	ResultsRow
-#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(484)
-#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(484)
-msgctxt "Rally,ResultsRow"
-msgid "{0}.º   {1}   {2}   {3} pts"
-msgstr "{0}.º   {1}   {2}   {3} pts"
-
 #. Key:	AmmoTinta
-#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(49)
-#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(49)
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHitReport.cpp(15)
+#: Source/Tortunabo/Private/Rally/TN_RallyHitReport.cpp(15)
 msgctxt "Rally,AmmoTinta"
 msgid "Tinta"
 msgstr "Tinta"
 
 #. Key:	AmmoAncla
-#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(50)
-#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(50)
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHitReport.cpp(16)
+#: Source/Tortunabo/Private/Rally/TN_RallyHitReport.cpp(16)
 msgctxt "Rally,AmmoAncla"
 msgid "Ancla"
 msgstr "Ancla"
 
-#. Key:	SpectateDrone
+#. Key:	HitZoneFront
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHitReport.cpp(25)
+#: Source/Tortunabo/Private/Rally/TN_RallyHitReport.cpp(25)
+msgctxt "Rally,HitZoneFront"
+msgid "morro"
+msgstr "morro"
+
+#. Key:	HitZoneRear
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHitReport.cpp(26)
+#: Source/Tortunabo/Private/Rally/TN_RallyHitReport.cpp(26)
+msgctxt "Rally,HitZoneRear"
+msgid "cola"
+msgstr "cola"
+
+#. Key:	HitZoneSide
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHitReport.cpp(27)
+#: Source/Tortunabo/Private/Rally/TN_RallyHitReport.cpp(27)
+msgctxt "Rally,HitZoneSide"
+msgid "lateral"
+msgstr "lateral"
+
+#. Key:	HitBlocked
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHitReport.cpp(33)
+#: Source/Tortunabo/Private/Rally/TN_RallyHitReport.cpp(33)
+msgctxt "Rally,HitBlocked"
+msgid "escudo"
+msgstr "escudo"
+
+#. Key:	HitOutgoing
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHitReport.cpp(37)
+#: Source/Tortunabo/Private/Rally/TN_RallyHitReport.cpp(37)
+msgctxt "Rally,HitOutgoing"
+msgid "{0} → {1} · {2}"
+msgstr "{0} → {1} · {2}"
+
+#. Key:	HitIncoming
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHitReport.cpp(40)
+#: Source/Tortunabo/Private/Rally/TN_RallyHitReport.cpp(40)
+msgctxt "Rally,HitIncoming"
+msgid "Te dan: {0} · {1}"
+msgstr "Te dan: {0} · {1}"
+
+#. Key:	HitIncomingFrom
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHitReport.cpp(41)
+#: Source/Tortunabo/Private/Rally/TN_RallyHitReport.cpp(41)
+msgctxt "Rally,HitIncomingFrom"
+msgid "Te da {0}: {1} · {2}"
+msgstr "Te da {0}: {1} · {2}"
+
+#. Key:	SpeedUnit
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(172)
+#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(172)
+msgctxt "Rally,SpeedUnit"
+msgid "km/h"
+msgstr "km/h"
+
+#. Key:	Boost
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(174)
+#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(174)
+msgctxt "Rally,Boost"
+msgid "Turbo"
+msgstr "Turbo"
+
+#. Key:	WrongWay
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(187)
+#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(187)
+msgctxt "Rally,WrongWay"
+msgid "¡CONTRAMANO!"
+msgstr "¡CONTRAMANO!"
+
+#. Key:	RespawnHint
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(192)
+#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(192)
+msgctxt "Rally,RespawnHint"
+msgid "Mantén R para volver a la pista"
+msgstr "Mantén R para volver a la pista"
+
+#. Key:	SpectateHint
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(197)
+#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(197)
+msgctxt "Rally,SpectateHint"
+msgid "A / D · LB / RB: cambiar de vista"
+msgstr "A / D · LB / RB: cambiar de vista"
+
+#. Key:	TurretHeat
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(248)
+#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(248)
+msgctxt "Rally,TurretHeat"
+msgid "Torreta"
+msgstr "Torreta"
+
+#. Key:	BuggyHealth
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(255)
+#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(255)
+msgctxt "Rally,BuggyHealth"
+msgid "Buggy"
+msgstr "Buggy"
+
+#. Key:	ResultsTitle
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(288)
+#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(288)
+msgctxt "Rally,ResultsTitle"
+msgid "Resultados"
+msgstr "Resultados"
+
+#. Key:	TurretOverheated
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(391)
+#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(391)
+msgctxt "Rally,TurretOverheated"
+msgid "¡Torreta sobrecalentada!"
+msgstr "¡Torreta sobrecalentada!"
+
+#. Key:	Respawning
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(402)
+#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(402)
+msgctxt "Rally,Respawning"
+msgid "Reapareciendo… {0}"
+msgstr "Reapareciendo… {0}"
+
+#. Key:	Go
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(445)
+#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(445)
+msgctxt "Rally,Go"
+msgid "¡YA!"
+msgstr "¡YA!"
+
+#. Key:	WaitingForOthers
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(472)
+#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(472)
+msgctxt "Rally,WaitingForOthers"
+msgid "Esperando a los demás…"
+msgstr "Esperando a los demás…"
+
+#. Key:	Spectating
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(475)
+#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(475)
+msgctxt "Rally,Spectating"
+msgid "Mirando la carrera"
+msgstr "Mirando la carrera"
+
+#. Key:	FinishCountdown
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(478)
+#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(478)
+msgctxt "Rally,FinishCountdown"
+msgid "Fin de la carrera en {0} s"
+msgstr "Fin de la carrera en {0} s"
+
+#. Key:	NextRace
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(501)
+#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(501)
+msgctxt "Rally,NextRace"
+msgid "Carrera nueva en {0} s"
+msgstr "Carrera nueva en {0} s"
+
+#. Key:	NotFinished
 #. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(523)
 #: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(523)
+msgctxt "Rally,NotFinished"
+msgid "Sin llegar"
+msgstr "Sin llegar"
+
+#. Key:	ResultsRow
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(524)
+#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(524)
+msgctxt "Rally,ResultsRow"
+msgid "{0}.º   {1}   {2}   {3} pts"
+msgstr "{0}.º   {1}   {2}   {3} pts"
+
+#. Key:	SpectateDrone
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(563)
+#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(563)
 msgctxt "Rally,SpectateDrone"
 msgid "Dron: siguiendo al líder"
 msgstr "Dron: siguiendo al líder"
 
 #. Key:	SpectateCrew
-#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(524)
-#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(524)
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(564)
+#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(564)
 msgctxt "Rally,SpectateCrew"
 msgid "Mirando a {0} ({1}.º)"
 msgstr "Mirando a {0} ({1}.º)"
 
 #. Key:	SpecialAmmoCharges
-#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(566)
-#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(566)
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(629)
+#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(629)
 msgctxt "Rally,SpecialAmmoCharges"
 msgid "Munición: {0} ×{1}"
 msgstr "Munición: {0} ×{1}"
 
 #. Key:	SelectedAmmoReserve
-#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(572)
-#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(572)
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(635)
+#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(635)
 msgctxt "Rally,SelectedAmmoReserve"
 msgid "Munición: {0} · {1} ×{2}"
 msgstr "Munición: {0} · {1} ×{2}"
 
 #. Key:	SelectedAmmo
-#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(577)
-#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(577)
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(640)
+#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(640)
 msgctxt "Rally,SelectedAmmo"
 msgid "Munición: {0}"
 msgstr "Munición: {0}"
 
-#. Key:	EmptyBuggy
-#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(60)
-#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(60)
-msgctxt "Rally,EmptyBuggy"
-msgid "Buggy vacío"
-msgstr "Buggy vacío"
-
 #. Key:	GunnerKnocked
-#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(602)
-#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(602)
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(665)
+#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(665)
 msgctxt "Rally,GunnerKnocked"
 msgid "¡Noqueada! {0}"
 msgstr "¡Noqueada! {0}"
+
+#. Key:	EmptyBuggy
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(67)
+#: Source/Tortunabo/Private/Rally/TN_RallyHUDWidget.cpp(67)
+msgctxt "Rally,EmptyBuggy"
+msgid "Buggy vacío"
+msgstr "Buggy vacío"
 
 #. Key:	PaceHairpinLeft
 #. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyPaceNotes.cpp(265)
@@ -3808,36 +3857,36 @@ msgid "derecha {0}"
 msgstr "derecha {0}"
 
 #. Key:	PaceCrest
-#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyPaceNotes.cpp(435)
-#: Source/Tortunabo/Private/Rally/TN_RallyPaceNotes.cpp(435)
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyPaceNotes.cpp(440)
+#: Source/Tortunabo/Private/Rally/TN_RallyPaceNotes.cpp(440)
 msgctxt "Rally,PaceCrest"
 msgid "cresta"
 msgstr "cresta"
 
 #. Key:	PaceJump
-#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyPaceNotes.cpp(436)
-#: Source/Tortunabo/Private/Rally/TN_RallyPaceNotes.cpp(436)
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyPaceNotes.cpp(441)
+#: Source/Tortunabo/Private/Rally/TN_RallyPaceNotes.cpp(441)
 msgctxt "Rally,PaceJump"
 msgid "salto"
 msgstr "salto"
 
 #. Key:	PaceWater
-#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyPaceNotes.cpp(437)
-#: Source/Tortunabo/Private/Rally/TN_RallyPaceNotes.cpp(437)
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyPaceNotes.cpp(442)
+#: Source/Tortunabo/Private/Rally/TN_RallyPaceNotes.cpp(442)
 msgctxt "Rally,PaceWater"
 msgid "agua"
 msgstr "agua"
 
 #. Key:	PaceDontCut
-#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyPaceNotes.cpp(440)
-#: Source/Tortunabo/Private/Rally/TN_RallyPaceNotes.cpp(440)
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyPaceNotes.cpp(445)
+#: Source/Tortunabo/Private/Rally/TN_RallyPaceNotes.cpp(445)
 msgctxt "Rally,PaceDontCut"
 msgid "{0}, no cortes"
 msgstr "{0}, no cortes"
 
 #. Key:	PaceDistance
-#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyPaceNotes.cpp(446)
-#: Source/Tortunabo/Private/Rally/TN_RallyPaceNotes.cpp(446)
+#. SourceLocation:	Source/Tortunabo/Private/Rally/TN_RallyPaceNotes.cpp(451)
+#: Source/Tortunabo/Private/Rally/TN_RallyPaceNotes.cpp(451)
 msgctxt "Rally,PaceDistance"
 msgid "{0} m"
 msgstr "{0} m"
@@ -3850,102 +3899,102 @@ msgid "Meta"
 msgstr "Meta"
 
 #. Key:	TabletHint
-#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(337)
-#: Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(337)
+#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(372)
+#: Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(372)
 msgctxt "Rally,TabletHint"
 msgid "Tab · M · Vista: guardar la tableta"
 msgstr "Tab · M · Vista: guardar la tableta"
 
 #. Key:	TabletTitle
-#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(344)
-#: Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(344)
+#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(379)
+#: Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(379)
 msgctxt "Rally,TabletTitle"
 msgid "Copiloto"
 msgstr "Copiloto"
 
 #. Key:	PlaceOfTotal
-#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(349)
-#: Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(349)
+#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(384)
+#: Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(384)
 msgctxt "Rally,PlaceOfTotal"
 msgid "{0}.º / {1}"
 msgstr "{0}.º / {1}"
 
 #. Key:	TabletNextBox
-#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(369)
-#: Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(369)
+#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(434)
+#: Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(434)
 msgctxt "Rally,TabletNextBox"
 msgid "Caja a {0}"
 msgstr "Caja a {0}"
 
 #. Key:	TabletCharges
-#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(382)
-#: Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(382)
+#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(447)
+#: Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(447)
 msgctxt "Rally,TabletCharges"
 msgid "{0} ×{1}"
 msgstr "{0} ×{1}"
 
 #. Key:	TabletNoNotes
-#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(527)
-#: Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(527)
+#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(592)
+#: Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(592)
 msgctxt "Rally,TabletNoNotes"
 msgid "Todo recto"
 msgstr "Todo recto"
 
 #. Key:	TabletThen
-#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(549)
-#: Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(549)
+#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(614)
+#: Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(614)
 msgctxt "Rally,TabletThen"
 msgid "luego {0} a {1}"
 msgstr "luego {0} a {1}"
 
 #. Key:	TabletAmmo
-#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(562)
-#: Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(562)
+#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(627)
+#: Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(627)
 msgctxt "Rally,TabletAmmo"
 msgid "Munición"
 msgstr "Munición"
 
 #. Key:	TabletOverheated
-#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(592)
-#: Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(592)
+#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(657)
+#: Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(657)
 msgctxt "Rally,TabletOverheated"
 msgid "¡Caliente!"
 msgstr "¡Caliente!"
 
 #. Key:	TabletNoSpecial
-#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(598)
-#: Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(598)
+#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(663)
+#: Source/Tortunabo/Private/Rally/UI/TN_RallyCopilotTabletPaint.cpp(663)
 msgctxt "Rally,TabletNoSpecial"
 msgid "Sin carga especial"
 msgstr "Sin carga especial"
 
-#. Key:	RaceTime
-#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyDashboard.cpp(80)
-#: Source/Tortunabo/Private/Rally/UI/TN_RallyDashboard.cpp(80)
-msgctxt "Rally,RaceTime"
-msgid "{0}:{1}"
-msgstr "{0}:{1}"
-
 #. Key:	FinishedTime
-#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyDashboard.cpp(88)
-#: Source/Tortunabo/Private/Rally/UI/TN_RallyDashboard.cpp(88)
+#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyDashboard.cpp(102)
+#: Source/Tortunabo/Private/Rally/UI/TN_RallyDashboard.cpp(102)
 msgctxt "Rally,FinishedTime"
 msgid "¡Meta! {0}"
 msgstr "¡Meta! {0}"
 
 #. Key:	GateOfTotal
-#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyDashboard.cpp(92)
-#: Source/Tortunabo/Private/Rally/UI/TN_RallyDashboard.cpp(92)
+#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyDashboard.cpp(106)
+#: Source/Tortunabo/Private/Rally/UI/TN_RallyDashboard.cpp(106)
 msgctxt "Rally,GateOfTotal"
 msgid "Puerta {0}/{1}"
 msgstr "Puerta {0}/{1}"
 
 #. Key:	LapAndGate
-#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyDashboard.cpp(96)
-#: Source/Tortunabo/Private/Rally/UI/TN_RallyDashboard.cpp(96)
+#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyDashboard.cpp(110)
+#: Source/Tortunabo/Private/Rally/UI/TN_RallyDashboard.cpp(110)
 msgctxt "Rally,LapAndGate"
 msgid "Vuelta {0}/{1} · {2}"
 msgstr "Vuelta {0}/{1} · {2}"
+
+#. Key:	RaceTime
+#. SourceLocation:	Source/Tortunabo/Private/Rally/UI/TN_RallyDashboard.cpp(94)
+#: Source/Tortunabo/Private/Rally/UI/TN_RallyDashboard.cpp(94)
+msgctxt "Rally,RaceTime"
+msgid "{0}:{1}"
+msgstr "{0}:{1}"
 
 #. Key:	NoKey
 #. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1332)

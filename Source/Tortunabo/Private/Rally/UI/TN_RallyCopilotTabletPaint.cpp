@@ -364,6 +364,7 @@ void UTN_RallyCopilotTablet::PaintFull(FTNRallyTabletPainter& Painter) const
 
 	PaintHeader(Painter);
 	PaintMap(Painter, MakeArea(50.f, 96.f, 520.f, 570.f), false);
+	PaintHitLog(Painter, MakeArea(62.f, 548.f, 496.f, 106.f), false);
 	PaintNextNote(Painter, MakeArea(594.f, 96.f, 636.f, 170.f), false);
 	PaintProfile(Painter, MakeArea(594.f, 282.f, 636.f, 230.f));
 	PaintAmmo(Painter, MakeArea(594.f, 528.f, 636.f, 138.f));
@@ -393,8 +394,38 @@ void UTN_RallyCopilotTablet::PaintCompact(FTNRallyTabletPainter& Painter) const
 	Painter.Box(FBox2f(FVector2f::ZeroVector, CompactSize), Brush.Frame, Bumper);
 	Painter.Box(FBox2f(FVector2f(CompactBumper), CompactSize - FVector2f(CompactBumper)), Brush.ScreenPanel, Screen);
 	PaintMap(Painter, MakeArea(28.f, 28.f, 304.f, 304.f), true);
+	PaintHitLog(Painter, MakeArea(36.f, 254.f, 288.f, 70.f), true);
 	PaintNextNote(Painter, MakeArea(28.f, 344.f, 304.f, 108.f), true);
 	PaintCompactAmmo(Painter, MakeArea(28.f, 464.f, 304.f, 68.f));
+}
+
+void UTN_RallyCopilotTablet::PaintHitLog(FTNRallyTabletPainter& Painter, const FBox2D& Area, bool bSmall) const
+{
+	using namespace TNRallyTablet;
+	if (HitLog.Num() == 0)
+	{
+		return;
+	}
+	// Las líneas se apagan en sus últimos FadeSeconds; la caja, con la más nueva.
+	constexpr float FadeSeconds = 2.f;
+	const auto Opacity = [](const TNRallyHitLog::FLine& Line)
+	{
+		return FMath::Clamp((TNRallyHitLog::LineSeconds - Line.Age) / FadeSeconds, 0.f, 1.f);
+	};
+	const FBox2f Box = ToBox(Area);
+	const float Pad = bSmall ? 8.f : 12.f;
+	const float LineHeight = (Box.GetSize().Y - 2.f * Pad) / TNRallyHitLog::MaxLines;
+	const FLinearColor Back = Screen.CopyWithNewOpacity(0.78f * Opacity(HitLog[0]));
+	Painter.Box(Box, Brushes().CardPanel, Back);
+	const FSlateFontInfo Font = TNHUDStyle::Font(TEXT("Bold"), bSmall ? 15 : 20);
+	for (int32 Index = 0; Index < HitLog.Num(); ++Index)
+	{
+		const TNRallyHitLog::FLine& Line = HitLog[Index];
+		// La más nueva, entera; las anteriores, algo apagadas.
+		const float Dimming = Index == 0 ? 1.f : 0.7f;
+		const FVector2f Anchor(Box.Min.X + Pad, Box.Min.Y + Pad + LineHeight * (Index + 0.5f));
+		Painter.Text(Line.Text, Font, Anchor, FVector2f(0.f, 0.5f), Line.Color.CopyWithNewOpacity(Dimming * Opacity(Line)));
+	}
 }
 
 FText UTN_RallyCopilotTablet::NextBoxText() const

@@ -8,6 +8,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
 #include "Player/TN_CosmeticsSync.h"
+#include "Rally/TN_RallyHitReport.h"
 #include "Voice/TN_VoiceRouting.h"
 #include "TN_RallyPlayerController.generated.h"
 
@@ -15,6 +16,7 @@ class ATN_Buggy;
 class UTN_RallyCameraDirector;
 class UTN_RallyCopilotComponent;
 class UTN_RallyHUDWidget;
+class USoundBase;
 
 UCLASS()
 class TORTUNABO_API ATN_RallyPlayerController : public APlayerController, public ITN_VoiceListener
@@ -41,6 +43,20 @@ public:
 
 	/** Cámara de llegada, podio y espectador de este jugador (solo en el jugador local; nullptr en el resto). */
 	UTN_RallyCameraDirector* GetCameraDirector() const { return CameraDirector; }
+
+	/**
+	 * Servidor → ocupante (#332): un impacto que ha dado o recibido su buggy. Línea en el registro de la pantallita y, si
+	 * lo ha dado, marca en la mira y sonido corto. Fiable: son pocos y la confirmación no se puede perder.
+	 */
+	UFUNCTION(Client, Reliable)
+	void ClientRallyHitReport(const FTNRallyHitReport& Report);
+
+	/** Sonido corto de acierto (2D, solo en el buggy que dispara). */
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Sonido")
+	TObjectPtr<USoundBase> HitConfirmSound;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Sonido", meta = (ClampMin = "0"))
+	float HitConfirmVolume = 0.7f;
 
 	// ITN_VoiceListener
 	virtual void SendVoiceToOwningClient(const TArray<uint8>& CompressedData, int32 SenderSampleRate, AActor* SpeakerActor,

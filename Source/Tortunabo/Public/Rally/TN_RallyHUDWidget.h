@@ -45,6 +45,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Rally")
 	void SetInkSeconds(float SecondsLeft);
 
+	/**
+	 * Marca de acierto sobre el punto de mira durante TNRallyHitLog::MarkerSeconds (#332): roja si el impacto cuenta y
+	 * celeste si lo para el escudo. Solo se ve con el punto de mira (la artillera).
+	 */
+	void ShowHitMarker(bool bBlocked);
+
 protected:
 	virtual void NativeOnInitialized() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
@@ -57,6 +63,7 @@ private:
 	void BuildTurretPanel();
 	void BuildInk();
 	void BuildResults();
+	void TickHitMarker(float DeltaTime);
 	void Refresh(const ATN_RallyGameState& RallyState);
 	void RefreshSemaphore(const ATN_RallyGameState& RallyState, double ServerTime);
 	/** Puesto y vuelta (o puerta) de la fila propia; solo la artillera (la conductora los lleva en el cartel del arco). */
@@ -114,6 +121,7 @@ private:
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> SpectateText;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> SpectateHintText;
 	UPROPERTY(Transient) TObjectPtr<UTextBlock> Crosshair;
+	UPROPERTY(Transient) TObjectPtr<UTextBlock> HitMarker;
 	UPROPERTY(Transient) TArray<TObjectPtr<UImage>> InkSplats;
 	UPROPERTY(Transient) TObjectPtr<UBorder> ResultsPanel;
 	UPROPERTY(Transient) TObjectPtr<UVerticalBox> ResultsRows;
@@ -136,6 +144,8 @@ private:
 	double RespawnHintCheckServerTime = -1.0;
 	double RespawnHintArc = -1.0;
 	float TextAccumulator = 1.f;
+	/** Lo que le queda a la marca de acierto (s). */
+	float HitMarkerSeconds = 0.f;
 	/** Firma de la tabla pintada (para no reconstruir las filas cada fotograma). */
 	uint32 ShownResultsHash = 0;
 };

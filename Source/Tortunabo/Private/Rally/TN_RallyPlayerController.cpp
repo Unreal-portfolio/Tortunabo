@@ -18,6 +18,8 @@
 #include "Vehicles/TN_Buggy.h"
 #include "Vehicles/TN_BuggyGunnerPawn.h"
 #include "VR/TN_VRMode.h"
+#include "Sound/SoundBase.h"
+#include "UObject/ConstructorHelpers.h"
 
 namespace TNRallyPC
 {
@@ -28,6 +30,8 @@ namespace TNRallyPC
 ATN_RallyPlayerController::ATN_RallyPlayerController()
 {
 	HUDWidgetClass = UTN_RallyHUDWidget::StaticClass();
+	static ConstructorHelpers::FObjectFinder<USoundBase> HitConfirmFinder(TEXT("/Game/Audio/Rally/SFX_Impact_Bubble_Pop.SFX_Impact_Bubble_Pop"));
+	HitConfirmSound = HitConfirmFinder.Object;
 }
 
 void ATN_RallyPlayerController::BeginPlay()

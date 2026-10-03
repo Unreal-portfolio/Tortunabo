@@ -8,6 +8,7 @@
 #include "GameFramework/PlayerState.h"
 #include "InputCoreTypes.h"
 #include "Rally/TN_RallyGameState.h"
+#include "Rally/TN_RallyLogic.h"
 #include "Rally/TN_RallyTrack.h"
 #include "UObject/ObjectKey.h"
 #include "Vehicles/TN_Buggy.h"
@@ -277,10 +278,22 @@ void UTN_RallyCopilotTablet::NativeDestruct()
 	Super::NativeDestruct();
 }
 
+void UTN_RallyCopilotTablet::AddHitLine(const FText& Line, const FLinearColor& Color)
+{
+	TNRallyHitLog::FLine Entry;
+	Entry.Text = Line;
+	Entry.Color = Color;
+	HitLog = TNRallyHitLog::Push(HitLog, Entry);
+}
+
 void UTN_RallyCopilotTablet::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
 	Clock += InDeltaTime;
+	if (HitLog.Num() > 0)
+	{
+		HitLog = TNRallyHitLog::Age(HitLog, InDeltaTime);
+	}
 	const UWorld* World = GetWorld();
 	const ATN_RallyGameState* RallyState = World ? World->GetGameState<ATN_RallyGameState>() : nullptr;
 	if (RallyState)
@@ -505,6 +518,24 @@ namespace TNRallyTabletDebug
 			FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([bWorld](float)
 			{
 				HostOnPawn(bWorld);
+				return false;
+			}), Wait);
+		}));
+
+	FAutoConsoleCommandWithWorldAndArgs CmdTabletOpenLater(TEXT("TN.Rally.TabletOpenLater"),
+		TEXT("Rally: TN.Rally.TabletOpenLater <espera>: abre la tableta grande del jugador local (para fotos y pruebas sin teclado)."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld*)
+		{
+			const float Wait = Args.IsValidIndex(0) ? FMath::Max(0.1f, FCString::Atof(*Args[0])) : 5.f;
+			FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([](float)
+			{
+				APlayerController* Player = FirstLocalPlayer();
+				UTN_RallyCopilotTablet* Tablet = Player ? UTN_RallyCopilotTablet::FindOrCreateFor(Player) : nullptr;
+				if (Tablet)
+				{
+					Tablet->SetTabletOpen(true);
+				}
+				UE_LOG(LogTNRally, Log, TEXT("[RallyTablet] TN.Rally.TabletOpenLater: %s"), Tablet && Tablet->IsTabletOpen() ? TEXT("abierta") : TEXT("sin abrir"));
 				return false;
 			}), Wait);
 		}));

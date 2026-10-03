@@ -9,6 +9,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "Rally/TN_RallyHitReport.h"
 #include "Rally/TN_RallyPaceNotes.h"
 #include "Rally/TN_RallyVehicle.h"
 #include "TN_RallyCopilotTablet.generated.h"
@@ -187,6 +188,12 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Rally|Tableta")
 	ETNRallyTabletPresentation GetPresentation() const { return Presentation; }
 
+	/** Registro de impactos (#332): añade Line arriba con su color (quedan las 3 últimas; se apagan a los 12 s). */
+	void AddHitLine(const FText& Line, const FLinearColor& Color);
+
+	/** Líneas que hay ahora en el registro de impactos. */
+	int32 GetHitLineCount() const { return HitLog.Num(); }
+
 	/** Panel del mundo que la aloja en la presentación World (nullptr en Screen). */
 	UWidgetComponent* GetWorldHost() const { return WorldHost.Get(); }
 
@@ -233,6 +240,8 @@ private:
 	void PaintNextNote(FTNRallyTabletPainter& Painter, const FBox2D& Area, bool bSmall) const;
 	void PaintAmmo(FTNRallyTabletPainter& Painter, const FBox2D& Area) const;
 	void PaintHeader(FTNRallyTabletPainter& Painter) const;
+	/** Registro de impactos (#332) sobre el pie del mapa: la línea más nueva arriba y las viejas apagándose. */
+	void PaintHitLog(FTNRallyTabletPainter& Painter, const FBox2D& Area, bool bSmall) const;
 
 	ETNRallyTabletView View = ETNRallyTabletView::Hidden;
 	ETNRallyTabletPresentation Presentation = ETNRallyTabletPresentation::Screen;
@@ -261,6 +270,8 @@ private:
 	double TrackArcCm = 0.0;
 	double MyArcCm = 0.0;
 	bool bHasArc = false;
+	/** Registro de impactos, la línea más nueva primero. */
+	TArray<TNRallyHitLog::FLine> HitLog;
 	/** Reloj para los parpadeos (s). */
 	float Clock = 0.f;
 };
