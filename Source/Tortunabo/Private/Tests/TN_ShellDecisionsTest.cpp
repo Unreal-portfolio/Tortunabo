@@ -192,6 +192,58 @@ bool FTNShellMotionAnomalyTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNShellUnexplainedChangeTest,
+	"Tortunabo.Shell.UnexplainedVelocityChange",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNShellUnexplainedChangeTest::RunTest(const FString& Parameters)
+{
+	using namespace TNShellLogic;
+	const FShellMotionThresholds Thresholds;
+	auto Classify = [](const FVector& Prev, const FVector& Velocity)
+	{
+		FShellMotionSample Sample;
+		Sample.DeltaSeconds = 1.f / 60.f;
+		Sample.VelocityChange = UnexplainedVelocityChange(Prev, Velocity);
+		Sample.BottomDepthUnderTerrain = -5.f;
+		Sample.AgeSeconds = 1.8f;
+		float Spin = 0.f;
+		return ClassifyShellMotion(Sample, Spin);
+	};
+
+	// Monkey del 2026-10-03 (semillas 202 y 303): la bola lanzada aterriza a 1,8 s de vuelo. Los 8 avisos eran esto.
+	{
+		const FVector Prev(1164.84, 0.0, -884.02);
+		const FVector Velocity(1043.19, -1.72, 163.5);
+		TestTrue(TEXT("Aterrizaje de una bola lanzada: el cambio bruto pasa del umbral"), (Velocity - Prev).Size() > Thresholds.VelocityJump);
+		TestTrue(TEXT("Aterrizaje: lo no explicado es el rebote (< 1,5 m/s)"), UnexplainedVelocityChange(Prev, Velocity) < 150.f);
+		TestTrue(TEXT("Aterrizaje: no es un salto de velocidad"), Classify(Prev, Velocity) == EShellMotionAnomaly::None);
+	}
+	{
+		const FVector Prev(715.01, 0.0, -1159.54);
+		const FVector Velocity(488.07, 47.91, 216.25);
+		TestTrue(TEXT("Aterrizaje a 11,6 m/s hacia abajo: no es un salto de velocidad"), Classify(Prev, Velocity) == EShellMotionAnomaly::None);
+	}
+	{
+		// Contra la pared de la fortaleza: se para de golpe.
+		const FVector Prev(-1000.0, 150.0, -50.0);
+		const FVector Velocity(180.0, 120.0, -60.0);
+		TestTrue(TEXT("Choque contra una pared que la para y rebota: no es un salto"), Classify(Prev, Velocity) == EShellMotionAnomaly::None);
+	}
+
+	// La depenetración que la escupe (monkey del 2026-09-29) sí lo es, también si venía cayendo o rodando.
+	{
+		TestTrue(TEXT("Escupida desde quieta a 11,7 m/s: salto"), Classify(FVector::ZeroVector, FVector(0.0, 0.0, 1170.0)) == EShellMotionAnomaly::VelocityJump);
+		TestTrue(TEXT("Escupida mientras cae a 3 m/s: salto"), Classify(FVector(0.0, 0.0, -300.0), FVector(0.0, 0.0, 1170.0)) == EShellMotionAnomaly::VelocityJump);
+		TestTrue(TEXT("Escupida de lado mientras rueda: salto"), Classify(FVector(500.0, 0.0, 0.0), FVector(500.0, 1100.0, 200.0)) == EShellMotionAnomaly::VelocityJump);
+		const float Spit = UnexplainedVelocityChange(FVector(0.0, 0.0, -300.0), FVector(0.0, 0.0, 1170.0));
+		TestEqual(TEXT("Cayendo a 3 m/s y escupida a 11,7: no explicados 11,7 m/s"), Spit, 1170.f, 0.5f);
+	}
+	TestEqual(TEXT("Sin cambio: 0"), UnexplainedVelocityChange(FVector(300.0, 0.0, 0.0), FVector(300.0, 0.0, 0.0)), 0.f);
+	TestEqual(TEXT("Solo frena: 0"), UnexplainedVelocityChange(FVector(800.0, 0.0, 0.0), FVector(300.0, 0.0, 0.0)), 0.f);
+	return true;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Bola bajo el terreno: recolocación en el servidor
 // ─────────────────────────────────────────────────────────────────────────────

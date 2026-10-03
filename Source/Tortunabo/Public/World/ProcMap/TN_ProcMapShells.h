@@ -373,7 +373,7 @@ namespace TNProcMap
 			// Ramas: tras el último hueco de las arriesgadas, en lo alto de las rutas altas, en el punto más apartado de los
 			// desvíos y a media rama en las tranquilas.
 			PathDetail::FSampleGrid MainGrid;
-			MainGrid.Build(L.Main, L.WorldSize);
+			MainGrid.Build(L.Main, L.MaxExtent());
 			for (int32 b = 0; b < L.Branches.Num(); ++b)
 			{
 				const FBranch& Br = L.Branches[b];

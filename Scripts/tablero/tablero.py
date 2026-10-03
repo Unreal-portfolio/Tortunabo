@@ -409,17 +409,36 @@ def desbloquear(proyecto: dict, numero: int) -> None:
 
 def reconciliar_prs(proyecto: dict, cambios: list, avisos: list) -> None:
     abiertas = prs_abiertas()
+    conflictos = conflictos_con_base([p for p in abiertas if p["mergeable"] == "CONFLICTING"])
     for pr in abiertas:
         refs = issues_de_pr(pr)
         if pr["baseRefName"] != INTEGRACION:
             avisos.append(f"PR #{pr['number']} apunta a {pr['baseRefName']}, no a {INTEGRACION}")
         if pr["mergeable"] == "CONFLICTING":
-            avisos.append(f"PR #{pr['number']} ({pr['author']['login']}) tiene conflictos con {pr['baseRefName']}: rebase del autor")
+            arreglo = ("solo localización: regenerarla" if colisiones.solo_localizacion(conflictos.get(pr["number"]) or [])
+                       else "rebase del autor")
+            avisos.append(f"PR #{pr['number']} ({pr['author']['login']}) tiene conflictos con {pr['baseRefName']}: {arreglo}")
         if not refs:
             avisos.append(f"PR #{pr['number']} no cierra ninguna issue (falta «Closes #n» o rama tipo/<n>-slug)")
         for n in sorted(refs):
             reconciliar_pr_issue(proyecto, pr, n, cambios, avisos)
     reconciliar_fusiones(proyecto, abiertas, cambios, avisos)
+
+
+def conflictos_con_base(conflictivas: list[dict]) -> dict[int, list[str]]:
+    """Ficheros en conflicto de cada PR con su rama base, con `git merge-tree` (git, sin gastar API).
+
+    Solo las PR que GitHub ya marca CONFLICTING; si git no puede comprobarlo, la PR no aparece.
+    """
+    if not conflictivas or not colisiones.traer_cabezas([p["number"] for p in conflictivas],
+                                                        [p["baseRefName"] for p in conflictivas]):
+        return {}
+    resultado = {}
+    for pr in conflictivas:
+        ficheros = colisiones.conflicto_con_base(pr["number"], pr["baseRefName"])
+        if ficheros:
+            resultado[pr["number"]] = ficheros
+    return resultado
 
 
 def reconciliar_pr_issue(proyecto: dict, pr: dict, n: int, cambios: list, avisos: list) -> None:

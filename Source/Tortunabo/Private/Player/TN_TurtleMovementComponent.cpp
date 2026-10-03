@@ -166,6 +166,8 @@ UTN_TurtleMovementComponent::UTN_TurtleMovementComponent()
 {
 	// Movimientos del cliente sin bases que el servidor no encuentra por red (FTNTurtleNetworkMoveDataContainer).
 	SetNetworkMoveDataContainer(TurtleNetworkMoveData);
+	// Para el RPC de los lanzamientos que concede el servidor (LaunchFromServer).
+	SetIsReplicatedByDefault(true);
 }
 
 ATortugaCharacter* UTN_TurtleMovementComponent::GetTurtle() const
