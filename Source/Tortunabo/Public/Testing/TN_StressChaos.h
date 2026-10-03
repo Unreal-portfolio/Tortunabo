@@ -10,6 +10,8 @@
 class AActor;
 class APlayerController;
 class ATN_BeachCatapult;
+class ATN_PathStorm;
+class ULocalPlayer;
 class ATortugaCharacter;
 class FJsonObject;
 class UDataTable;
@@ -92,6 +94,8 @@ private:
 		bool bWasInShell = false;
 		bool bWasCarrying = false;
 		bool bAssisted = false;
+		/** Espacia las pulsaciones del caparazón (InputShell). */
+		TNChaos::FShellGate Shell;
 	};
 
 	struct FPhaseData
@@ -139,6 +143,8 @@ private:
 	void Finish(const TCHAR* Reason);
 	TSharedRef<FJsonObject> BuildReport(const TCHAR* Reason) const;
 	void EnsureLocalPlayers();
+	/** Deshace lo que el escenario cambió en la partida: jugadores extra, pantalla partida y tormenta del cooperativo. */
+	void RestoreWorld();
 	FVector TurtlesCenter() const;
 	double GroundAt(const FVector& At, double Fallback) const;
 	FVector PickSpot(const FVector& Center, float MinRadius, float MaxRadius);
@@ -165,7 +171,7 @@ private:
 
 	/** Entrada de la tortuga: las mismas funciones que llaman los Input Actions (amigo de ATortugaCharacter). */
 	static void InputMove(ATortugaCharacter* Turtle, const FVector2D& Value);
-	static void InputShell(ATortugaCharacter* Turtle);
+	static void InputShell(FDriver& Driver, ATortugaCharacter* Turtle);
 	static void InputInteract(ATortugaCharacter* Turtle);
 	static void InputUseItem(ATortugaCharacter* Turtle);
 	static void InputJump(ATortugaCharacter* Turtle);
@@ -204,6 +210,14 @@ private:
 	int32 SavedMaxFps = 0;
 	bool bCVarsChanged = false;
 	bool bSplitscreenForcedOff = false;
+	/** Pantalla de antes de EnsureLocalPlayers, para dejarla como estaba en Finish. */
+	bool bSavedForceDisableSplitscreen = false;
+	int32 SavedMaxSplitscreenPlayers = 0;
+	/** Jugadores locales que ha creado el escenario (Finish los quita). */
+	TArray<TWeakObjectPtr<ULocalPlayer>> CreatedLocalPlayers;
+	/** Tormentas del cooperativo paradas mientras se mide y su frente al pararlas (Finish las reanuda ahí). */
+	TArray<TPair<TWeakObjectPtr<ATN_PathStorm>, float>> StoppedStorms;
+	float SavedNetCorrectionLifetime = 4.f;
 	bool bHighQoSApplied = false;
 	/** Objetos de DT_Items que se lanzan (Throwable e InkThrower), cargados al empezar. */
 	TArray<FName> CatalogThrowables;

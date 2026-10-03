@@ -101,7 +101,13 @@ namespace TNChaosDriverDetail
 }
 
 void UTN_StressChaosSubsystem::InputMove(ATortugaCharacter* Turtle, const FVector2D& Value) { Turtle->Move(FInputActionValue(Value)); }
-void UTN_StressChaosSubsystem::InputShell(ATortugaCharacter* Turtle) { Turtle->ToggleShell(); }
+void UTN_StressChaosSubsystem::InputShell(FDriver& Driver, ATortugaCharacter* Turtle)
+{
+	if (Driver.Shell.TryPress())
+	{
+		Turtle->ToggleShell();
+	}
+}
 void UTN_StressChaosSubsystem::InputInteract(ATortugaCharacter* Turtle) { Turtle->TryInteract(); Turtle->ReleaseInteract(); }
 void UTN_StressChaosSubsystem::InputUseItem(ATortugaCharacter* Turtle) { Turtle->TryUseEquippedItem(); }
 void UTN_StressChaosSubsystem::InputJump(ATortugaCharacter* Turtle) { Turtle->Jump(); }
@@ -366,7 +372,7 @@ void UTN_StressChaosSubsystem::EndTask(FDriver& Driver, ATortugaCharacter* Turtl
 		// Sale de la bola si se ha quedado dentro (la lanzada sale sola al pararse).
 		if (Turtle->IsInShell() && !TNChaosDriverDetail::IsBusy(Turtle))
 		{
-			InputShell(Turtle);
+			InputShell(Driver, Turtle);
 		}
 	}
 	Driver.Task = TNChaos::ETask::Wander;
@@ -379,6 +385,7 @@ void UTN_StressChaosSubsystem::TickDriver(FDriver& Driver, ATortugaCharacter* Tu
 {
 	Driver.TaskClock += DeltaTime;
 	Driver.StageClock += DeltaTime;
+	Driver.Shell.Tick(DeltaTime);
 	if (Turtle->IsDead())
 	{
 		return;
@@ -412,7 +419,7 @@ bool UTN_StressChaosSubsystem::TickWander(FDriver& Driver, ATortugaCharacter* Tu
 {
 	if (Turtle->IsInShell())
 	{
-		InputShell(Turtle);
+		InputShell(Driver, Turtle);
 		return false;
 	}
 	// Cambia de rumbo cada ~2 s, corre a ratos y salta de vez en cuando, como el monkey.
@@ -436,7 +443,7 @@ bool UTN_StressChaosSubsystem::TickItems(FDriver& Driver, ATortugaCharacter* Tur
 	// Ráfaga: anda despacio mientras TickItemBurst lanza el doble de seguido.
 	if (Turtle->IsInShell())
 	{
-		InputShell(Turtle);
+		InputShell(Driver, Turtle);
 		return false;
 	}
 	InputMove(Turtle, FVector2D(0.f, 0.4f));
@@ -449,7 +456,7 @@ bool UTN_StressChaosSubsystem::TickBall(FDriver& Driver, ATortugaCharacter* Turt
 	{
 		if (!Turtle->IsInShell())
 		{
-			InputShell(Turtle);
+			InputShell(Driver, Turtle);
 		}
 		Driver.Stage = 1;
 		Driver.StageClock = 0.f;
@@ -498,7 +505,7 @@ bool UTN_StressChaosSubsystem::TickCarry(FDriver& Driver, ATortugaCharacter* Tur
 		{
 			Driver.StageClock = 0.f;
 			InputSprint(Turtle, false);
-			InputShell(Turtle);
+			InputShell(Driver, Turtle);
 		}
 		if (Driver.Stage == 0 && PartnerCarry && PartnerCarry->GetCarriedTurtle() == Turtle)
 		{
@@ -517,7 +524,7 @@ bool UTN_StressChaosSubsystem::TickCarry(FDriver& Driver, ATortugaCharacter* Tur
 		{
 			if (Turtle->IsInShell())
 			{
-				InputShell(Turtle);
+				InputShell(Driver, Turtle);
 				return false;
 			}
 			// Hasta la compañera en su bola, corriendo hasta los últimos metros.
@@ -583,7 +590,7 @@ bool UTN_StressChaosSubsystem::TickCatapult(FDriver& Driver, ATortugaCharacter* 
 	const bool bOnBowl = Turtle->GetMovementBase() == BowlComponent;
 	if (Driver.Stage < 2 && Turtle->IsInShell())
 	{
-		InputShell(Turtle);
+		InputShell(Driver, Turtle);
 		return false;
 	}
 	if (Driver.Stage < 2 && !Driver.bAssisted && !bClientOnly && Driver.TaskClock > TNChaosDriverDetail::CatapultAssistAfter)
@@ -625,7 +632,7 @@ bool UTN_StressChaosSubsystem::TickCatapult(FDriver& Driver, ATortugaCharacter* 
 				// Un tercio de las veces, en su bola dentro del cazo (la forma divertida de usarla).
 				if (Stream.FRand() < 0.33f)
 				{
-					InputShell(Turtle);
+					InputShell(Driver, Turtle);
 				}
 			}
 			return false;

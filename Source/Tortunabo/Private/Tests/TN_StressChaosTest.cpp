@@ -90,4 +90,26 @@ bool FTNStressChaosPickTaskTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTNStressChaosShellGateTest, "Tortunabo.Stress.Chaos.ShellGate",
+	EAutomationTestFlags_ApplicationContextMask | EAutomationTestFlags::ProductFilter)
+
+bool FTNStressChaosShellGateTest::RunTest(const FString& Parameters)
+{
+	using namespace TNChaos;
+	// Un cliente que no ve todavía el cambio de IsInShell pide pulsar en cada fotograma de 3 s a 60 fps.
+	FShellGate Gate;
+	int32 Presses = 0;
+	for (int32 Frame = 0; Frame < 180; ++Frame)
+	{
+		Presses += Gate.TryPress() ? 1 : 0;
+		Gate.Tick(1.f / 60.f);
+	}
+	TestEqual(TEXT("Una pulsación por segundo, no una por fotograma"), Presses, 3);
+
+	FShellGate Fresh;
+	TestTrue(TEXT("La primera pulsación sale al momento"), Fresh.TryPress());
+	TestFalse(TEXT("La segunda espera"), Fresh.TryPress());
+	return true;
+}
+
 #endif

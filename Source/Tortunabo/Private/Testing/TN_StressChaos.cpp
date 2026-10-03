@@ -212,6 +212,7 @@ bool UTN_StressChaosSubsystem::StartChaos(float PhaseSeconds, float InWarmup, fl
 	Spawned.Reset();
 	Catapults.Reset();
 	Totals = FActions();
+	StoppedStorms.Reset();
 	CurrentPhase = INDEX_NONE;
 	bMeasuring = false;
 	bActive = true;
@@ -230,6 +231,12 @@ bool UTN_StressChaosSubsystem::StartChaos(float PhaseSeconds, float InWarmup, fl
 	{
 		SavedNetShowCorrections = Corrections->GetInt();
 		Corrections->Set(1, ECVF_SetByConsole);
+	}
+	// Las correcciones se cuentan por el registro; sus cápsulas de depuración duran un fotograma, no 4 s (no cargan el render).
+	if (IConsoleVariable* CorrectionLifetime = Console.FindConsoleVariable(TEXT("p.NetCorrectionLifetime")))
+	{
+		SavedNetCorrectionLifetime = CorrectionLifetime->GetFloat();
+		CorrectionLifetime->Set(0.f, ECVF_SetByConsole);
 	}
 	// Sin tope de fotogramas: el tiempo entre fotogramas es lo que cuesta el juego.
 	if (IConsoleVariable* MaxFps = Console.FindConsoleVariable(TEXT("t.MaxFPS")))
@@ -286,8 +293,11 @@ void UTN_StressChaosSubsystem::EnsureLocalPlayers()
 		return;
 	}
 	UGameViewportClient* Viewport = World->GetGameViewport();
+	CreatedLocalPlayers.Reset();
 	if (Viewport)
 	{
+		bSavedForceDisableSplitscreen = Viewport->IsSplitscreenForceDisabled();
+		SavedMaxSplitscreenPlayers = Viewport->MaxSplitscreenPlayers;
 		Viewport->MaxSplitscreenPlayers = FMath::Max(Viewport->MaxSplitscreenPlayers, Config.Turtles);
 		// Cada jugador tiene su PC: la GPU pinta una sola vista, la del primero.
 		Viewport->SetForceDisableSplitscreen(true);
@@ -295,12 +305,56 @@ void UTN_StressChaosSubsystem::EnsureLocalPlayers()
 	}
 	while (GameInstance->GetNumLocalPlayers() < Config.Turtles)
 	{
-		if (!UGameplayStatics::CreatePlayer(World, -1, true))
+		APlayerController* Created = UGameplayStatics::CreatePlayer(World, -1, true);
+		if (!Created)
 		{
 			UE_LOG(LogTortunabo, Warning, TEXT("[Estrés] caos: no se ha podido crear el jugador local %d."), GameInstance->GetNumLocalPlayers());
 			break;
 		}
+		CreatedLocalPlayers.Add(Created->GetLocalPlayer());
 	}
+}
+
+void UTN_StressChaosSubsystem::RestoreWorld()
+{
+	UWorld* World = GetWorld();
+	// Los jugadores extra salen con su tortuga: la partida vuelve a los jugadores que tenía.
+	for (const TWeakObjectPtr<ULocalPlayer>& Weak : CreatedLocalPlayers)
+	{
+		ULocalPlayer* Player = Weak.Get();
+		if (!Player)
+		{
+			continue;
+		}
+		// Viven en la GameInstance: si no se quitan, pasarían al mapa siguiente.
+		if (APlayerController* PC = World ? Player->GetPlayerController(World) : nullptr)
+		{
+			UGameplayStatics::RemovePlayer(PC, true);
+		}
+		else if (UGameInstance* GameInstance = Player->GetGameInstance())
+		{
+			GameInstance->RemoveLocalPlayer(Player);
+		}
+	}
+	CreatedLocalPlayers.Reset();
+	if (bSplitscreenForcedOff)
+	{
+		if (UGameViewportClient* Viewport = World ? World->GetGameViewport() : nullptr)
+		{
+			Viewport->MaxSplitscreenPlayers = SavedMaxSplitscreenPlayers;
+			Viewport->SetForceDisableSplitscreen(bSavedForceDisableSplitscreen);
+		}
+		bSplitscreenForcedOff = false;
+	}
+	// La tormenta del cooperativo sigue desde donde estaba al pararla, con su tiempo de muerte normal.
+	for (const TPair<TWeakObjectPtr<ATN_PathStorm>, float>& Stopped : StoppedStorms)
+	{
+		if (ATN_PathStorm* Storm = Stopped.Key.Get())
+		{
+			Storm->DebugPlaceFront(Stopped.Value, false);
+		}
+	}
+	StoppedStorms.Reset();
 }
 
 double UTN_StressChaosSubsystem::GroundAt(const FVector& At, double Fallback) const
@@ -464,6 +518,10 @@ void UTN_StressChaosSubsystem::SampleSlow(FPhaseData& Phase)
 		{
 			if (It->IsStormActive())
 			{
+				if (!StoppedStorms.ContainsByPredicate([&It](const TPair<TWeakObjectPtr<ATN_PathStorm>, float>& S) { return S.Key.Get() == *It; }))
+				{
+					StoppedStorms.Emplace(*It, It->GetFrontProgress());
+				}
 				It->StopStorm();
 			}
 		}
@@ -712,6 +770,7 @@ void UTN_StressChaosSubsystem::Finish(const TCHAR* Reason)
 	}
 	Spawned.Reset();
 	Catapults.Reset();
+	RestoreWorld();
 	if (bSinkAttached && GLog)
 	{
 		GLog->RemoveOutputDevice(&Sink);
@@ -723,6 +782,10 @@ void UTN_StressChaosSubsystem::Finish(const TCHAR* Reason)
 		if (IConsoleVariable* Corrections = Console.FindConsoleVariable(TEXT("p.NetShowCorrections")))
 		{
 			Corrections->Set(SavedNetShowCorrections, ECVF_SetByConsole);
+		}
+		if (IConsoleVariable* CorrectionLifetime = Console.FindConsoleVariable(TEXT("p.NetCorrectionLifetime")))
+		{
+			CorrectionLifetime->Set(SavedNetCorrectionLifetime, ECVF_SetByConsole);
 		}
 		if (IConsoleVariable* MaxFps = Console.FindConsoleVariable(TEXT("t.MaxFPS")))
 		{

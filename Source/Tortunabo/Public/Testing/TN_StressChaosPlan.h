@@ -187,6 +187,30 @@ namespace TNChaos
 		return ETask::Wander;
 	}
 
+	/** Tiempo mínimo entre dos pulsaciones del caparazón de una misma tortuga (s). */
+	constexpr float ShellPressInterval = 1.f;
+
+	/**
+	 * Pulsaciones del caparazón espaciadas: en un cliente IsInShell llega por réplica con retraso, y pulsar cada fotograma
+	 * mientras no se ve el cambio haría entrar y salir de la bola sin parar.
+	 */
+	struct FShellGate
+	{
+		float SincePress = TNumericLimits<float>::Max();
+
+		void Tick(float DeltaTime) { SincePress = FMath::Min(SincePress + DeltaTime, TNumericLimits<float>::Max()); }
+
+		bool TryPress()
+		{
+			if (SincePress < ShellPressInterval)
+			{
+				return false;
+			}
+			SincePress = 0.f;
+			return true;
+		}
+	};
+
 	/** «caos» (sin distinguir mayúsculas). */
 	inline bool IsChaosName(const FString& Name)
 	{
