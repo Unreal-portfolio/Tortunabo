@@ -61,6 +61,10 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "EggNest")
 	TArray<TObjectPtr<UStaticMeshComponent>> Eggs;
 
+	/** Colisión de la pila de huevos: un cono invisible que los envuelve (sin huecos donde encajarse). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "EggNest")
+	TObjectPtr<UStaticMeshComponent> EggsCollision;
+
 	/** Mesh definitivo de la pila (el de la lobby). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "EggNest")
 	TObjectPtr<UStaticMesh> NestMeshOverride;
