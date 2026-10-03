@@ -1574,7 +1574,8 @@ void UMP_GameInstance::HandleDriverFailure(const FString& FailureTypeStr, const 
 void UMP_GameInstance::HandleChecksumMismatch(const FString& ErrorString)
 {
 	HideLoadingScreen();
-	UpdateStatus(TEXT("ERROR: Versiones incompatibles con el servidor.\nAsegúrate de que ambos jugadores tienen el mismo build compilado (sin Live Coding activo)."));
+	// Una sola línea: el menú enseña lo que va tras el último salto de línea del estado (#280); la pista de Live Coding va al registro.
+	UpdateStatus(TEXT("ERROR: Versiones incompatibles con el servidor."));
 	// Destruir la sesión huérfana del lado cliente para poder reintentar.
 	DestroyCurrentSession();
 	UE_LOG(LogTortunabo, Error,
