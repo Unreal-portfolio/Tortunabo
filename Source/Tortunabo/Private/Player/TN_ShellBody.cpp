@@ -13,7 +13,6 @@
 #include "Player/TN_ShellComponent.h"
 #include "Player/TN_ShellDecisions.h"
 #include "Player/TortugaCharacter.h"
-#include "World/Beach/TN_BeachCatapultAim.h"
 #include "World/Beach/TN_BeachRaceGenerator.h"
 #include "World/Beach/TN_BeachStun.h"
 
@@ -86,9 +85,8 @@ ATN_ShellBody::ATN_ShellBody()
 	Box->SetCanEverAffectNavigation(false);
 	Box->CanCharacterStepUpOn = ECB_No;
 	Box->BodyInstance.SetMassOverride(38.f, true);
-	// La lineal no se toca: la tormenta (ATN_BeachStorm, BallisticLaunch) y la catapulta (TNBeachCatapultAim) calculan sus
-	// lanzamientos con ella.
-	Box->BodyInstance.LinearDamping = TNBeachCatapultAim::ShellBallLinearDamping;
+	// La lineal no se toca: la tormenta calcula sus patadas con ella (ATN_BeachStorm, BallisticLaunch).
+	Box->BodyInstance.LinearDamping = 0.25f;
 	Box->BodyInstance.AngularDamping = 1.4f;
 	// Estable sobre el terreno de la playa: sus teselas son mallas distintas y la caja tropezaba en cada costura y en cada
 	// arista interior (saltitos y vueltas sin motivo). Caro, pero son como mucho ocho bolas.

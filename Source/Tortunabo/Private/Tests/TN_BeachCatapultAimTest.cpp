@@ -3,6 +3,8 @@
 //   UnrealEditor-Cmd <uproject> -ExecCmds="Automation RunTests Tortunabo.Beach.CatapultAim; Quit" -nullrhi -unattended
 
 #include "Misc/AutomationTest.h"
+#include "Components/BoxComponent.h"
+#include "Player/TN_ShellBody.h"
 #include "World/Beach/TN_BeachCatapultAim.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -16,6 +18,15 @@ bool FTNBeachCatapultAimTest::RunTest(const FString& Parameters)
 	using namespace TNBeachCatapultAim;
 	constexpr double G = 980.0;
 	const double Pitch = FMath::DegreesToRadians(44.0);
+
+	// La puntería frena la bola como la frena su caja de verdad: si alguien cambia una, tiene que cambiar la otra.
+	const ATN_ShellBody* ShellBodyDefaults = GetDefault<ATN_ShellBody>();
+	const UBoxComponent* ShellBox = ShellBodyDefaults ? ShellBodyDefaults->GetBox() : nullptr;
+	if (TestNotNull(TEXT("La caja de la bola de caparazón"), ShellBox))
+	{
+		TestEqual(TEXT("El frenado de la puntería es el de la caja de la bola"), ShellBox->BodyInstance.LinearDamping,
+			ShellBallLinearDamping);
+	}
 
 	// Sin rozamiento y al mismo nivel: el alcance de siempre, v²·sin(2θ)/g.
 	const double Ideal = 2300.0 * 2300.0 * FMath::Sin(2.0 * Pitch) / G;

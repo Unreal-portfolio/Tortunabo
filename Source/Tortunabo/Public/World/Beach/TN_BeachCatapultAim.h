@@ -10,7 +10,10 @@
  */
 namespace TNBeachCatapultAim
 {
-	/** Amortiguación lineal (1/s) de la caja de la bola de caparazón (ATN_ShellBody la usa: un solo valor). */
+	/**
+	 * Amortiguación lineal (1/s) de la caja de la bola de caparazón: la misma que pone ATN_ShellBody en su caja (lo comprueba
+	 * Tortunabo.Beach.CatapultAim con el objeto por defecto de ATN_ShellBody).
+	 */
 	inline constexpr float ShellBallLinearDamping = 0.25f;
 
 	/**
