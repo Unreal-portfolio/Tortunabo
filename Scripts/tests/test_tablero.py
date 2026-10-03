@@ -82,6 +82,7 @@ def test_refs_en_una_pr_fusionada_no_cuenta_como_fusion(monkeypatch):
 def test_lote_enlazado_con_refs_se_cierra_al_fusionar(monkeypatch):
     pr = {"number": 402, "baseRefName": "dev", "headRefName": "feat/440-x", "body": "Closes #440\nRefs #439"}
     monkeypatch.setattr(tablero, "prs_fusionadas", lambda: [pr])
+    monkeypatch.setattr(tablero, "prs_abiertas", lambda: [])
     monkeypatch.setattr(tablero, "tiene_resumen", lambda n: True)
     lote = {"state": "OPEN", "valores": {}, "labels": {"nodes": [{"name": "lote"}]},
             "blockedBy": {"nodes": [{"number": 440, "state": "CLOSED"}, {"number": 441, "state": "CLOSED"}]}}
@@ -260,6 +261,40 @@ def test_issue_en_done_antes_de_fusionar_se_cierra(monkeypatch):
     cambios, avisos = [], []
     tablero.reconciliar_fusiones(proyecto, [], cambios, avisos)
     assert len(cambios) == 1 and avisos == ["#272 se cierra sin comentario **Resumen**: añádelo con `resumen 272`"]
+
+
+def test_miembro_de_lote_en_done_se_cierra_en_done_al_fusionar(monkeypatch):
+    """#436 (puente 03-10): el mismo `sync` lo pasaba a Validada por el lote y lo cerraba sin volver a Done."""
+    pr = {"number": 438, "baseRefName": "dev", "headRefName": "fix/436-sync", "body": "Closes #436\nRefs #439"}
+    monkeypatch.setattr(tablero, "prs_fusionadas", lambda: [pr])
+    monkeypatch.setattr(tablero, "prs_abiertas", lambda: [])
+    monkeypatch.setattr(tablero, "tiene_resumen", lambda n: True)
+    estados, cerradas = {}, []
+    monkeypatch.setattr(tablero, "poner_campo", lambda proyecto, n, campo, valor: estados.__setitem__((n, campo), valor))
+    monkeypatch.setattr(tablero, "comentar", lambda n, texto: None)
+    monkeypatch.setattr(tablero, "gh", lambda *args: cerradas.append(int(args[2])) if args[:2] == ("issue", "close") else "")
+    lote = {"number": 439, "state": "OPEN", "labels": {"nodes": [{"name": "lote"}]}}
+    miembro = _item("Done", **{"Revisión IA": "Aprobada", "Editor": "Funciona"})
+    miembro["blocking"] = {"nodes": [lote]}
+    proyecto = {"items": {436: miembro}}
+    cambios, avisos = [], []
+    tablero.reconciliar_lotes(proyecto, cambios, avisos)
+    tablero.reconciliar_fusiones(proyecto, [], cambios, avisos)
+    assert [texto for texto, _ in cambios] == ["#436 → Done (PR #438 fusionada en dev; ya estaba en Done: se cierra)"]
+    for _texto, accion in cambios:
+        accion()
+    assert estados == {(436, "Status"): "Done"}
+    assert cerradas == [436]
+
+
+def test_miembro_de_lote_sin_fusionar_sigue_pasando_a_validada(monkeypatch):
+    monkeypatch.setattr(tablero, "prs_fusionadas", lambda: [])
+    monkeypatch.setattr(tablero, "prs_abiertas", lambda: [_pr_abierta(438, "Closes #436\nRefs #439")])
+    miembro = _item("In review", **{"Revisión IA": "Aprobada", "Editor": "Funciona"})
+    miembro["blocking"] = {"nodes": [{"number": 439, "state": "OPEN", "labels": {"nodes": [{"name": "lote"}]}}]}
+    cambios, avisos = [], []
+    tablero.reconciliar_lotes({"items": {436: miembro}}, cambios, avisos)
+    assert [texto for texto, _ in cambios] == ["#436 → Validada (aprobada y probada; espera al resto de su lote)"]
 
 
 @pytest.mark.parametrize("valores, abiertas", [

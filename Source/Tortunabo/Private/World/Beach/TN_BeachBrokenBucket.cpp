@@ -289,7 +289,7 @@ void ATN_BeachBrokenBucket::ApplySpec()
 	TNBeachTrapKit::FBuffers Bucket;
 	TNBeachTrapKit::FHulls Hulls;
 	BuildBucket(Bucket, Hulls, D, Seed);
-	TNBeachTrapKit::SetMesh(BucketMesh, this, Bucket);
+	TNBeachTrapKit::SetMesh(BucketMesh, this, Bucket, TN_ART("Beach.BrokenBucket.Bucket"));
 	BucketCollision->SetCollisionConvexMeshes(Hulls);
 	UE_LOG(LogTortunabo, Verbose, TEXT("[Playa] Cubo %s: %.0f cm de largo, boca de %.0f, suelo a %.0f."), *GetName(), D.Len, D.Rm, D.FloorZ);
 }

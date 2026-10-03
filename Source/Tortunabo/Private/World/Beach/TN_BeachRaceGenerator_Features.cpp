@@ -91,9 +91,16 @@ namespace TNBeachFeatures
 		return TNBeachRaceKit::Hex(Tones[((Index % 5) + 5) % 5]);
 	}
 
-	/** Saco terrero: bloque algo redondeado (dos cajas) a lo largo de Along. */
-	void AddSandbag(FBuffers& M, const FVector& Center, const FVector2D& Along, int32 Index)
+	/** Giro (grados) de una dirección en planta, para los pivotes de las piezas de arte. */
+	double YawOf(const FVector2D& Dir)
 	{
+		return FMath::RadiansToDegrees(FMath::Atan2(Dir.Y, Dir.X));
+	}
+
+	/** Saco terrero: bloque algo redondeado (dos cajas) a lo largo de Along. Pieza de arte: centro de su base, +X a lo largo. */
+	void AddSandbag(FBuffers& M, const FVector& Center, const FVector2D& Along, int32 Index, TNArt::FPieceLog& Log)
+	{
+		TNArt::FPieceScope Piece(Log, TN_ART("Beach.Trench.Sandbag"), TNArt::PiecePivot(Center - FVector(0.0, 0.0, 9.0), YawOf(Along)), { &M });
 		const FVector Axis(Along, 0.0);
 		const FLinearColor Tone = BagTone(Index);
 		M.AddBox(Center, Axis, FVector(29.0, 16.0, 9.0), Tone);
@@ -104,7 +111,7 @@ namespace TNBeachFeatures
 	 * Una línea de trinchera: dos caballones (cara de dentro de tablones y vertical, lomo de arena, falda hacia fuera), los
 	 * sacos del lado del mar en tramos con huecos, dos puentes de tablones de lado a lado, postes y tarima (sin colisión).
 	 */
-	void BuildTrench(FBuffers& Solid, FBuffers& Deco, const TNBeachLayout::FTrench& Trench, uint32 Seed)
+	void BuildTrench(FBuffers& Solid, FBuffers& Deco, const TNBeachLayout::FTrench& Trench, uint32 Seed, TNArt::FPieceLog& Log)
 	{
 		using namespace TNBeachLayout;
 		const TArray<FStation> Stations = MakeStations(Trench.Points, 150.0);
@@ -163,6 +170,7 @@ namespace TNBeachFeatures
 				const FVector2D Dir = (Stations[k].Off * Side).GetSafeNormal();
 				const FVector Base = FVector(FVector2D(InTop[k]) - Dir * 7.0, InBottom[k].Z + 10.0);
 				const double H = InTop[k].Z + 8.0 - Base.Z;
+				TNArt::FPieceScope Piece(Log, TN_ART("Beach.Trench.Post"), TNArt::PiecePivot(Base, YawOf(Stations[k].Along), FVector(1.0, 1.0, H / 150.0)), { &Deco });
 				Deco.AddBox(Base + FVector(0.0, 0.0, 0.5 * H), FVector(Stations[k].Along, 0.0), FVector(7.0, 7.0, 0.5 * H), TNBeachRaceKit::Hex(0x4A3826u));
 			}
 			// Sacos terreros en el lomo del lado del mar: tramos de 7 con un hueco de 1,6 m (por ahí se sale de un salto), dos
@@ -190,10 +198,10 @@ namespace TNBeachFeatures
 					const FVector2D Off = A.Off + (B.Off - A.Off) * T;
 					const FVector2D Where = P + Off * Side * (0.5 * (TrenchHalfChannel + TrenchBermTop));
 					const double Top = FMath::Lerp(InTop[Station].Z, InTop[FMath::Min(Station + 1, NS - 1)].Z, T);
-					AddSandbag(Solid, FVector(Where, Top + 9.0), A.Along, Bag);
+					AddSandbag(Solid, FVector(Where, Top + 9.0), A.Along, Bag, Log);
 					if (InGroup >= 1 && InGroup <= 5)
 					{
-						AddSandbag(Solid, FVector(Where - A.Along * 30.0, Top + 30.0), A.Along, Bag + 3);
+						AddSandbag(Solid, FVector(Where - A.Along * 30.0, Top + 30.0), A.Along, Bag + 3, Log);
 					}
 					S += 60.0;
 					++Bag;
@@ -208,6 +216,7 @@ namespace TNBeachFeatures
 			{
 				const FVector2D P = Stations[k].P + (Stations[k + 1].P - Stations[k].P) * (0.25 + 0.5 * Half);
 				const FVector2D Across = Stations[k].Off.GetSafeNormal();
+				TNArt::FPieceScope Piece(Log, TN_ART("Beach.Trench.FloorBoard"), TNArt::PiecePivot(FVector(P, SandZ(P.X, P.Y) + 1.0), YawOf(Across)), { &Deco });
 				Deco.AddBox(FVector(P, SandZ(P.X, P.Y) + 4.0), FVector(Across, 0.0), FVector(135.0, 11.0, 3.0), WoodTone(k * 2 + Half) * 0.9f);
 			}
 		}
@@ -223,6 +232,8 @@ namespace TNBeachFeatures
 				const FVector2D Mid = St.P + St.Off * Side * (0.5 * (TrenchHalfChannel + TrenchBermTop));
 				Top = FMath::Max(Top, NaturalZ(Mid.X, Mid.Y) + TrenchBermHeight);
 			}
+			// Los cuatro tablones: centro de su cara de abajo, +X de un lomo al otro.
+			TNArt::FPieceScope Piece(Log, TN_ART("Beach.Trench.Bridge"), TNArt::PiecePivot(FVector(St.P, Top + 1.0), YawOf(Across)), { &Solid });
 			for (int32 j = 0; j < 4; ++j)
 			{
 				const FVector2D P = St.P + St.Along * ((j - 1.5) * 30.0);
@@ -293,11 +304,14 @@ void ATN_BeachRaceGenerator::BuildFeatures()
 	TNBeachFeatures::FBuffers Lips;
 	TNBeachFeatures::FBuffers Rocks;
 	TNBeachFeatures::FBuffers Deco;
+	// Piezas que Arte puede sustituir (Docs/Arte_Assets.md): sacos, postes, tablones y puentes de las trincheras y las rocas
+	// de las pozas. Los caballones y las cornisas siguen el relieve: no.
+	TNArt::FPieceLog Log(TEXT("Features"));
 
 	const TArray<TNBeachLayout::FTrench>& AllTrenches = TNBeachLayout::Trenches();
 	for (int32 t = 0; t < AllTrenches.Num(); ++t)
 	{
-		TNBeachFeatures::BuildTrench(Trenches, Deco, AllTrenches[t], 0x7E4Cu + static_cast<uint32>(t) * 31u);
+		TNBeachFeatures::BuildTrench(Trenches, Deco, AllTrenches[t], 0x7E4Cu + static_cast<uint32>(t) * 31u, Log);
 	}
 
 	// El labio se mide contra el terreno tal y como se dibuja (su triángulo), no contra la fórmula: así se salta.
@@ -324,16 +338,20 @@ void ATN_BeachRaceGenerator::BuildFeatures()
 			const double Radius = Rng.Range(150.0, 320.0);
 			const double Height = Rng.Range(110.0, 260.0);
 			const FLinearColor Tone = TNProcMesh::TNProcLerpColor(FLinearColor(0.42f, 0.38f, 0.33f), FLinearColor(0.22f, 0.3f, 0.16f), static_cast<float>(Rng.Range(0.0, 0.45)));
-			TNProcMesh::TNProcAddBoulder(Rocks, FVector(P, TNBeachLayout::SandZ(P.X, P.Y) - 20.0), Radius, Height, static_cast<uint32>(Rng.RangeInt(1, 1 << 20)), Tone);
+			// Dibujada aparte y añadida tal cual (pieza de arte).
+			TNBeachFeatures::FBuffers Boulder;
+			TNProcMesh::TNProcAddBoulder(Boulder, FVector(P, TNBeachLayout::SandZ(P.X, P.Y) - 20.0), Radius, Height, static_cast<uint32>(Rng.RangeInt(1, 1 << 20)), Tone);
+			TNBeachRaceKit::AppendBoulderPiece(Log, Rocks, FVector(P, TNBeachLayout::SandZ(P.X, P.Y) - 20.0), Boulder);
 		}
 	}
 
 	// Caras planas con su color (como el acantilado); con colisión lo que se pisa o se salta.
 	UMaterialInterface* Mat = TNBeachRaceKit::TerrainMaterial();
-	TNBeachRaceKit::Upload(FeatureMesh, 0, Trenches, Mat, true);
+	TNBeachRaceKit::Upload(FeatureMesh, 0, Trenches, Mat, true, &Log);
 	TNBeachRaceKit::Upload(FeatureMesh, 1, Lips, Mat, true);
-	TNBeachRaceKit::Upload(FeatureMesh, 2, Rocks, Mat, true);
-	TNBeachRaceKit::Upload(FeatureDecoMesh, 0, Deco, Mat, false);
+	TNBeachRaceKit::Upload(FeatureMesh, 2, Rocks, Mat, true, &Log);
+	TNBeachRaceKit::Upload(FeatureDecoMesh, 0, Deco, Mat, false, &Log);
+	TNArt::SpawnPieceArt(FeatureMesh, Log);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

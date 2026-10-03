@@ -512,20 +512,20 @@ void ATN_BeachClamTrap::ApplySpec()
 	const FClamPalette Pal = MakePalette(Variant);
 	TNBeachTrapKit::FBuffers Mound;
 	BuildMound(Mound, D, Seed);
-	TNBeachTrapKit::SetMesh(MoundMesh, this, Mound);
+	TNBeachTrapKit::SetMesh(MoundMesh, this, Mound, TN_ART("Beach.ClamTrap.Mound"));
 
 	TNBeachTrapKit::FBuffers Lower;
 	BuildLowerValve(Lower, D, Pal);
-	TNBeachTrapKit::SetMesh(LowerMesh, this, Lower);
+	TNBeachTrapKit::SetMesh(LowerMesh, this, Lower, TN_ART("Beach.ClamTrap.LowerShell"));
 
 	TNBeachTrapKit::FBuffers Mantle;
 	BuildMantle(Mantle, D, Pal, Seed);
-	TNBeachTrapKit::SetMesh(MantleMesh, this, Mantle);
+	TNBeachTrapKit::SetMesh(MantleMesh, this, Mantle, TN_ART("Beach.ClamTrap.Mantle"));
 
 	const double PearlR = FMath::Clamp(0.055 * Fit, 38.0, 60.0);
 	TNBeachTrapKit::FBuffers Pearl;
 	BuildPearl(Pearl, PearlR, Pal);
-	TNBeachTrapKit::SetMesh(PearlMesh, this, Pearl);
+	TNBeachTrapKit::SetMesh(PearlMesh, this, Pearl, TN_ART("Beach.ClamTrap.Pearl"));
 	const FVector PearlAt(0.0, D.H * 0.46 * D.B, D.FloorZ + 14.0 + 0.85 * PearlR);
 	PearlMesh->SetRelativeLocation(PearlAt);
 
@@ -537,7 +537,7 @@ void ATN_BeachClamTrap::ApplySpec()
 	TNBeachTrapKit::FBuffers Upper;
 	TNBeachTrapKit::FHulls UpperHulls;
 	BuildUpperValve(Upper, UpperHulls, D, Pal, Seed);
-	TNBeachTrapKit::SetMesh(UpperMesh, this, Upper);
+	TNBeachTrapKit::SetMesh(UpperMesh, this, Upper, TN_ART("Beach.ClamTrap.UpperShell"));
 	UpperCollision->SetCollisionConvexMeshes(UpperHulls);
 
 	TNBeachTrapKit::FHulls LowerHulls;

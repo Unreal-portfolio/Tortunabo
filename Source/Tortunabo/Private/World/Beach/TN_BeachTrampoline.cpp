@@ -526,7 +526,7 @@ void ATN_BeachTrampoline::ApplySpec()
 			TNBeachBoostKit::AddBunting(Decor, From, To, 0.1 * FVector::Dist(From, To), 30.0, Seed + static_cast<uint32>(p) * 5u);
 		}
 	}
-	TNBeachTrapKit::SetMesh(DecorMesh, this, Decor);
+	TNBeachTrapKit::SetMesh(DecorMesh, this, Decor, TN_ART("Beach.Trampoline.Decor"));
 	PlaceSign(Fit, Seed);
 
 	BodyCollision->SetCollisionConvexMeshes(Hulls);
@@ -579,7 +579,7 @@ void ATN_BeachTrampoline::PlaceSign(double Fit, uint32 Seed)
 	bSignMoving = false;
 	TNBeachTrapKit::FBuffers Sign;
 	TNBeachSignKit::BuildSign(Sign, TNBeachSignKit::EIcon::Bounce, bBoosted, Seed);
-	TNBeachTrapKit::SetMesh(SignMesh, this, Sign);
+	TNBeachTrapKit::SetMesh(SignMesh, this, Sign, TN_ART("Beach.Trampoline.Sign"));
 	TNBeachSignKit::SetText(SignText, NSLOCTEXT("TNBeach", "TrampolineSign", "¡BOING!"), TNBeachSignKit::TextColor(bBoosted));
 	SignGlowApplied = -1.f;
 }

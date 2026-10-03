@@ -84,6 +84,17 @@ namespace TNBeachDecorKit
 	/** Colisión de una pieza: bloquea todo y deja pasar la cámara salvo en lo grande y macizo (no da tirones). */
 	void SetupCollision(UPrimitiveComponent* Comp, bool bCollision, bool bBlocksCamera);
 
+	// ── Piezas de arte (Docs/Arte_Assets.md): las variantes de un elemento comparten nombre ──
+
+	/** Malla fija del elemento («Beach.Decor.Coconut»...; NAME_None si no es decorado). Pivote: su origen en la arena. */
+	FName BodySlot(ETNBeachElement Element);
+
+	/** Parte que se mueve del elemento (tapa de la almeja, banderas...; NAME_None si no tiene). Pivote: el de su animación. */
+	FName MovingSlot(ETNBeachElement Element);
+
+	/** Pieza PieceIndex de un tramo: módulo o bajada de la pasarela, palo o cuerda del caminito (NAME_None si no es un tramo). */
+	FName PieceSlot(ETNBeachElement Element, int32 PieceIndex);
+
 	/** Estado de la animación de un ejemplar entre fotogramas (qué ciclo va la almeja y si alguien la tenía encima). */
 	struct FAnimState
 	{

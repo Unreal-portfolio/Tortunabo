@@ -1,5 +1,6 @@
 #include "Lobby/Playground/TN_JellyfishTrampoline.h"
 #include "Lobby/Playground/TN_PlaygroundSynthComponent.h"
+#include "Art/TN_Art.h"
 #include "Core/TN_Log.h"
 #include "Player/TN_ShellBody.h"
 #include "Player/TortugaCharacter.h"
@@ -722,7 +723,10 @@ void ATN_JellyfishTrampoline::BuildAll(bool bForce)
 	TNJellyfishDetail::BuildSpots(Bell, Pal, Scale, static_cast<uint32>(SpotSeed) * 2654435761u + 17u);
 	TNJellyfishDetail::BuildHighlight(Bell, Scale);
 	TNJellyfishDetail::BuildFace(Bell, Scale);
-	BellMesh->SetStaticMesh(TNPlaygroundKit::BuildMesh(this, Bell, Mat));
+	// Campana: pieza de arte (se modela con Size = 1 y sigue el aplastamiento del pivote). Los tentáculos que se mecen son
+	// una malla que se deforma en cada fotograma y se quedan como están.
+	TNArt::SetMesh(BellMesh, TNPlaygroundKit::BuildMesh(this, Bell, Mat), TN_ART("Lobby.Playground.Jellyfish.Bell"));
+	TNPlaygroundKit::ScaleArt(BellMesh, FVector(Scale));
 	BellPivot->SetRelativeLocation(FVector(0.0, 0.0, TNJellyfishDetail::RimZ * Scale));
 
 	// Colisión y sensor: la cúpula y la misma cúpula algo más grande.

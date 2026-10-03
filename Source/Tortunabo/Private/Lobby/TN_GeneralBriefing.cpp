@@ -1,4 +1,5 @@
 #include "Lobby/TN_GeneralBriefing.h"
+#include "Art/TN_Art.h"
 #include "Multiplayer/TN_LocalViews.h"
 #include "Core/TN_CosmeticLook.h"
 #include "Core/TN_Log.h"
@@ -611,7 +612,8 @@ void ATN_GeneralBriefing::BuildTable()
 	{
 		VertexColorMat = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EngineDebugMaterials/VertexColorMaterial.VertexColorMaterial"));
 	}
-	Table->SetStaticMesh(TNProcRuntimeMesh::MakeStaticMesh(this, B, VertexColorMat));
+	// Toda la tienda del general (mesa con la maqueta, pizarra del caballete, cartel y bandera) es una pieza de arte.
+	TNArt::SetMesh(Table, TNProcRuntimeMesh::MakeStaticMesh(this, B, VertexColorMat), TN_ART("Lobby.Briefing.Tent"));
 }
 
 void ATN_GeneralBriefing::HideBlockout()

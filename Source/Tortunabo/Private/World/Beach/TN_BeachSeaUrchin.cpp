@@ -77,7 +77,7 @@ void ATN_BeachSeaUrchin::ApplySpec()
 	{
 		TNBeachMeshes::BuildUrchin(M, Look, ShapeSeed);
 	});
-	Ball = TNBeachKit::AddPart(this, RigRoot, Mesh, FVector(0.0, 0.0, RollRadius));
+	Ball = TNBeachKit::AddPart(this, RigRoot, Mesh, FVector(0.0, 0.0, RollRadius), true, TN_ART("Beach.SeaUrchin.Ball"));
 	if (Ball)
 	{
 		Ball->SetUsingAbsoluteRotation(true);

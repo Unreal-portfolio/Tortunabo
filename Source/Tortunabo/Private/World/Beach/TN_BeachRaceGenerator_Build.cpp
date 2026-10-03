@@ -303,6 +303,8 @@ void ATN_BeachRaceGenerator::ClearGenerated()
 	Walls.Reset();
 	for (UStaticMeshComponent* Lid : StartEggLids)
 	{
+		// Sin pieza: quita su malla de arte (TNArt), que no se va con el componente.
+		if (Lid) { TNArt::ApplyToComponent(Lid, NAME_None); }
 		if (Lid) { Lid->DestroyComponent(); }
 	}
 	StartEggLids.Reset();
@@ -319,6 +321,11 @@ void ATN_BeachRaceGenerator::ClearGenerated()
 			 FinishDecoMesh.Get(), FloatMesh.Get(), FootprintMesh.Get(), FeatureMesh.Get(), FeatureDecoMesh.Get(), PoolMesh.Get() })
 	{
 		if (Comp) { Comp->ClearAllMeshSections(); }
+	}
+	// Y las mallas de arte de sus piezas (TNArt::SpawnPieceArt de cada construcción).
+	for (const TCHAR* Group : { TEXT("Grove"), TEXT("Finish"), TEXT("FinishFloats"), TEXT("Cliff"), TEXT("Features"), TEXT("SprintNest") })
+	{
+		TNArt::ClearPieceArt(this, Group);
 	}
 	GridXs.Reset();
 	GridYs.Reset();
@@ -654,7 +661,9 @@ void ATN_BeachRaceGenerator::BuildCliff()
 		}
 	}
 
-	// Peñascos al pie de los cabos (fuera de la zona donde se cae al agua) y algunos sobre la repisa junto a la selva.
+	// Peñascos al pie de los cabos (fuera de la zona donde se cae al agua) y algunos sobre la repisa junto a la selva. Cada uno
+	// se dibuja aparte y se añade tal cual (pieza de arte; la repisa y la pared, no).
+	TNArt::FPieceLog Log(TEXT("Cliff"));
 	TNProcMap::FRng Rng(static_cast<uint64>(TNBeachLayout::TerrainSeed) * 31ull + 7ull);
 	const FLinearColor RockC(0.42f, 0.38f, 0.33f);
 	for (const double Side : { -1.0, 1.0 })
@@ -663,14 +672,18 @@ void ATN_BeachRaceGenerator::BuildCliff()
 		{
 			const double Y = Side * U;
 			const FVector Base(TNBeachLayout::EdgeX(Y) + Rng.Range(250.0, 1000.0), Y, TNBeachLayout::SeabedZ(TNBeachLayout::EdgeX(Y) + 600.0, Y) - 100.0);
-			TNProcMesh::TNProcAddBoulder(Rocks, Base, Rng.Range(350.0, 950.0), Rng.Range(700.0, 1900.0), static_cast<uint32>(Rng.RangeInt(1, 1 << 20)), RockC);
+			TNProcMesh::FTNProcMeshBuffers Boulder;
+			TNProcMesh::TNProcAddBoulder(Boulder, Base, Rng.Range(350.0, 950.0), Rng.Range(700.0, 1900.0), static_cast<uint32>(Rng.RangeInt(1, 1 << 20)), RockC);
+			TNBeachRaceKit::AppendBoulderPiece(Log, Rocks, Base, Boulder);
 		}
 		for (double U = TNBeachLayout::HalfWidth - 1800.0; U < TNBeachLayout::HalfWidth + 6000.0; U += Rng.Range(900.0, 1800.0))
 		{
 			const double Y = Side * U;
 			const double X = CourseLen - Rng.Range(300.0, 1500.0);
-			TNProcMesh::TNProcAddBoulder(Rocks, FVector(X, Y, TNBeachLayout::GroundZ(X, Y) - 30.0), Rng.Range(200.0, 500.0), Rng.Range(250.0, 600.0),
+			TNProcMesh::FTNProcMeshBuffers Boulder;
+			TNProcMesh::TNProcAddBoulder(Boulder, FVector(X, Y, TNBeachLayout::GroundZ(X, Y) - 30.0), Rng.Range(200.0, 500.0), Rng.Range(250.0, 600.0),
 				static_cast<uint32>(Rng.RangeInt(1, 1 << 20)), RockC * 1.1f);
+			TNBeachRaceKit::AppendBoulderPiece(Log, Rocks, FVector(X, Y, TNBeachLayout::GroundZ(X, Y) - 30.0), Boulder);
 		}
 	}
 
@@ -678,7 +691,8 @@ void ATN_BeachRaceGenerator::BuildCliff()
 	UMaterialInterface* Mat = TNBeachRaceKit::TerrainMaterial();
 	TNBeachRaceKit::Upload(CliffMesh, 0, Top, Mat, true);
 	TNBeachRaceKit::Upload(CliffMesh, 1, Face, Mat, true);
-	TNBeachRaceKit::Upload(CliffMesh, 2, Rocks, Mat, true);
+	TNBeachRaceKit::Upload(CliffMesh, 2, Rocks, Mat, true, &Log);
+	TNArt::SpawnPieceArt(CliffMesh, Log);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

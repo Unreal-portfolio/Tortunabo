@@ -15,6 +15,7 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
 #include "UObject/Package.h"
+#include "Art/TN_Art.h"
 #include "World/ProcMap/TN_ProcMapAmbientFX.h"
 #include "World/ProcMap/TN_ProcMapMeshKit.h"
 #include "World/ProcMap/TN_ProcMapRuntimeMesh.h"
@@ -109,6 +110,17 @@ namespace TNBeachKit
 		Comp->SetupAttachment(Parent);
 		Comp->SetRelativeLocation(RelLoc);
 		Comp->RegisterComponent();
+		return Comp;
+	}
+
+	/**
+	 * Lo mismo, como pieza de arte Slot (Docs/Arte_Assets.md, TNArt::ApplyToComponent): con sustituto, la malla de arte va
+	 * de hija de la pieza y se mueve, se esconde y se enseña con ella. Pivote: el origen de la pieza (su articulación).
+	 */
+	inline UStaticMeshComponent* AddPart(AActor* Owner, USceneComponent* Parent, UStaticMesh* Mesh, const FVector& RelLoc, bool bShadow, FName Slot)
+	{
+		UStaticMeshComponent* Comp = AddPart(Owner, Parent, Mesh, RelLoc, bShadow);
+		TNArt::ApplyToComponent(Comp, Slot);
 		return Comp;
 	}
 
