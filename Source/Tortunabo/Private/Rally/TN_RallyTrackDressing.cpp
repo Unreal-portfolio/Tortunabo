@@ -39,27 +39,12 @@ namespace TNRallyDressingActor
 	constexpr float TireCullCm = 20000.f;
 	constexpr float SpectatorCullCm = 30000.f;
 	constexpr int32 SpectatorVariantCount = 4;
-
-	/** Trozos seguidos de puntos con suelo (al menos dos): el decorado del límite no flota sobre las caídas. */
-	TArray<TArray<FVector>> SplitGrounded(const TArray<FVector>& Points, const TArray<bool>& Grounded)
-	{
-		TArray<TArray<FVector>> Pieces;
-		TArray<FVector> Current;
-		for (int32 Index = 0; Index <= Points.Num(); ++Index)
-		{
-			if (Index < Points.Num() && Grounded[Index])
-			{
-				Current.Add(Points[Index]);
-				continue;
-			}
-			if (Current.Num() >= 2)
-			{
-				Pieces.Add(Current);
-			}
-			Current.Reset();
-		}
-		return Pieces;
-	}
+	/** Pisos como mucho de una pila de neumáticos que baja hasta un suelo más hondo que la calzada. */
+	constexpr int32 MaxTireStackLevels = 8;
+	/** Holgura entre el borde de la calzada y la cara interior de la pila (cm). */
+	constexpr double TireEdgeClearanceCm = 10.0;
+	/** Fracción del grueso de un neumático que la pila se hunde en el suelo. */
+	constexpr double TireSinkFraction = 0.15;
 
 	/** Tortuga del público de pie (base en el origen, mirando a +X, ~1,4 m): caparazón, peto, cabeza, brazos en alto y pies. */
 	void BuildSpectatorTurtle(TNProcMesh::FTNProcMeshBuffers& Buffers, int32 Variant)
@@ -106,9 +91,8 @@ ATN_RallyTrackDressing::ATN_RallyTrackDressing()
 	bReplicates = false;
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
 
-	// Vallas y neumáticos apilados (#303, director): los castillos ya no hacen de borde, solo de decorado fuera de la valla.
-	BarrierStyles = { ETNRallyBarrierStyle::PostRope, ETNRallyBarrierStyle::Tires, ETNRallyBarrierStyle::Sandbags,
-		ETNRallyBarrierStyle::Tires, ETNRallyBarrierStyle::Logs };
+	// Solo neumáticos apilados (#303, director, 03-10): ni vallas ni paredes mezcladas.
+	BarrierStyles = { ETNRallyBarrierStyle::Tires };
 	DecorEntries = TNRallyDressingActor::DefaultDecorEntries();
 	FarDecorEntries = TNRallyDressingFar::DefaultEntries();
 	TireMesh = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(TEXT("/Game/Generated/Meshes/Buggy/SM_BuggyTire.SM_BuggyTire")));
@@ -224,6 +208,8 @@ void ATN_RallyTrackDressing::ClearDressing()
 	}
 	MeshComponents.Reset();
 	DressedGates.Reset();
+	TireStackBases[0].Reset();
+	TireStackBases[1].Reset();
 	RailSegmentCount = 0;
 	BarrierPieceCount = 0;
 	DecorCount = 0;
@@ -234,8 +220,11 @@ void ATN_RallyTrackDressing::ClearDressing()
 
 TNRallyDressing::FBarrierParams ATN_RallyTrackDressing::MakeBarrierParams() const
 {
-	// Las reglas de los límites viven en FBarrierParams (probadas en Tortunabo.Rally.Dressing.*); aquí, los valores por defecto.
-	return TNRallyDressing::FBarrierParams();
+	// Las reglas de los límites viven en FBarrierParams (probadas en Tortunabo.Rally.Dressing.*). La pila de neumáticos va con
+	// su cara interior en el borde de la calzada (#303).
+	TNRallyDressing::FBarrierParams Params;
+	Params.RoadEdgeMarginCm = 0.5 * TireDiameterCm + TNRallyDressingActor::TireEdgeClearanceCm;
+	return Params;
 }
 
 TNRallyDressing::FDecorParams ATN_RallyTrackDressing::MakeDecorParams() const
@@ -323,29 +312,71 @@ TArray<uint8> ATN_RallyTrackDressing::ProbeDrops(const TNRallyDressing::FTrackDa
 }
 
 TArray<FVector> ATN_RallyTrackDressing::RunPoints(const TNRallyDressing::FTrackData& Track, const TNRallyDressing::FBarrierSide& Barrier,
-	const TArray<int32>& Run, int32 Side, TArray<bool>& OutGrounded) const
+	const TArray<int32>& Run, int32 Side, TArray<FVector>& OutEdge) const
 {
 	TArray<FVector> Points;
-	OutGrounded.Reset();
+	OutEdge.Reset();
 	for (const int32 Index : Run)
 	{
 		const TNRallyDressing::FAxisSample& Sample = Track.Samples[Index];
-		const FVector Lateral = TNRallyDressing::LateralPoint(Sample, Side, Barrier.OffsetCm[Index]);
+		const FVector Edge = TNRallyDressing::LateralPoint(Sample, Side, Barrier.OffsetCm[Index]);
 		FVector Ground;
-		const bool bGrounded = FindGroundNear(Track, Lateral, Sample.Location.Z, Ground);
-		// Sobre una caída, el carril sigue a la cota de la calzada: frena igual aunque no tenga suelo debajo.
-		Points.Add(bGrounded ? Ground : Lateral);
-		OutGrounded.Add(bGrounded);
+		const bool bGrounded = FindGroundNear(Track, Edge, Sample.Location.Z, Ground);
+		// Con el suelo más bajo que la calzada (talud o caída), el carril sigue a la cota de la calzada: tapa igual.
+		Points.Add(bGrounded && Ground.Z > Edge.Z ? Ground : Edge);
+		OutEdge.Add(Edge);
 	}
 	if (Track.bClosed && Run.Num() == Track.Samples.Num() && Points.Num() > 0)
 	{
 		// Copias antes de añadir: Add de un elemento del propio array salta el assert de TArray (CheckAddress).
 		const FVector FirstPoint = Points[0];
-		const bool bFirstGrounded = OutGrounded[0];
+		const FVector FirstEdge = OutEdge[0];
 		Points.Add(FirstPoint);
-		OutGrounded.Add(bFirstGrounded);
+		OutEdge.Add(FirstEdge);
 	}
 	return Points;
+}
+
+TArray<FVector> ATN_RallyTrackDressing::ProjectToGround(const TNRallyDressing::FTrackData& Track, const TArray<FVector>& Points) const
+{
+	TArray<FVector> Out;
+	Out.Reserve(Points.Num());
+	for (const FVector& Point : Points)
+	{
+		FVector Ground;
+		Out.Add(FindGroundNear(Track, Point, Point.Z, Ground) ? Ground : Point);
+	}
+	return Out;
+}
+
+double ATN_RallyTrackDressing::TireStackGroundZ(const TNRallyDressing::FTrackData& Track, const FVector& Center, double YawDeg,
+	double RadiusCm) const
+{
+	using namespace TNRallyDressingActor;
+	const FVector Along = FRotator(0.0, YawDeg, 0.0).Vector();
+	const FVector Across(-Along.Y, Along.X, 0.0);
+	const FVector Probes[] = { Center, Center + Along * RadiusCm, Center - Along * RadiusCm, Center + Across * RadiusCm,
+		Center - Across * RadiusCm };
+	double Lowest = TNumericLimits<double>::Max();
+	for (const FVector& Probe : Probes)
+	{
+		FVector Ground;
+		if (FindGroundNear(Track, Probe, Center.Z, Ground))
+		{
+			Lowest = FMath::Min(Lowest, Ground.Z);
+		}
+	}
+	if (Lowest < TNumericLimits<double>::Max())
+	{
+		return Lowest;
+	}
+	// Sin suelo cerca (caída o agua): el suelo de más abajo o la superficie del agua; sin nada debajo, la calzada.
+	FVector Deep;
+	if (TraceGround(Center, GroundUpCm, GroundDownCm, Deep))
+	{
+		return Track.bHasWater ? FMath::Max(Deep.Z, Track.WaterZ) : Deep.Z;
+	}
+	return Track.bHasWater ? FMath::Min(Center.Z, Track.WaterZ) : Center.Z;
 }
 
 void ATN_RallyTrackDressing::AddRails(const TNRallyDressing::FTrackData& Track, const TNRallyDressing::FBarrierPlan& Plan, int32 Seed,
@@ -363,8 +394,8 @@ void ATN_RallyTrackDressing::AddRails(const TNRallyDressing::FTrackData& Track, 
 		const FBarrierSide& Barrier = Plan.Sides[Side];
 		for (int32 RunIndex = 0; RunIndex < Barrier.Runs.Num(); ++RunIndex)
 		{
-			TArray<bool> Grounded;
-			const TArray<FVector> Points = RunPoints(Track, Barrier, Barrier.Runs[RunIndex], Side, Grounded);
+			TArray<FVector> Edge;
+			const TArray<FVector> Points = RunPoints(Track, Barrier, Barrier.Runs[RunIndex], Side, Edge);
 			for (int32 Point = 0; Point + 1 < Points.Num(); ++Point)
 			{
 				AddRailSegment(Cube, Points[Point], Points[Point + 1], Batches);
@@ -373,17 +404,14 @@ void ATN_RallyTrackDressing::AddRails(const TNRallyDressing::FTrackData& Track, 
 			{
 				continue;
 			}
+			// Toda la barrera visible, también sobre los taludes y las caídas (#303: antes se quitaba donde no había suelo
+			// cerca y quedaban tramos sin neumáticos). Cada pieza busca su suelo; el estilo cambia por trozos sin hueco.
 			const int32 RunSeed = TNRallyDressing::SubSeed(Seed, Side, RunIndex);
-			const TArray<TArray<FVector>> Pieces = TNRallyDressingActor::SplitGrounded(Points, Grounded);
-			for (int32 Piece = 0; Piece < Pieces.Num(); ++Piece)
+			const TArray<TArray<FVector>> Chunks = TNRallyDressing::ChunkPolyline(Edge, StyleSectionCm);
+			for (int32 Chunk = 0; Chunk < Chunks.Num(); ++Chunk)
 			{
-				// Con la barrera continua cada lado es un tramo entero: el estilo cambia por trozos que comparten el punto de corte.
-				const TArray<TArray<FVector>> Chunks = TNRallyDressing::ChunkPolyline(Pieces[Piece], StyleSectionCm);
-				for (int32 Chunk = 0; Chunk < Chunks.Num(); ++Chunk)
-				{
-					const int32 ChunkSeed = TNRallyDressing::SubSeed(RunSeed, Piece, 3 + 8 * Chunk);
-					AddBarrierRun(Chunks[Chunk], BarrierStyles[ChunkSeed % BarrierStyles.Num()], ChunkSeed, Batches);
-				}
+				const int32 ChunkSeed = TNRallyDressing::SubSeed(RunSeed, 0, 3 + 8 * Chunk);
+				AddBarrierRun(Track, Chunks[Chunk], BarrierStyles[ChunkSeed % BarrierStyles.Num()], Side, ChunkSeed, Batches);
 			}
 		}
 	}
@@ -405,24 +433,30 @@ void ATN_RallyTrackDressing::AddRailSegment(UStaticMesh* Cube, const FVector& A,
 	++RailSegmentCount;
 }
 
-void ATN_RallyTrackDressing::AddBarrierRun(const TArray<FVector>& Points, ETNRallyBarrierStyle Style, int32 RunSeed, FTNRallyDressingBatches& Batches)
+void ATN_RallyTrackDressing::AddBarrierRun(const TNRallyDressing::FTrackData& Track, const TArray<FVector>& Points, ETNRallyBarrierStyle Style,
+	int32 Side, int32 RunSeed, FTNRallyDressingBatches& Batches)
 {
+	if (Style == ETNRallyBarrierStyle::Tires)
+	{
+		AddTireRun(Track, Points, Side, Batches);
+		return;
+	}
+	const TArray<FVector> Grounded = ProjectToGround(Track, Points);
 	switch (Style)
 	{
 	case ETNRallyBarrierStyle::PostRope:
-		AddPostRopeRun(TNRallyDressing::ResamplePolyline(Points, TNRallyDressingActor::PostRopeSegmentCm), RunSeed, Batches);
+		AddPostRopeRun(TNRallyDressing::ResamplePolyline(Grounded, TNRallyDressingActor::PostRopeSegmentCm), RunSeed, Batches);
 		break;
 	case ETNRallyBarrierStyle::Sandbags:
-		AddPieceRun(Points, ETNBeachElement::Sandbags, ETNBeachElement::Sandbags, 0.55f, RunSeed, Batches);
+		AddPieceRun(Grounded, ETNBeachElement::Sandbags, ETNBeachElement::Sandbags, 0.55f, RunSeed, Batches);
 		break;
 	case ETNRallyBarrierStyle::Logs:
-		AddPieceRun(Points, ETNBeachElement::MossyLog, ETNBeachElement::Driftwood, 0.5f, RunSeed, Batches);
-		break;
-	case ETNRallyBarrierStyle::Tires:
-		AddTireRun(Points, Batches);
+		AddPieceRun(Grounded, ETNBeachElement::MossyLog, ETNBeachElement::Driftwood, 0.5f, RunSeed, Batches);
 		break;
 	case ETNRallyBarrierStyle::Castles:
-		AddPieceRun(Points, ETNBeachElement::SandCastleSmall, ETNBeachElement::ToyBucket, 0.6f, RunSeed, Batches);
+		AddPieceRun(Grounded, ETNBeachElement::SandCastleSmall, ETNBeachElement::ToyBucket, 0.6f, RunSeed, Batches);
+		break;
+	default:
 		break;
 	}
 }
@@ -478,7 +512,8 @@ void ATN_RallyTrackDressing::AddPieceRun(const TArray<FVector>& Points, ETNBeach
 	}
 }
 
-void ATN_RallyTrackDressing::AddTireRun(const TArray<FVector>& Points, FTNRallyDressingBatches& Batches)
+void ATN_RallyTrackDressing::AddTireRun(const TNRallyDressing::FTrackData& Track, const TArray<FVector>& Points, int32 Side,
+	FTNRallyDressingBatches& Batches)
 {
 	using namespace TNRallyDressingActor;
 	UStaticMesh* Mesh = TireMesh.LoadSynchronous();
@@ -499,16 +534,25 @@ void ATN_RallyTrackDressing::AddTireRun(const TArray<FVector>& Points, FTNRallyD
 		Lying = FRotator(0.0, 0.0, 90.0).Quaternion();
 	}
 	const double Scale = UniformScaleFor(Mesh, Lying, TireDiameterCm);
-	const double Thickness = PlacedBox(Mesh, Lying, Scale).GetSize().Z;
+	const double Thickness = FMath::Max(1.0, PlacedBox(Mesh, Lying, Scale).GetSize().Z);
+	const int32 MinLevels = FMath::Max(1, TireStackCount);
+	TArray<FVector>& Bases = TireStackBases[Side == TNRallyDressing::LeftSide ? 0 : 1];
 	TArray<FTransform>& Out = Batches.Get(Mesh, FTNRallyDressingBatches::ECollision::None, true, TireCullCm);
 	for (const TNRallyDressing::FPolySpot& Spot : TNRallyDressing::ResamplePolyline(Points, TireDiameterCm * 1.02))
 	{
-		for (int32 Level = 0; Level < TireStackCount; ++Level)
+		// Apoyada en el suelo de verdad bajo la pila (#303: antes iba a la cota interpolada entre muestras y flotaba).
+		const double GroundZ = TireStackGroundZ(Track, Spot.Location, Spot.YawDeg, 0.5 * TireDiameterCm);
+		// Con el suelo por debajo de la calzada, los pisos que falten para asomar sobre ella lo mismo que en llano.
+		const double BelowRoad = FMath::Max(0.0, Spot.Location.Z - GroundZ - TireSinkFraction * Thickness);
+		const int32 Levels = FMath::Clamp(MinLevels + FMath::CeilToInt32(BelowRoad / Thickness), MinLevels, MaxTireStackLevels);
+		const FVector Ground(Spot.Location.X, Spot.Location.Y, GroundZ);
+		for (int32 Level = 0; Level < Levels; ++Level)
 		{
 			const FQuat Rotation = FRotator(0.0, Spot.YawDeg + 37.0 * Level, 0.0).Quaternion() * Lying;
-			const FVector Base = Spot.Location + FVector(0.0, 0.0, (Level - 0.15) * Thickness);
+			const FVector Base = Ground + FVector(0.0, 0.0, (Level - TireSinkFraction) * Thickness);
 			Out.Add(FitUniformOnGround(Mesh, Base, Rotation, Scale));
 		}
+		Bases.Add(Ground - FVector(0.0, 0.0, TireSinkFraction * Thickness));
 		++BarrierPieceCount;
 	}
 }

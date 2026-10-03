@@ -126,6 +126,8 @@ public:
 	/** Centro del volumen de la puerta con X en el sentido de la carrera. */
 	FTransform GetGateCrossingTransform(int32 GateIndex) const;
 	FVector GetGateHalfExtent() const;
+	/** Ancho de la calzada del manifest (road_width_m, en cm); 0 si no viene. */
+	double GetRoadWidthCm() const { return ManifestRoadWidthCm; }
 
 	/** Hueco Slot (0..7) de la parrilla 2 × 4 detrás de la salida, a ras de suelo (traza hacia abajo) + Lift. */
 	FTransform GetGridSlotTransform(int32 Slot, double LiftCm = 80.0) const;
@@ -223,4 +225,5 @@ private:
 	double WaterZ = 0.0;
 	int32 ManifestLaps = 0;
 	double ActiveBorderOffsetCm = 1300.0;
+	double ManifestRoadWidthCm = 0.0;
 };
