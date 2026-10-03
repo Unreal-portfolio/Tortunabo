@@ -56,6 +56,12 @@ public:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
+	/** Hasta donde se mece la malla (TNSeaweedLogic::FREEZE_DISTANCE) más su huella: más lejos, su Tick no hace nada. */
+	virtual float GetTickWakeDistance() const override;
+
+	/** Con alguien enganchado, frenado o con las algas enrolladas, sigue despierta (nadie se queda frenado). */
+	virtual bool IsTickBusy() const override;
+
 	/** true si la tortuga está enganchada según el estado replicado. */
 	bool IsCaught(const ACharacter* Turtle) const;
 

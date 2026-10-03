@@ -139,6 +139,7 @@ necesita espera a que esté lista.
 | `TN.Beach.Perf` | Tiempos de la última ronda (reparto, asientos, decorado, actores, botín y fotogramas), decorado local (piezas, instancias, con colisión y con sombra, partes que se mueven, componentes), actores de la playa (con dormancy, siempre relevantes, relevancia media), rebuscables (puntos, usados, actores ahora), objetos, conchas y la lista de red. En la ventana donde se escribe y, en PIE, también el servidor. |
 | `TN.Beach.BuildBudgetMs 6` | Milisegundos por fotograma para montar la ronda (asientos, decorado local y actores). |
 | `TN.Beach.AsyncBuild 0` | Monta la ronda entera en un fotograma, como antes (para comparar); `1` vuelve a por partes. |
+| `TN.Perf.BeachTickWake 0` | Minas, algas y puertas de conchas con el Tick siempre encendido, como antes de #59 (para comparar); con `1` (lo normal) lo apagan sin tortuga, caparazón ni cámara cerca (40 m las minas, ~100 m las algas, ~35 m las puertas) y lo mantienen mientras tienen algo en marcha (mecha, explosión, tortuga enganchada, puerta abierta). En `-game`: `-dpcvars=TN.Perf.BeachTickWake=0`. Actores con Tick en reposo en `TN.Stress control` (Saved/Stress, `ticking_actors`). |
 
 ## Objetos de carrera (tipo Mario Kart)
 
