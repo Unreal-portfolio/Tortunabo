@@ -237,7 +237,15 @@ void ATN_VRRig::PressGrip(int32 Hand, ATortugaCharacter* Turtle, const FTransfor
 	using EVRGrip = ATortugaCharacter::EVRGrip;
 	const bool bRight = Hand == 1;
 	UTN_VRGrabComponent* Grab = Turtle ? Turtle->GetVRGrabComponent() : nullptr;
+	// La otra mano ya lleva al compañero: esta no lo toca (soltarla lo dejaría caer); la izquierda corre, como sin nada.
+	const int32 Other = 1 - Hand;
+	if (GripUse[Other] == EGripUse::Turtle && static_cast<EVRGrip>(GripTurtle[Other]) == EVRGrip::Partner)
+	{
+		GripUse[Hand] = bRight ? EGripUse::None : EGripUse::Sprint;
+		return;
+	}
 	// 1) Lo que toca esa mano: un objeto del suelo, algo con lo que interactuar o un compañero.
+
 	EVRGrip Result = Turtle ? Turtle->VRGripPressed(bRight, Point.GetLocation(), false) : EVRGrip::None;
 	// 2) Un objeto con física.
 	if (Result == EVRGrip::None && Grab && Grab->TryGrab(Hand, Point))

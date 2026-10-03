@@ -450,9 +450,10 @@ abrir un fallo del objeto «Modo VR» con lo que se vio.
   (20-40 ms) se notan en los Touch y que no se queda vibrando al abrir un menú o al cambiar de mapa.
 
 - **Probador con gafas**: la cámara del probador tiene `bLockToHmd` y el visor le pisa la posición (ya pasaba antes).
-- **Agarres**: apoyar el dedo en el agarre derecho y soltarlo despacio puede tirar el objeto; llevando a un compañero,
-  cualquier agarre lo suelta y el izquierdo deja de servir para correr; si llegan a la vez el clic y el eje del agarre, la
-  pestaña del menú puede cambiar dos veces.
+- **Agarres**: apoyar el dedo en el agarre derecho y soltarlo despacio puede tirar el objeto; llevando a un compañero
+  cogido con un agarre, el de la otra mano ya no lo toca (el izquierdo corre), pero si se cogió con E o el gatillo,
+  cualquier agarre lo suelta; si llegan a la vez el clic y el eje del agarre, la pestaña del menú puede cambiar dos veces.
+
 - **Coger y lanzar muy deprisa**: si el objeto nuevo aún no ha llegado al inventario, se puede lanzar el anterior.
 - **Alcance de la mano**: el servidor valida la interacción por la distancia al cuerpo, no a la mano, y puede rechazarla
   sin aviso.
