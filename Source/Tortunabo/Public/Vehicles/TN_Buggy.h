@@ -105,6 +105,9 @@ public:
 	UTN_BuggyHealthComponent* GetHealthComponent() const { return HealthComponent; }
 	ATN_BuggyGunnerPawn* GetGunnerPawn() const { return GunnerPawn; }
 	UStaticMeshComponent* GetBody() const { return Body; }
+	/** Si el turbo se ve: con Niagara (BoostEffect) o con la llama de malla propia (#294). */
+	bool HasBoostVisual() const { return BoostEffect != nullptr || (BoostFlameMesh != nullptr && BoostFlameMaterial != nullptr); }
+	const UStaticMesh* GetBoostFlameMesh() const { return BoostFlameMesh; }
 	UChaosWheeledVehicleMovementComponent* GetWheeledMovement() const;
 
 	/** Segundos de tinta en pantalla que quedan (0 = limpia). Vale en cualquier máquina. */
@@ -156,6 +159,8 @@ public:
 	void DebugShowGunner();
 	/** Solapes de la torreta con la artillera y con la carrocería con el apuntado actual, en una línea para el registro. */
 	FString DebugMeasureTurretFit() const;
+	/** Turbo pisado (o suelto) con la barra llena, para ver la llama sin mando (servidor o standalone; TN.Rally.DebugEffects). */
+	void DebugHoldBoost(bool bHold);
 
 	// ── Impactos (solo servidor) ────────────────────────────────────────────────
 
@@ -250,6 +255,39 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Turbo")
 	FVector BoostEffectOffset = FVector(-200.f, 0.f, 111.f);
 
+	/**
+	 * Llama de malla propia (#294) cuando no hay BoostEffect: un cono tintado de BoostFlameColor en cada tubo de escape,
+	 * que parpadea mientras el turbo empuja. Vacío = sin llama.
+	 */
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Turbo")
+	TObjectPtr<UStaticMesh> BoostFlameMesh;
+
+	/** Material de la llama, con el parámetro vectorial «Color» (el de las ráfagas del Rally). */
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Turbo")
+	TObjectPtr<UMaterialInterface> BoostFlameMaterial;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Turbo")
+	FLinearColor BoostFlameColor = FLinearColor(1.f, 0.42f, 0.06f);
+
+	/** Separación lateral (cm) de cada tubo respecto a BoostEffectOffset: hay una llama por tubo. */
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Turbo")
+	float BoostFlameSideOffsetCm = 31.f;
+
+	/** Dirección de la llama en la carrocería (la de los tubos, hacia atrás y arriba); la Y se refleja en cada lado. */
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Turbo")
+	FVector BoostFlameDirection = FVector(-0.91f, 0.13f, 0.40f);
+
+	/** Largo (cm) y diámetro de la base (cm) de cada llama. */
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Turbo", meta = (ClampMin = "1"))
+	float BoostFlameLengthCm = 80.f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Turbo", meta = (ClampMin = "1"))
+	float BoostFlameDiameterCm = 16.f;
+
+	/** Cuánto varía el largo al parpadear (fracción). */
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Turbo", meta = (ClampMin = "0", ClampMax = "0.9"))
+	float BoostFlameFlickerAmount = 0.3f;
+
 private:
 	// ── Física ─────────────────────────────────────────────────────────────────
 	/** Fricción, par, frenos de carrera, golpes, charco, antivuelco, estabilidad, turbo y dirección de cada fotograma. */
@@ -278,6 +316,10 @@ private:
 	void ApplyBoostPush();
 	/** Llama y sonido del turbo según IsBoosting (solo en máquinas con pantalla). */
 	void RefreshBoostEffects();
+	/** Enseña u oculta las llamas de malla propia (las crea la primera vez). */
+	void ShowBoostFlames(bool bShow);
+	/** Coloca y hace parpadear las llamas visibles; cada fotograma con el turbo. */
+	void UpdateBoostFlames();
 	void SetBoostHeld(bool bHeld);
 	/** Freno de carrera en el servidor y en la conductora local: acelerador a 0 y freno a fondo cada fotograma. */
 	void ApplyRaceBrake();
@@ -497,6 +539,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UNiagaraComponent> BoostEffectComponent;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UStaticMeshComponent>> BoostFlames;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UAudioComponent> BoostSoundComponent;

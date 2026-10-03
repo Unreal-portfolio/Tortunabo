@@ -22,6 +22,7 @@
 #include "Engine/World.h"
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "Materials/MaterialInterface.h"
 #include "Net/UnrealNetwork.h"
 #include "Sound/SoundBase.h"
 #include "UObject/ConstructorHelpers.h"
@@ -149,6 +150,11 @@ ATN_Buggy::ATN_Buggy()
 	static ConstructorHelpers::FObjectFinder<USoundBase> BoostStartFinder(TEXT("/Game/Audio/Rally/SFX_Buggy_Turbo_Start.SFX_Buggy_Turbo_Start"));
 	BoostSound = BoostLoopFinder.Object;
 	BoostStartSound = BoostStartFinder.Object;
+	// Llama del turbo sin Niagara (#294): cono básico tintado, como las ráfagas del Rally (ATN_RallyBurstFX).
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> FlameMeshFinder(TEXT("/Engine/BasicShapes/Cone.Cone"));
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> FlameMaterialFinder(TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
+	BoostFlameMesh = FlameMeshFinder.Object;
+	BoostFlameMaterial = FlameMaterialFinder.Object;
 	Turret = CreateDefaultSubobject<UTN_BuggyTurretComponent>(TEXT("Turret"));
 	Turret->SetupAttachment(Chassis);
 	// Pivote PivotRaiseCm por encima de Muzzle_Gunner: el cañón pasa sobre la cabeza de la artillera y el arco trasero.
@@ -404,6 +410,7 @@ void ATN_Buggy::TickDrivePhysics()
 	ApplyStability();
 	ApplyBoostPush();
 	RefreshBoostEffects();
+	UpdateBoostFlames();
 	if (IsLocallyControlled() || (HasAuthority() && !IsPlayerControlled()))
 	{
 		ApplySteeringAssist();

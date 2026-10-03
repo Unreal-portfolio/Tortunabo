@@ -5,6 +5,7 @@
 //   TN.Rally.SpawnTarget [cm] [espera]       (servidor) buggy vacío delante como blanco
 //   TN.Rally.DebugFireAll [espera] [atrás]            dispara una vez cada munición (coco, alga, burbuja, mortero, tinta), 1 s entre una y otra
 //   TN.Rally.DebugQuitAfter <s>               cierra el juego pasados s segundos
+//   TN.Rally.DebugEffects [vida] [espera] [turbo]   (servidor) deja el buggy con esa vida (humo) y el turbo pisado (llama)
 //   TN.Rally.LocalFire [especial] [espera] [veces]   (cliente o anfitrión) la jugadora local pide disparos al servidor
 //   TN.Rally.StatusLater <espera> [veces] [intervalo]  TN.Rally.Status diferido (en un cliente, lo replicado)
 //   TN.Rally.DebugSwapSeats [espera]          (servidor) en cada buggy biplaza, la artillera pasa a conducir y viceversa
@@ -19,6 +20,7 @@
 #include "Rally/TN_RallyGameState.h"
 #include "Rally/TN_RallyLogic.h"
 #include "Vehicles/TN_BuggyGunnerPawn.h"
+#include "Vehicles/TN_BuggyHealthComponent.h"
 #include "Vehicles/TN_BuggyMath.h"
 #include "Vehicles/TN_BuggyTurretComponent.h"
 #include "Vehicles/TN_RallyTurretLogic.h"
@@ -315,6 +317,32 @@ namespace TNBuggyDebug
 		{
 			const bool bBackward = FloatArg(Args, 1, 0.f) != 0.f;
 			After(World, FloatArg(Args, 0, 0.f), [bBackward](UWorld* Alive) { FireAll(Alive, bBackward); });
+		}));
+
+	/** Vida fijada y turbo pisado en el buggy del jugador, para ver el humo (#296) y la llama (#294) sin combate ni mando. */
+	void ShowEffects(UWorld* World, float Health, bool bBoost)
+	{
+		ATN_Buggy* Buggy = FindBuggy(World);
+		UTN_BuggyHealthComponent* HealthComponent = Buggy ? Buggy->GetHealthComponent() : nullptr;
+		if (!Buggy || !Buggy->HasAuthority() || !HealthComponent)
+		{
+			UE_LOG(LogTNBuggy, Warning, TEXT("[Humo] TN.Rally.DebugEffects: no hay buggy en el servidor"));
+			return;
+		}
+		HealthComponent->ApplyDamage(HealthComponent->GetHealth() - FMath::Max(1.f, Health));
+		Buggy->DebugHoldBoost(bBoost);
+		UE_LOG(LogTNBuggy, Log, TEXT("[Humo] efectos de %s: vida=%.0f humo=%d bocanadas=%d turbo=%d"), *Buggy->GetName(),
+			HealthComponent->GetHealth(), HealthComponent->IsSmoking() ? 1 : 0, HealthComponent->IsEmittingSmokePuffs() ? 1 : 0,
+			bBoost ? 1 : 0);
+	}
+
+	FAutoConsoleCommandWithWorldAndArgs CmdDebugEffects(TEXT("TN.Rally.DebugEffects"),
+		TEXT("Rally (servidor): TN.Rally.DebugEffects [vida = 30] [espera] [turbo 1|0 = 1]: deja el buggy del jugador con esa vida (humo a media vida) y el turbo pisado con la barra llena (llama)."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+		{
+			const float Health = FloatArg(Args, 0, 30.f);
+			const bool bBoost = FloatArg(Args, 2, 1.f) != 0.f;
+			After(World, FloatArg(Args, 1, 0.f), [Health, bBoost](UWorld* Alive) { ShowEffects(Alive, Health, bBoost); });
 		}));
 
 	FAutoConsoleCommandWithWorldAndArgs CmdDebugQuitAfter(TEXT("TN.Rally.DebugQuitAfter"),

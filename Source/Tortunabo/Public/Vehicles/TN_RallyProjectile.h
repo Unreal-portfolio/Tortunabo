@@ -133,7 +133,9 @@ enum class ETNRallyBurstKind : uint8
 	/** Fogonazo del cañón. */
 	MuzzleFlash,
 	/** Chispas de un choque. */
-	Sparks
+	Sparks,
+	/** Bocanada de humo de un buggy a media vida: sube mientras crece. */
+	Smoke
 };
 
 /** Ráfaga cosmética corta (esfera que crece y se desvanece). No se replica: cada máquina crea la suya. */

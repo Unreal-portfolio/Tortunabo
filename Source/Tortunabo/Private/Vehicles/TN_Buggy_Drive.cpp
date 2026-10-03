@@ -10,6 +10,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "NiagaraComponent.h"
 #include "NiagaraFunctionLibrary.h"
 
@@ -128,6 +129,7 @@ void ATN_Buggy::RefreshBoostEffects()
 		return;
 	}
 	bBoostEffectsOn = bWanted;
+	ShowBoostFlames(bWanted && !BoostEffect);
 	if (!bWanted)
 	{
 		if (BoostEffectComponent)
@@ -157,6 +159,76 @@ void ATN_Buggy::RefreshBoostEffects()
 		BoostSoundComponent = UGameplayStatics::SpawnSoundAttached(BoostSound, Body, NAME_None, BoostEffectOffset,
 			EAttachLocation::KeepRelativeOffset, true);
 	}
+}
+
+void ATN_Buggy::ShowBoostFlames(bool bShow)
+{
+	if (bShow && BoostFlames.IsEmpty() && BoostFlameMesh && Body)
+	{
+		for (int32 Index = 0; Index < 2; ++Index)
+		{
+			UStaticMeshComponent* Flame = NewObject<UStaticMeshComponent>(this);
+			Flame->SetStaticMesh(BoostFlameMesh);
+			if (BoostFlameMaterial)
+			{
+				Flame->SetMaterial(0, BoostFlameMaterial);
+			}
+			Flame->SetCollisionProfileName(TEXT("NoCollision"));
+			Flame->SetGenerateOverlapEvents(false);
+			Flame->SetCastShadow(false);
+			Flame->SetupAttachment(Body);
+			Flame->RegisterComponent();
+			if (UMaterialInstanceDynamic* Mid = Flame->CreateDynamicMaterialInstance(0))
+			{
+				Mid->SetVectorParameterValue(TEXT("Color"), BoostFlameColor);
+			}
+			BoostFlames.Add(Flame);
+		}
+	}
+	for (UStaticMeshComponent* Flame : BoostFlames)
+	{
+		if (Flame)
+		{
+			Flame->SetVisibility(bShow);
+		}
+	}
+	UpdateBoostFlames();
+}
+
+void ATN_Buggy::UpdateBoostFlames()
+{
+	if (!bBoostEffectsOn || BoostFlames.IsEmpty())
+	{
+		return;
+	}
+	const float Time = static_cast<float>(GetWorld()->GetTimeSeconds());
+	for (int32 Index = 0; Index < BoostFlames.Num(); ++Index)
+	{
+		UStaticMeshComponent* Flame = BoostFlames[Index];
+		if (!Flame)
+		{
+			continue;
+		}
+		// Una llama por tubo: el índice 0 a la izquierda (Y negativa) y el 1 a la derecha, con la dirección reflejada.
+		const float Side = Index == 0 ? -1.f : 1.f;
+		const FVector Exhaust = BoostEffectOffset + FVector(0.f, Side * BoostFlameSideOffsetCm, 0.f);
+		const FVector Dir(BoostFlameDirection.X, Side * FMath::Abs(BoostFlameDirection.Y), BoostFlameDirection.Z);
+		// Desfase por tubo para que no parpadeen a la vez.
+		const float Flicker = TNBuggy::BoostFlameFlicker(Time + 0.37f * Index, BoostFlameFlickerAmount);
+		Flame->SetRelativeTransform(TNBuggy::BoostFlameTransform(Exhaust, Dir, BoostFlameLengthCm, BoostFlameDiameterCm, Flicker));
+	}
+}
+
+void ATN_Buggy::DebugHoldBoost(bool bHold)
+{
+#if !UE_BUILD_SHIPPING
+	if (!HasAuthority())
+	{
+		return;
+	}
+	BoostCharge01 = 1.f;
+	SetBoostHeld(bHold);
+#endif
 }
 
 void ATN_Buggy::SetBoostHeld(bool bHeld)

@@ -246,6 +246,21 @@ namespace TNBuggy
 	 */
 	TORTUNABO_API float BoostPushAccel(float ForwardSpeedCms, float BoostTopSpeedCms, float PushAccel, float FadeBandCms);
 
+	// ── Llama del turbo (#294) ──────────────────────────────────────────────────
+
+	/** Cono básico de /Engine/BasicShapes: 100 cm de alto y de diámetro, centrado en el origen y con la punta en +Z. */
+	constexpr float BasicConeSizeCm = 100.f;
+
+	/**
+	 * Transformación (relativa a la carrocería) del cono básico como llama: la base, de DiameterCm, en ExhaustLocal y la
+	 * punta a LengthCm * Flicker en la dirección DirLocal (se normaliza; nula = hacia atrás). Flicker se limita a [0,1; 2].
+	 */
+	TORTUNABO_API FTransform BoostFlameTransform(const FVector& ExhaustLocal, const FVector& DirLocal, float LengthCm,
+		float DiameterCm, float Flicker);
+
+	/** Parpadeo del largo de la llama, en [1 - Amount, 1 + Amount] (Amount en [0; 0,9]), sin repetición visible. */
+	TORTUNABO_API float BoostFlameFlicker(float TimeSeconds, float Amount);
+
 	// ── Cámara de la conductora (#298) ──────────────────────────────────────────
 
 	struct FDriverCameraTuning

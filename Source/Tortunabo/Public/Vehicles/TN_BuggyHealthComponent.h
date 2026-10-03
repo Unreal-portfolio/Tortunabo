@@ -68,9 +68,19 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Vida")
 	float MaxHealth = 100.f;
 
-	/** Humo continuo a media vida, sujeto a la carrocería. */
+	/**
+	 * Humo continuo a media vida, sujeto a la carrocería. Vacío = humo de malla propia: bocanadas grises que suben desde
+	 * el motor (ATN_RallyBurstFX), más seguidas cuanta menos vida.
+	 */
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Efectos")
 	TObjectPtr<UNiagaraSystem> SmokeFX;
+
+	/** Radio final de cada bocanada de humo de malla propia (cm). */
+	UPROPERTY(EditDefaultsOnly, Category = "Rally|Efectos", meta = (ClampMin = "1"))
+	float SmokePuffRadiusCm = 45.f;
+
+	/** Si está saliendo humo de malla propia (bocanadas programadas). Para los tests. */
+	bool IsEmittingSmokePuffs() const;
 
 	/** Nube de arena al reventar. */
 	UPROPERTY(EditDefaultsOnly, Category = "Rally|Efectos")
@@ -100,6 +110,8 @@ private:
 	void Explode();
 	void RestoreAfterDeath();
 	void UpdateSmoke();
+	/** Suelta una bocanada sobre el motor y programa la siguiente según la vida (sin SmokeFX). */
+	void SpawnSmokePuff();
 
 	UFUNCTION()
 	void OnChassisHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
@@ -128,4 +140,5 @@ private:
 	double LastCrashTime = -1000.0;
 	TMap<TWeakObjectPtr<AActor>, double> LastRunOver;
 	FTimerHandle RestoreTimer;
+	FTimerHandle SmokePuffTimer;
 };

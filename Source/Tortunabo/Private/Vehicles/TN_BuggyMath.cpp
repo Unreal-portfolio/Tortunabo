@@ -403,4 +403,20 @@ namespace TNBuggy
 		const float Amplitude = FMath::Square(FMath::Clamp(Trauma, 0.f, 1.f)) * MaxShakeDeg;
 		return Amplitude * FVector(Wiggle(TimeSeconds, 37.1f, 61.7f, 0.7f), Wiggle(TimeSeconds, 43.3f, 71.9f, 2.1f), 0.f);
 	}
+
+	FTransform BoostFlameTransform(const FVector& ExhaustLocal, const FVector& DirLocal, float LengthCm, float DiameterCm,
+		float Flicker)
+	{
+		const FVector Dir = DirLocal.GetSafeNormal(UE_SMALL_NUMBER, FVector(-1.f, 0.f, 0.f));
+		const float Length = FMath::Max(1.f, LengthCm) * FMath::Clamp(Flicker, 0.1f, 2.f);
+		const float Diameter = FMath::Max(1.f, DiameterCm);
+		// El eje +Z del cono (la punta) pasa a Dir; el centro queda a media llama del escape.
+		const FQuat Rotation = FRotationMatrix::MakeFromZ(Dir).ToQuat();
+		return FTransform(Rotation, ExhaustLocal + Dir * (0.5f * Length), FVector(Diameter, Diameter, Length) / BasicConeSizeCm);
+	}
+
+	float BoostFlameFlicker(float TimeSeconds, float Amount)
+	{
+		return 1.f + FMath::Clamp(Amount, 0.f, 0.9f) * Wiggle(TimeSeconds, 31.7f, 57.3f, 0.4f);
+	}
 }
