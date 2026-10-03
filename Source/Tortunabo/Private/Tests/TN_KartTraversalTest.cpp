@@ -25,6 +25,8 @@ bool FTNKartGeyserTest::RunTest(const FString& Parameters)
 	const FVector Landing = Start + FVector(V.X, V.Y, 0.0) * (TimeUp + TimeDown);
 	TestEqual(TEXT("Cae en el destino (X)"), Landing.X, Target.X, 1.0);
 	TestEqual(TEXT("Cae en el destino (Y)"), Landing.Y, Target.Y, 1.0);
+	TestEqual(TEXT("El vuelo guiado dura lo mismo que la parábola"), static_cast<double>(TNKart::GeyserFlightSeconds(Start, Target, 450.f, Gravity)),
+		TimeUp + TimeDown, 0.01);
 	// Bajar también funciona (géiser a un nivel más bajo): el ápice cuenta desde el punto más alto.
 	const FVector Down = TNKart::GeyserLaunchVelocity(FVector(0.0, 0.0, 500.0), FVector(800.0, 0.0, 0.0), 300.f, Gravity);
 	TestTrue(TEXT("Hacia un sitio más bajo, también sube primero"), Down.Z > 0.0 && Down.X > 0.0);

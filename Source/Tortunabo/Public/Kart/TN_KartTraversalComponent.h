@@ -26,6 +26,9 @@ namespace TNKart
 	 */
 	TORTUNABO_API FVector GeyserLaunchVelocity(const FVector& Start, const FVector& Target, float ApexExtra, float GravityCms2);
 
+	/** Segundos de vuelo de esa parábola, del géiser al destino. */
+	TORTUNABO_API float GeyserFlightSeconds(const FVector& Start, const FVector& Target, float ApexExtra, float GravityCms2);
+
 	/**
 	 * Aceleración vertical de la flotación (cm/s²): la que sostiene el kart con su línea de flotación a ras de agua.
 	 * Submersion > 0: la línea de flotación está bajo el agua (empuja más); VerticalSpeed amortigua el rebote.
@@ -100,6 +103,11 @@ private:
 	void TryGeyserLaunch();
 	void ApplySlide(float DeltaSeconds);
 	void LevelAfterGeyser(float DeltaSeconds);
+	/**
+	 * El vuelo del géiser, guiado: el kart sigue la parábola hasta el destino (sin el freno del aire ni las fuerzas del buggy
+	 * en el aire, que lo dejaban corto contra la pared del escalón).
+	 */
+	void GuideGeyserFlight();
 	/** Máquinas con pantalla: ruedas plegadas, salpicaduras al entrar y estela. */
 	void UpdateWaterVisuals(float DeltaSeconds, bool bWasFloating, float SurfaceZ);
 	void FoldTires();
@@ -109,6 +117,11 @@ private:
 	TArray<TWeakObjectPtr<ATN_ProcSlideZone>> Slides;
 	int32 CachedGeneration = 0;
 	double LastGeyserLaunch = -1000.0;
+	/** Vuelo del géiser en curso: salida, velocidad inicial, gravedad y duración (0 = sin vuelo). */
+	FVector FlightOrigin = FVector::ZeroVector;
+	FVector FlightVelocity = FVector::ZeroVector;
+	float FlightGravity = 980.f;
+	float FlightSeconds = 0.f;
 
 	bool bFloating = false;
 	float Fold01 = 0.f;

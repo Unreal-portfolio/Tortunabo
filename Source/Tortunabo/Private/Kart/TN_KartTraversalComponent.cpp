@@ -24,6 +24,15 @@ namespace TNKart
 		return Flat / FMath::Max(0.1, TimeUp + TimeDown) + FVector(0.0, 0.0, Vz);
 	}
 
+	float GeyserFlightSeconds(const FVector& Start, const FVector& Target, float ApexExtra, float GravityCms2)
+	{
+		const double Gravity = FMath::Max(1.0, static_cast<double>(GravityCms2));
+		const double Apex = FMath::Max(Start.Z, Target.Z) + FMath::Max(0.0, static_cast<double>(ApexExtra));
+		const double TimeUp = FMath::Sqrt(2.0 * FMath::Max(0.0, Apex - Start.Z) / Gravity);
+		const double TimeDown = FMath::Sqrt(FMath::Max(0.0, 2.0 * (Apex - Target.Z) / Gravity));
+		return static_cast<float>(FMath::Max(0.1, TimeUp + TimeDown));
+	}
+
 	float BuoyancyAccel(float SubmersionCm, float VerticalSpeedCms, float GravityCms2)
 	{
 		// A ras de agua sostiene justo el peso; 40 cm más hondo, 2,5 veces; 40 cm por encima, nada. Amortigua el rebote.
@@ -181,6 +190,7 @@ void UTN_KartTraversalComponent::TickComponent(float DeltaTime, ELevelTick TickT
 			ApplyRaft(DeltaTime, SurfaceZ);
 		}
 		ApplySlide(DeltaTime);
+		GuideGeyserFlight();
 		LevelAfterGeyser(DeltaTime);
 	}
 	TryGeyserLaunch();
@@ -276,12 +286,37 @@ void UTN_KartTraversalComponent::TryGeyserLaunch()
 		{
 			const float Gravity = FMath::Max(1.f, -World->GetGravityZ());
 			const FVector Landing = Geyser->GetTarget() + FVector(0.f, 0.f, GeyserLandingLiftCm);
-			Chassis->SetPhysicsLinearVelocity(TNKart::GeyserLaunchVelocity(Location, Landing, Geyser->GetApexExtra(), Gravity));
+			FlightOrigin = Location;
+			FlightVelocity = TNKart::GeyserLaunchVelocity(Location, Landing, Geyser->GetApexExtra(), Gravity);
+			FlightGravity = Gravity;
+			FlightSeconds = TNKart::GeyserFlightSeconds(Location, Landing, Geyser->GetApexExtra(), Gravity);
+			Chassis->SetPhysicsLinearVelocity(FlightVelocity);
 			Chassis->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
 			UE_LOG(LogTNRally, Verbose, TEXT("[Karts] %s sube en el géiser de (%.0f, %.0f, %.0f)."), *Kart->GetName(), Mouth.X, Mouth.Y, Mouth.Z);
 		}
 		return;
 	}
+}
+
+void UTN_KartTraversalComponent::GuideGeyserFlight()
+{
+	ATN_Buggy* Kart = GetKart();
+	USkeletalMeshComponent* Chassis = Kart->GetMesh();
+	UWorld* World = GetWorld();
+	if (FlightSeconds <= 0.f || !Chassis || !Chassis->IsSimulatingPhysics() || !World)
+	{
+		return;
+	}
+	const float Time = static_cast<float>(World->GetTimeSeconds() - LastGeyserLaunch);
+	if (Time >= FlightSeconds)
+	{
+		FlightSeconds = 0.f;
+		return;
+	}
+	// Donde tendría que estar en la parábola y a qué velocidad; se corrige lo que se haya desviado.
+	const FVector Wanted = FlightOrigin + FlightVelocity * Time + FVector(0.f, 0.f, -0.5f * FlightGravity * Time * Time);
+	const FVector Velocity = FlightVelocity + FVector(0.f, 0.f, -FlightGravity * Time);
+	Chassis->SetPhysicsLinearVelocity(Velocity + (Wanted - Kart->GetActorLocation()) * 3.f);
 }
 
 void UTN_KartTraversalComponent::LevelAfterGeyser(float DeltaSeconds)
