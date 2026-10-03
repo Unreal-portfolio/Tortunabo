@@ -4,8 +4,8 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: Game\n"
-"POT-Creation-Date: 2026-10-03 02:46\n"
-"PO-Revision-Date: 2026-10-03 02:46\n"
+"POT-Creation-Date: 2026-10-03 13:07\n"
+"PO-Revision-Date: 2026-10-03 13:07\n"
 "Language-Team: \n"
 "Language: ja\n"
 "MIME-Version: 1.0\n"
@@ -826,99 +826,99 @@ msgid "Metallic"
 msgstr "Metallic"
 
 #. Key:	SerieHelmet
-#. SourceLocation:	Source/Tortunabo/Private/Core/TN_CosmeticLook.cpp(235)
-#: Source/Tortunabo/Private/Core/TN_CosmeticLook.cpp(235)
+#. SourceLocation:	Source/Tortunabo/Private/Core/TN_CosmeticLook.cpp(239)
+#: Source/Tortunabo/Private/Core/TN_CosmeticLook.cpp(239)
 msgctxt "Tortunabo,SerieHelmet"
 msgid "Casco de serie"
 msgstr "初期ヘルメット"
 
 #. Key:	SerieShell
-#. SourceLocation:	Source/Tortunabo/Private/Core/TN_CosmeticLook.cpp(236)
-#: Source/Tortunabo/Private/Core/TN_CosmeticLook.cpp(236)
+#. SourceLocation:	Source/Tortunabo/Private/Core/TN_CosmeticLook.cpp(240)
+#: Source/Tortunabo/Private/Core/TN_CosmeticLook.cpp(240)
 msgctxt "Tortunabo,SerieShell"
 msgid "Caparazón de serie"
 msgstr "初期の甲羅"
 
 #. Key:	SerieEyes
-#. SourceLocation:	Source/Tortunabo/Private/Core/TN_CosmeticLook.cpp(237)
-#: Source/Tortunabo/Private/Core/TN_CosmeticLook.cpp(237)
+#. SourceLocation:	Source/Tortunabo/Private/Core/TN_CosmeticLook.cpp(241)
+#: Source/Tortunabo/Private/Core/TN_CosmeticLook.cpp(241)
 msgctxt "Tortunabo,SerieEyes"
 msgid "Ojos de serie"
 msgstr "初期の目"
 
 #. Key:	SerieBody
-#. SourceLocation:	Source/Tortunabo/Private/Core/TN_CosmeticLook.cpp(238)
-#: Source/Tortunabo/Private/Core/TN_CosmeticLook.cpp(238)
+#. SourceLocation:	Source/Tortunabo/Private/Core/TN_CosmeticLook.cpp(242)
+#: Source/Tortunabo/Private/Core/TN_CosmeticLook.cpp(242)
 msgctxt "Tortunabo,SerieBody"
 msgid "Verde de serie"
 msgstr "初期カラー（みどり）"
 
 #. Key:	SerieHelmetDesc
-#. SourceLocation:	Source/Tortunabo/Private/Core/TN_CosmeticLook.cpp(260)
-#: Source/Tortunabo/Private/Core/TN_CosmeticLook.cpp(260)
+#. SourceLocation:	Source/Tortunabo/Private/Core/TN_CosmeticLook.cpp(266)
+#: Source/Tortunabo/Private/Core/TN_CosmeticLook.cpp(266)
 msgctxt "Tortunabo,SerieHelmetDesc"
 msgid "El casco rojo de siempre. Protege de los cocos."
 msgstr "いつもの赤いヘルメット。ココナッツから頭を守ってくれます。"
 
 #. Key:	SerieShellDesc
-#. SourceLocation:	Source/Tortunabo/Private/Core/TN_CosmeticLook.cpp(261)
-#: Source/Tortunabo/Private/Core/TN_CosmeticLook.cpp(261)
+#. SourceLocation:	Source/Tortunabo/Private/Core/TN_CosmeticLook.cpp(267)
+#: Source/Tortunabo/Private/Core/TN_CosmeticLook.cpp(267)
 msgctxt "Tortunabo,SerieShellDesc"
 msgid "Tu caparazón original, a juego con tu color."
 msgstr "生まれたときの甲羅。あなたの色とおそろいです。"
 
 #. Key:	SerieEyesDesc
-#. SourceLocation:	Source/Tortunabo/Private/Core/TN_CosmeticLook.cpp(262)
-#: Source/Tortunabo/Private/Core/TN_CosmeticLook.cpp(262)
+#. SourceLocation:	Source/Tortunabo/Private/Core/TN_CosmeticLook.cpp(268)
+#: Source/Tortunabo/Private/Core/TN_CosmeticLook.cpp(268)
 msgctxt "Tortunabo,SerieEyesDesc"
 msgid "Los de toda la vida: blancos, redondos y con su brillito."
 msgstr "いつもの目。白くて丸くて、きらっと光ります。"
 
 #. Key:	SerieBodyDesc
-#. SourceLocation:	Source/Tortunabo/Private/Core/TN_CosmeticLook.cpp(263)
-#: Source/Tortunabo/Private/Core/TN_CosmeticLook.cpp(263)
+#. SourceLocation:	Source/Tortunabo/Private/Core/TN_CosmeticLook.cpp(269)
+#: Source/Tortunabo/Private/Core/TN_CosmeticLook.cpp(269)
 msgctxt "Tortunabo,SerieBodyDesc"
 msgid "Verde tortuga, el clásico que nunca falla."
 msgstr "カメの緑。外さない定番カラーです。"
 
 #. Key:	BoothPrompt
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_ChangingBooth.cpp(102)
-#: Source/Tortunabo/Private/Lobby/TN_ChangingBooth.cpp(102)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_ChangingBooth.cpp(103)
+#: Source/Tortunabo/Private/Lobby/TN_ChangingBooth.cpp(103)
 msgctxt "Tortunabo,BoothPrompt"
 msgid "Entrar al probador"
 msgstr "試着室に入る"
 
 #. Key:	BoothLabel
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_ChangingBooth.cpp(477)
-#: Source/Tortunabo/Private/Lobby/TN_ChangingBooth.cpp(477)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_ChangingBooth.cpp(478)
+#: Source/Tortunabo/Private/Lobby/TN_ChangingBooth.cpp(478)
 msgctxt "Tortunabo,BoothLabel"
 msgid "PROBADOR"
 msgstr "試着室"
 
 #. Key:	GeneralPrompt
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(123)
-#: Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(123)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(124)
+#: Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(124)
 msgctxt "Tortunabo,GeneralPrompt"
 msgid "Hablar con el general"
 msgstr "将軍と話す"
 
 #. Key:	GeneralName
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(124)
-#: Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(124)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(125)
+#: Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(125)
 msgctxt "Tortunabo,GeneralName"
 msgid "General Galápago"
 msgstr "ガラパゴス将軍"
 
 #. Key:	GeneralHQ
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(125)
-#: Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(125)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(126)
+#: Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(126)
 msgctxt "Tortunabo,GeneralHQ"
 msgid "Cuartel general"
 msgstr "司令部"
 
 #. Key:	GeneralMissionBoard
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(284)
-#: Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(284)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(285)
+#: Source/Tortunabo/Private/Lobby/TN_GeneralBriefing.cpp(285)
 msgctxt "Tortunabo,GeneralMissionBoard"
 msgid "ORDEN DEL DÍA<br>MISIÓN: {0}<br>DIFICULTAD: {1}"
 msgstr "本日の命令<br>ミッション：{0}<br>難易度：{1}"
@@ -1036,127 +1036,127 @@ msgid "lo que manda el reglamento."
 msgstr "規定どおり。"
 
 #. Key:	ProcSelectorMode
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_ProcModeSelector.cpp(142)
-#: Source/Tortunabo/Private/Lobby/TN_ProcModeSelector.cpp(142)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_ProcModeSelector.cpp(146)
+#: Source/Tortunabo/Private/Lobby/TN_ProcModeSelector.cpp(146)
 msgctxt "Tortunabo,ProcSelectorMode"
 msgid "MODO: {0}"
 msgstr "モード：{0}"
 
 #. Key:	ProcSelectorDifficulty
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_ProcModeSelector.cpp(145)
-#: Source/Tortunabo/Private/Lobby/TN_ProcModeSelector.cpp(145)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_ProcModeSelector.cpp(149)
+#: Source/Tortunabo/Private/Lobby/TN_ProcModeSelector.cpp(149)
 msgctxt "Tortunabo,ProcSelectorDifficulty"
 msgid "DIFICULTAD: {0}"
 msgstr "難易度：{0}"
 
 #. Key:	ProcSelectorPrompt
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_ProcModeSelector.cpp(21)
-#: Source/Tortunabo/Private/Lobby/TN_ProcModeSelector.cpp(21)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_ProcModeSelector.cpp(22)
+#: Source/Tortunabo/Private/Lobby/TN_ProcModeSelector.cpp(22)
 msgctxt "Tortunabo,ProcSelectorPrompt"
 msgid "Cambiar"
 msgstr "変更"
 
 #. Key:	ShopPrompt
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_ShopKeeper.cpp(141)
-#: Source/Tortunabo/Private/Lobby/TN_ShopKeeper.cpp(141)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_ShopKeeper.cpp(142)
+#: Source/Tortunabo/Private/Lobby/TN_ShopKeeper.cpp(142)
 msgctxt "Tortunabo,ShopPrompt"
 msgid "Hablar con el tendero"
 msgstr "店主と話す"
 
 #. Key:	ShopKeeperName
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_ShopKeeper.cpp(142)
-#: Source/Tortunabo/Private/Lobby/TN_ShopKeeper.cpp(142)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_ShopKeeper.cpp(143)
+#: Source/Tortunabo/Private/Lobby/TN_ShopKeeper.cpp(143)
 msgctxt "Tortunabo,ShopKeeperName"
 msgid "Don Tortugo"
 msgstr "ドン・トルトゴ"
 
 #. Key:	ShopName
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_ShopKeeper.cpp(143)
-#: Source/Tortunabo/Private/Lobby/TN_ShopKeeper.cpp(143)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_ShopKeeper.cpp(144)
+#: Source/Tortunabo/Private/Lobby/TN_ShopKeeper.cpp(144)
 msgctxt "Tortunabo,ShopName"
 msgid "La Concha Dorada"
 msgstr "金の貝がら屋"
 
 #. Key:	TreasureChestPrompt
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TreasureChest.cpp(325)
-#: Source/Tortunabo/Private/Lobby/TN_TreasureChest.cpp(325)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TreasureChest.cpp(326)
+#: Source/Tortunabo/Private/Lobby/TN_TreasureChest.cpp(326)
 msgctxt "Tortunabo,TreasureChestPrompt"
 msgid "Mantén para rebuscar en el cofre"
 msgstr "長押しで宝箱をあさる"
 
 #. Key:	SkippedTitle
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(328)
-#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(328)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(329)
+#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(329)
 msgctxt "TNTutorial,SkippedTitle"
 msgid "Tutorial saltado"
 msgstr "チュートリアルをスキップ"
 
 #. Key:	SkippedText
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(329)
-#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(329)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(330)
+#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(330)
 msgctxt "TNTutorial,SkippedText"
 msgid "Lo que no hayas visto te lo cuenta el General Galápago, en la pestaña «Controles»."
 msgstr "見逃した内容は、ガラパゴス将軍が「操作」タブで教えてくれます。"
 
 #. Key:	DoneTitle
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(333)
-#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(333)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(334)
+#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(334)
 msgctxt "TNTutorial,DoneTitle"
 msgid "¡Tutorial completado!"
 msgstr "チュートリアル完了！"
 
 #. Key:	DoneText
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(334)
-#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(334)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(335)
+#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(335)
 msgctxt "TNTutorial,DoneText"
 msgid "Ya sabes todo lo que hace una tortuga. ¡Bienvenida al castillo!"
 msgstr "カメにできることは、もう全部わかったね。お城へようこそ！"
 
 #. Key:	PadMove
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(61)
-#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(61)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(62)
+#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(62)
 msgctxt "TNTutorial,PadMove"
 msgid "Stick izquierdo"
 msgstr "左スティック"
 
 #. Key:	MouseLook
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(62)
-#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(62)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(63)
+#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(63)
 msgctxt "TNTutorial,MouseLook"
 msgid "Ratón"
 msgstr "マウス"
 
 #. Key:	PadLook
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(62)
-#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(62)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(63)
+#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(63)
 msgctxt "TNTutorial,PadLook"
 msgid "Stick derecho"
 msgstr "右スティック"
 
 #. Key:	SpaceKey
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(64)
-#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(64)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(65)
+#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(65)
 msgctxt "TNTutorial,SpaceKey"
 msgid "Espacio"
 msgstr "スペース"
 
 #. Key:	PadTalk
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(71)
-#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(71)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(72)
+#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(72)
 msgctxt "TNTutorial,PadTalk"
 msgid "Cruceta abajo"
 msgstr "十字キー↓"
 
 #. Key:	SkipHint
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(893)
-#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(893)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(894)
+#: Source/Tortunabo/Private/Lobby/TN_TutorialPlayerComponent.cpp(894)
 msgctxt "TNTutorial,SkipHint"
 msgid "¿Ya sabes jugar? {0} > «Saltar el tutorial»."
 msgstr "もう遊び方は知ってる？ {0} > 「チュートリアルをスキップ」。"
 
 #. Key:	MoundPrompt
-#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPractice.cpp(297)
-#: Source/Tortunabo/Private/Lobby/TN_TutorialPractice.cpp(297)
+#. SourceLocation:	Source/Tortunabo/Private/Lobby/TN_TutorialPractice.cpp(315)
+#: Source/Tortunabo/Private/Lobby/TN_TutorialPractice.cpp(315)
 msgctxt "TNTutorial,MoundPrompt"
 msgid "Mantén para rebuscar en el montículo"
 msgstr "長押しで砂山をあさる"
@@ -1645,155 +1645,155 @@ msgid "TUTORIAL · {0} / {1}"
 msgstr "チュートリアル · {0} / {1}"
 
 #. Key:	ConnectFailed
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1632)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1632)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1685)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1685)
 msgctxt "TNRooms,ConnectFailed"
 msgid "No se ha podido conectar con la sala: puede que el anfitrión se haya ido."
 msgstr "ルームに接続できませんでした。ホストが退出したのかもしれません。"
 
 #. Key:	HostLeft
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1633)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1633)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1686)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1686)
 msgctxt "TNRooms,HostLeft"
 msgid "Se ha acabado la partida: el anfitrión se ha ido o se ha perdido la conexión."
 msgstr "ゲームは終了しました。ホストが退出したか、接続が切れました。"
 
 #. Key:	ListStale
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1743)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1743)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1796)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1796)
 msgctxt "TNRooms,ListStale"
 msgid "Esa sala ya no está en la lista: actualízala."
 msgstr "そのルームはもう一覧にありません。更新してください。"
 
 #. Key:	ListLocked
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1751)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1751)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1804)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1804)
 msgctxt "TNRooms,ListLocked"
 msgid "«{0}» está cerrada: el anfitrión no deja entrar a nadie más."
 msgstr "「{0}」は締め切られています。ホストが新しい参加を止めています。"
 
 #. Key:	ListFull
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1757)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1757)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1810)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1810)
 msgctxt "TNRooms,ListFull"
 msgid "«{0}» está llena ({1}/{2})."
 msgstr "「{0}」は満員です（{1}/{2}）。"
 
 #. Key:	CodeIncomplete
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1769)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1769)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1822)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1822)
 msgctxt "TNRooms,CodeIncomplete"
 msgid "El código tiene 5 letras y números (nunca lleva O, 0, I, 1 ni L)."
 msgstr "コードは英数字5文字です（O、0、I、1、Lは使われません）。"
 
 #. Key:	CodeSearching
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1772)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1772)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1825)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(1825)
 msgctxt "TNRooms,CodeSearching"
 msgid "Buscando la sala {0}..."
 msgstr "ルーム{0}を検索中…"
 
 #. Key:	Locked
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2006)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2006)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2059)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2059)
 msgctxt "TNRooms,Locked"
 msgid "Sala cerrada: no entra nadie más (los que ya estaban pueden volver)."
 msgstr "ルームを締め切りました。新しい人は入れません（すでにいた人は戻れます）。"
 
 #. Key:	Unlocked
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2007)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2007)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2060)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2060)
 msgctxt "TNRooms,Unlocked"
 msgid "Sala abierta: puede entrar gente otra vez."
 msgstr "ルームを開けました。ふたたび参加できます。"
 
 #. Key:	KickReason
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2045)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2045)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2098)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2098)
 msgctxt "TNRooms,KickReason"
 msgid "El anfitrión te ha expulsado de la sala."
 msgstr "ホストにルームから退室させられました。"
 
 #. Key:	KickedNotice
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2062)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2062)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2115)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(2115)
 msgctxt "TNRooms,KickedNotice"
 msgid "El anfitrión te ha expulsado de la sala «{0}»."
 msgstr "ホストにルーム「{0}」から退室させられました。"
 
 #. Key:	CreatingRoom
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(533)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(533)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(569)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(569)
 msgctxt "TNRooms,CreatingRoom"
 msgid "Creando la sala «{0}»..."
 msgstr "ルーム「{0}」を作成中…"
 
 #. Key:	NoOnline
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(540)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(540)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(576)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(576)
 msgctxt "TNRooms,NoOnline"
 msgid "No hay conexión con Steam: ábrelo y vuelve a intentarlo."
 msgstr "Steamに接続されていません。Steamを起動してもう一度お試しください。"
 
 #. Key:	CreateFailed
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(606)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(606)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(642)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(642)
 msgctxt "TNRooms,CreateFailed"
 msgid "No se ha podido crear la sala. ¿Está Steam abierto y conectado?"
 msgstr "ルームを作成できませんでした。Steamが起動していて、接続されていますか？"
 
 #. Key:	SearchFailed
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(700)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(700)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(736)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(736)
 msgctxt "TNRooms,SearchFailed"
 msgid "No se ha podido buscar salas. ¿Está Steam abierto y conectado?"
 msgstr "ルームを検索できませんでした。Steamが起動していて、接続されていますか？"
 
 #. Key:	CodeNotFound
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(704)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(704)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(740)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(740)
 msgctxt "TNRooms,CodeNotFound"
 msgid "No hay ninguna sala con el código {0}. Revisa el código (con Steam, una sala llena tampoco aparece)."
 msgstr "コード{0}のルームは見つかりません。コードを確認してください（Steam経由では、満員のルームも表示されません）。"
 
 #. Key:	CodeLocked
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(712)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(712)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(748)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(748)
 msgctxt "TNRooms,CodeLocked"
 msgid "«{0}» está cerrada: el anfitrión no deja entrar a nadie más."
 msgstr "「{0}」は締め切られています。ホストが新しい参加を止めています。"
 
 #. Key:	CodeFull
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(716)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(716)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(752)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(752)
 msgctxt "TNRooms,CodeFull"
 msgid "«{0}» está llena ({1}/{2})."
 msgstr "「{0}」は満員です（{1}/{2}）。"
 
 #. Key:	NoOpenRooms
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(755)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(755)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(791)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(791)
 msgctxt "TNRooms,NoOpenRooms"
 msgid "No hay partidas públicas abiertas ahora mismo: crea una o entra con un código."
 msgstr "今、参加できる公開ゲームはありません。作成するか、コードで入ってください。"
 
 #. Key:	JoinGone
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(799)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(799)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(835)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(835)
 msgctxt "TNRooms,JoinGone"
 msgid "Esa sala ya no existe: puede que el anfitrión se haya ido. Actualiza la lista."
 msgstr "そのルームはもうありません。ホストが退出したのかもしれません。一覧を更新してください。"
 
 #. Key:	JoinNoAddress
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(802)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(802)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(838)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(838)
 msgctxt "TNRooms,JoinNoAddress"
 msgid "No se ha podido contactar con el anfitrión de la sala."
 msgstr "ルームのホストに連絡できませんでした。"
 
 #. Key:	Connecting
-#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(821)
-#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(821)
+#. SourceLocation:	Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(857)
+#: Source/Tortunabo/Private/Multiplayer/MP_GameInstance.cpp(857)
 msgctxt "TNRooms,Connecting"
 msgid "Entrando en «{0}»..."
 msgstr "「{0}」に入室中…"
@@ -3542,15 +3542,15 @@ msgid "La sala está llena: no queda sitio para otra tortuga."
 msgstr "ルームは満員です。もう1匹入る場所がありません。"
 
 #. Key:	EmoteWheelTitle
-#. SourceLocation:	Source/Tortunabo/Private/Player/MP_GamePlayerController.cpp(595)
-#: Source/Tortunabo/Private/Player/MP_GamePlayerController.cpp(595)
+#. SourceLocation:	Source/Tortunabo/Private/Player/MP_GamePlayerController.cpp(596)
+#: Source/Tortunabo/Private/Player/MP_GamePlayerController.cpp(596)
 msgctxt "TNHUD,EmoteWheelTitle"
 msgid "EMOTES"
 msgstr "エモート"
 
 #. Key:	ChatWheelTitle
-#. SourceLocation:	Source/Tortunabo/Private/Player/MP_GamePlayerController.cpp(609)
-#: Source/Tortunabo/Private/Player/MP_GamePlayerController.cpp(609)
+#. SourceLocation:	Source/Tortunabo/Private/Player/MP_GamePlayerController.cpp(610)
+#: Source/Tortunabo/Private/Player/MP_GamePlayerController.cpp(610)
 msgctxt "TNHUD,ChatWheelTitle"
 msgid "FRASES"
 msgstr "クイックチャット"
@@ -4011,582 +4011,582 @@ msgid "{0}:{1}"
 msgstr "{0}:{1}"
 
 #. Key:	NoKey
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1332)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1332)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1407)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1407)
 msgctxt "TNSettings,NoKey"
 msgid "—"
 msgstr "—"
 
 #. Key:	Space
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1337)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1337)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1412)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1412)
 msgctxt "TNKeys,Space"
 msgid "Espacio"
 msgstr "スペース"
 
 #. Key:	LeftShift
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1338)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1338)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1413)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1413)
 msgctxt "TNKeys,LeftShift"
 msgid "Mayús izq."
 msgstr "左Shift"
 
 #. Key:	RightShift
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1338)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1338)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1413)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1413)
 msgctxt "TNKeys,RightShift"
 msgid "Mayús der."
 msgstr "右Shift"
 
 #. Key:	LeftCtrl
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1339)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1339)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1414)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1414)
 msgctxt "TNKeys,LeftCtrl"
 msgid "Ctrl izq."
 msgstr "左Ctrl"
 
 #. Key:	RightCtrl
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1339)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1339)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1414)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1414)
 msgctxt "TNKeys,RightCtrl"
 msgid "Ctrl der."
 msgstr "右Ctrl"
 
 #. Key:	Alt
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1340)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1340)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1415)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1415)
 msgctxt "TNKeys,Alt"
 msgid "Alt"
 msgstr "Alt"
 
 #. Key:	AltGr
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1340)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1340)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1415)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1415)
 msgctxt "TNKeys,AltGr"
 msgid "Alt Gr"
 msgstr "AltGr"
 
 #. Key:	Backspace
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1341)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1341)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1416)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1416)
 msgctxt "TNKeys,Backspace"
 msgid "Retroceso"
 msgstr "Backspace"
 
 #. Key:	Escape
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1341)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1341)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1416)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1416)
 msgctxt "TNKeys,Escape"
 msgid "Esc"
 msgstr "Esc"
 
 #. Key:	Enter
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1342)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1342)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1417)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1417)
 msgctxt "TNKeys,Enter"
 msgid "Intro"
 msgstr "Enter"
 
 #. Key:	Tab
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1342)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1342)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1417)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1417)
 msgctxt "TNKeys,Tab"
 msgid "Tab"
 msgstr "Tab"
 
 #. Key:	CapsLock
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1343)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1343)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1418)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1418)
 msgctxt "TNKeys,CapsLock"
 msgid "Bloq Mayús"
 msgstr "CapsLock"
 
 #. Key:	PageDown
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1344)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1344)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1419)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1419)
 msgctxt "TNKeys,PageDown"
 msgid "Av Pág"
 msgstr "PageDown"
 
 #. Key:	PageUp
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1344)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1344)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1419)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1419)
 msgctxt "TNKeys,PageUp"
 msgid "Re Pág"
 msgstr "PageUp"
 
 #. Key:	Delete
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1345)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1345)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1420)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1420)
 msgctxt "TNKeys,Delete"
 msgid "Supr"
 msgstr "Delete"
 
 #. Key:	Insert
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1345)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1345)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1420)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1420)
 msgctxt "TNKeys,Insert"
 msgid "Insert"
 msgstr "Insert"
 
 #. Key:	End
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1346)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1346)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1421)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1421)
 msgctxt "TNKeys,End"
 msgid "Fin"
 msgstr "End"
 
 #. Key:	Home
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1346)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1346)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1421)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1421)
 msgctxt "TNKeys,Home"
 msgid "Inicio"
 msgstr "Home"
 
 #. Key:	ArrowDown
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1347)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1347)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1422)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1422)
 msgctxt "TNKeys,ArrowDown"
 msgid "Flecha abajo"
 msgstr "↓キー"
 
 #. Key:	ArrowUp
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1347)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1347)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1422)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1422)
 msgctxt "TNKeys,ArrowUp"
 msgid "Flecha arriba"
 msgstr "↑キー"
 
 #. Key:	ArrowLeft
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1348)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1348)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1423)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1423)
 msgctxt "TNKeys,ArrowLeft"
 msgid "Flecha izquierda"
 msgstr "←キー"
 
 #. Key:	ArrowRight
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1348)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1348)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1423)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1423)
 msgctxt "TNKeys,ArrowRight"
 msgid "Flecha derecha"
 msgstr "→キー"
 
 #. Key:	Mouse
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1349)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1349)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1424)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1424)
 msgctxt "TNKeys,Mouse"
 msgid "Ratón"
 msgstr "マウス"
 
 #. Key:	MouseLeft
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1351)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1351)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1426)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1426)
 msgctxt "TNKeys,MouseLeft"
 msgid "Clic izquierdo"
 msgstr "左クリック"
 
 #. Key:	MouseRight
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1351)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1351)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1426)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1426)
 msgctxt "TNKeys,MouseRight"
 msgid "Clic derecho"
 msgstr "右クリック"
 
 #. Key:	MouseMiddle
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1352)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1352)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1427)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1427)
 msgctxt "TNKeys,MouseMiddle"
 msgid "Clic de la rueda"
 msgstr "ホイールクリック"
 
 #. Key:	MouseSide1
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1353)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1353)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1428)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1428)
 msgctxt "TNKeys,MouseSide1"
 msgid "Botón lateral 1"
 msgstr "サイドボタン1"
 
 #. Key:	MouseSide2
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1353)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1353)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1428)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1428)
 msgctxt "TNKeys,MouseSide2"
 msgid "Botón lateral 2"
 msgstr "サイドボタン2"
 
 #. Key:	Wheel
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1354)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1354)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1429)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1429)
 msgctxt "TNKeys,Wheel"
 msgid "Rueda"
 msgstr "ホイール"
 
 #. Key:	PadLeftStick
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1356)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1356)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1431)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1431)
 msgctxt "TNKeys,PadLeftStick"
 msgid "Stick izquierdo"
 msgstr "左スティック"
 
 #. Key:	PadRightStick
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1356)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1356)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1431)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1431)
 msgctxt "TNKeys,PadRightStick"
 msgid "Stick derecho"
 msgstr "右スティック"
 
 #. Key:	PadFaceBottom
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1359)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1359)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1434)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1434)
 msgctxt "TNKeys,PadFaceBottom"
 msgid "A / Cruz"
 msgstr "A / ×"
 
 #. Key:	PadFaceRight
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1359)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1359)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1434)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1434)
 msgctxt "TNKeys,PadFaceRight"
 msgid "B / Círculo"
 msgstr "B / ○"
 
 #. Key:	PadFaceLeft
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1360)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1360)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1435)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1435)
 msgctxt "TNKeys,PadFaceLeft"
 msgid "X / Cuadrado"
 msgstr "X / □"
 
 #. Key:	PadFaceTop
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1360)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1360)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1435)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1435)
 msgctxt "TNKeys,PadFaceTop"
 msgid "Y / Triángulo"
 msgstr "Y / △"
 
 #. Key:	PadLeftShoulder
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1361)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1361)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1436)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1436)
 msgctxt "TNKeys,PadLeftShoulder"
 msgid "LB / L1"
 msgstr "LB / L1"
 
 #. Key:	PadRightShoulder
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1361)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1361)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1436)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1436)
 msgctxt "TNKeys,PadRightShoulder"
 msgid "RB / R1"
 msgstr "RB / R1"
 
 #. Key:	PadLeftTrigger
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1362)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1362)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1437)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1437)
 msgctxt "TNKeys,PadLeftTrigger"
 msgid "LT / L2"
 msgstr "LT / L2"
 
 #. Key:	PadRightTrigger
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1362)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1362)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1437)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1437)
 msgctxt "TNKeys,PadRightTrigger"
 msgid "RT / R2"
 msgstr "RT / R2"
 
 #. Key:	PadDpadDown
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1364)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1364)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1439)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1439)
 msgctxt "TNKeys,PadDpadDown"
 msgid "Cruceta abajo"
 msgstr "十字キー ↓"
 
 #. Key:	PadDpadUp
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1364)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1364)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1439)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1439)
 msgctxt "TNKeys,PadDpadUp"
 msgid "Cruceta arriba"
 msgstr "十字キー ↑"
 
 #. Key:	PadDpadLeft
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1365)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1365)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1440)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1440)
 msgctxt "TNKeys,PadDpadLeft"
 msgid "Cruceta izquierda"
 msgstr "十字キー ←"
 
 #. Key:	PadDpadRight
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1365)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1365)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1440)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1440)
 msgctxt "TNKeys,PadDpadRight"
 msgid "Cruceta derecha"
 msgstr "十字キー →"
 
 #. Key:	PadLeftStickClick
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1366)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1366)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1441)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1441)
 msgctxt "TNKeys,PadLeftStickClick"
 msgid "Clic stick izquierdo"
 msgstr "左スティック押し込み"
 
 #. Key:	PadRightStickClick
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1367)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1367)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1442)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1442)
 msgctxt "TNKeys,PadRightStickClick"
 msgid "Clic stick derecho"
 msgstr "右スティック押し込み"
 
 #. Key:	PadSelect
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1368)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1368)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1443)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1443)
 msgctxt "TNKeys,PadSelect"
 msgid "Select / Vista"
 msgstr "Select / ビュー"
 
 #. Key:	PadStart
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1368)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1368)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1443)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1443)
 msgctxt "TNKeys,PadStart"
 msgid "Start / Menú"
 msgstr "Start / メニュー"
 
 #. Key:	ActMove
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1381)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1381)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1456)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1456)
 msgctxt "TNSettings,ActMove"
 msgid "Moverse"
 msgstr "移動"
 
 #. Key:	ActLook
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1382)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1382)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1457)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1457)
 msgctxt "TNSettings,ActLook"
 msgid "Mover la cámara"
 msgstr "カメラ操作"
 
 #. Key:	ActJump
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1383)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1383)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1458)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1458)
 msgctxt "TNSettings,ActJump"
 msgid "Saltar"
 msgstr "ジャンプ"
 
 #. Key:	ActSprint
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1384)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1384)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1459)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1459)
 msgctxt "TNSettings,ActSprint"
 msgid "Correr"
 msgstr "ダッシュ"
 
 #. Key:	ActInteract
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1385)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1385)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1460)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1460)
 msgctxt "TNSettings,ActInteract"
 msgid "Usar, coger y lanzar"
 msgstr "使う・つかむ・投げる"
 
 #. Key:	ActShell
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1386)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1386)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1461)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1461)
 msgctxt "TNSettings,ActShell"
 msgid "Meterse en el caparazón"
 msgstr "甲羅にこもる"
 
 #. Key:	ActDrop
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1387)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1387)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1462)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1462)
 msgctxt "TNSettings,ActDrop"
 msgid "Soltar el objeto"
 msgstr "アイテムを手放す"
 
 #. Key:	ActRotate
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1388)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1388)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1463)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1463)
 msgctxt "TNSettings,ActRotate"
 msgid "Cambiar de objeto"
 msgstr "アイテムを切り替え"
 
 #. Key:	ActEmotes
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1389)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1389)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1464)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1464)
 msgctxt "TNSettings,ActEmotes"
 msgid "Rueda de bailes"
 msgstr "ダンスホイール"
 
 #. Key:	ActChat
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1390)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1390)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1465)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1465)
 msgctxt "TNSettings,ActChat"
 msgid "Frases rápidas"
 msgstr "クイックチャット"
 
 #. Key:	ActWheelPick
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1391)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1391)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1466)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1466)
 msgctxt "TNSettings,ActWheelPick"
 msgid "Elegir en la rueda"
 msgstr "ホイールで選ぶ"
 
 #. Key:	TalkRow
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1522)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1522)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1597)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1597)
 msgctxt "TNSettings,TalkRow"
 msgid "Hablar (pulsar para hablar)"
 msgstr "話す（押して話す）"
 
 #. Key:	PauseRow
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1528)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1528)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1603)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1603)
 msgctxt "TNSettings,PauseRow"
 msgid "Abrir y cerrar este menú"
 msgstr "このメニューを開閉"
 
 #. Key:	NotEditable
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1628)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1628)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1703)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1703)
 msgctxt "TNSettings,NotEditable"
 msgid "«{0}» no se cambia con {1}: va con {2}."
 msgstr "「{0}」は{1}では変更できません。固定：{2}"
 
 #. Key:	Reserved
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1634)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1634)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1709)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1709)
 msgctxt "TNSettings,Reserved"
 msgid "{0} está reservada (menú, consola o editor). Prueba con otra."
 msgstr "{0}は予約済み（メニュー、コンソール、エディター）です。別のキーにしてください。"
 
 #. Key:	Unchanged
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1641)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1641)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1716)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1716)
 msgctxt "TNSettings,Unchanged"
 msgid "«{0}» ya iba con {1}."
 msgstr "「{0}」はすでに{1}です。"
 
 #. Key:	Swapped
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1658)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1658)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1733)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1733)
 msgctxt "TNSettings,Swapped"
 msgid "{0} estaba en «{1}»: ahora «{1}» va con {2}."
 msgstr "{0}は「{1}」に割り当てられていました。「{1}」は{2}になります。"
 
 #. Key:	Emptied
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1660)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1660)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1735)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1735)
 msgctxt "TNSettings,Emptied"
 msgid "{0} estaba en «{1}», que se queda sin tecla en {2}."
 msgstr "{0}は「{1}」に割り当てられていました。{2}では、その操作の割り当てがなくなります。"
 
 #. Key:	Assigned
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1667)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1667)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1742)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1742)
 msgctxt "TNSettings,Assigned"
 msgid "«{0}»: {1}."
 msgstr "「{0}」：{1}。"
 
 #. Key:	AlreadyDefault
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1722)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1722)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1797)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(1797)
 msgctxt "TNSettings,AlreadyDefault"
 msgid "«{0}» ya iba con las de serie."
 msgstr "「{0}」はすでに初期設定です。"
 
 #. Key:	MoveForward
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(337)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(337)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(342)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(342)
 msgctxt "TNSettings,MoveForward"
 msgid "Avanzar"
 msgstr "前進"
 
 #. Key:	MoveBack
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(338)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(338)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(343)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(343)
 msgctxt "TNSettings,MoveBack"
 msgid "Retroceder"
 msgstr "後退"
 
 #. Key:	MoveLeft
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(339)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(339)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(344)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(344)
 msgctxt "TNSettings,MoveLeft"
 msgid "Ir a la izquierda"
 msgstr "左へ移動"
 
 #. Key:	MoveRight
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(340)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(340)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(345)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(345)
 msgctxt "TNSettings,MoveRight"
 msgid "Ir a la derecha"
 msgstr "右へ移動"
 
 #. Key:	DirNext
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(343)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(343)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(348)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(348)
 msgctxt "TNSettings,DirNext"
 msgid "siguiente"
 msgstr "次"
 
 #. Key:	DirPrevious
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(343)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(343)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(348)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(348)
 msgctxt "TNSettings,DirPrevious"
 msgid "anterior"
 msgstr "前"
 
 #. Key:	DirBack
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(344)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(344)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(349)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(349)
 msgctxt "TNSettings,DirBack"
 msgid "atrás"
 msgstr "後ろ"
 
 #. Key:	DirForward
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(344)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(344)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(349)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(349)
 msgctxt "TNSettings,DirForward"
 msgid "adelante"
 msgstr "前"
 
 #. Key:	DirLeft
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(345)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(345)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(350)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(350)
 msgctxt "TNSettings,DirLeft"
 msgid "izquierda"
 msgstr "左"
 
 #. Key:	DirRight
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(345)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(345)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(350)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(350)
 msgctxt "TNSettings,DirRight"
 msgid "derecha"
 msgstr "右"
 
 #. Key:	DirDown
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(346)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(346)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(351)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(351)
 msgctxt "TNSettings,DirDown"
 msgid "abajo"
 msgstr "下"
 
 #. Key:	DirUp
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(346)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(346)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(351)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(351)
 msgctxt "TNSettings,DirUp"
 msgid "arriba"
 msgstr "上"
 
 #. Key:	DirectionFmt
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(349)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(349)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(354)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(354)
 msgctxt "TNSettings,DirectionFmt"
 msgid "{0} ({1})"
 msgstr "{0}（{1}）"
 
 #. Key:	WordKeyboard
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(354)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(354)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(359)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(359)
 msgctxt "TNSettings,WordKeyboard"
 msgid "el teclado y el ratón"
 msgstr "キーボードとマウス"
 
 #. Key:	WordPad
-#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(354)
-#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(354)
+#. SourceLocation:	Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(359)
+#: Source/Tortunabo/Private/Settings/TN_GameSettingsSubsystem.cpp(359)
 msgctxt "TNSettings,WordPad"
 msgid "el mando"
 msgstr "コントローラー"
@@ -5488,85 +5488,85 @@ msgid "Cargando..."
 msgstr "読み込み中…"
 
 #. Key:	Storm
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1154)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1154)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1160)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1160)
 msgctxt "TNHUD,Storm"
 msgid "¡La tormenta te alcanza! ¡Al agua!   {0}"
 msgstr "嵐に追いつかれた！ 水へ！   {0}"
 
 #. Key:	Seagull
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1168)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1168)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1174)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1174)
 msgctxt "TNHUD,Seagull"
 msgid "¡Una gaviota te ha marcado! Sal del círculo o métete bajo techo   {0}"
 msgstr "カモメに目をつけられた！ 円の外に出るか、屋根の下に隠れて   {0}"
 
 #. Key:	Down
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1181)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1181)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1187)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1187)
 msgctxt "TNHUD,Down"
 msgid "¡Panza arriba!\nUn compañero puede darte la vuelta:  {0} s"
 msgstr "ひっくり返った！\nなかまが起こしてくれます：{0}秒"
 
 #. Key:	OutTitle
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1240)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1240)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1246)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1246)
 msgctxt "TNHUD,OutTitle"
 msgid "¡Fuera de carrera!"
 msgstr "レースから脱落！"
 
 #. Key:	OutHint
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1241)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1241)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1247)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1247)
 msgctxt "TNHUD,OutHint"
 msgid "Anima a los demás hasta que lleguen al agua."
 msgstr "みんなが水に着くまで、応援しよう。"
 
 #. Key:	PreviewSay
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1440)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1440)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1446)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1446)
 msgctxt "TNHUD,PreviewSay"
 msgid "¡Por aquí, que hay conchas!"
 msgstr "こっちこっち、貝がらがあるよ！"
 
 #. Key:	WheelHint
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1665)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1665)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1671)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(1671)
 msgctxt "TNHUD,WheelHint"
 msgid "Apunta con el ratón"
 msgstr "マウスで狙う"
 
 #. Key:	Exhausted
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(388)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(388)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(394)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(394)
 msgctxt "TNHUD,Exhausted"
 msgid "¡SIN ALIENTO!"
 msgstr "息切れ！"
 
 #. Key:	InHand
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(436)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(436)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(442)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(442)
 msgctxt "TNHUD,InHand"
 msgid "EN LA ALETA"
 msgstr "ヒレ"
 
 #. Key:	Stored
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(437)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(437)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(443)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(443)
 msgctxt "TNHUD,Stored"
 msgid "EN EL CAPARAZÓN"
 msgstr "甲羅の中"
 
 #. Key:	Reviving
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(533)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(533)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(539)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(539)
 msgctxt "TNHUD,Reviving"
 msgid "Dando la vuelta a tu compañero..."
 msgstr "なかまを起こしています…"
 
 #. Key:	ShellGain
-#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(975)
-#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(975)
+#. SourceLocation:	Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(981)
+#: Source/Tortunabo/Private/UI/HUD/TN_RunHUDWidget.cpp(981)
 msgctxt "TNHUD,ShellGain"
 msgid "+{0}"
 msgstr "+{0}"
@@ -9127,215 +9127,628 @@ msgctxt "TNRace,ToSprint"
 msgid "¡Sprint final en {0}!"
 msgstr "ラストスパートまであと{0}秒！"
 
+#. Key:	BoothCount
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(1050)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(1050)
+msgctxt "Tortunabo,BoothCount"
+msgid "{0} de {1}"
+msgstr "{0} / {1}"
+
 #. Key:	ShopTabHelmets
-#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(153)
-#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(153)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(177)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(177)
 msgctxt "Tortunabo,ShopTabHelmets"
 msgid "CASCOS"
 msgstr "かぶりもの"
 
 #. Key:	ShopTabShells
-#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(154)
-#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(154)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(178)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(178)
 msgctxt "Tortunabo,ShopTabShells"
 msgid "CAPARAZONES"
 msgstr "甲羅"
 
 #. Key:	ShopTabEyes
-#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(155)
-#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(155)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(179)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(179)
 msgctxt "Tortunabo,ShopTabEyes"
 msgid "OJOS"
 msgstr "目"
 
+#. Key:	ShopTabBuggy
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(181)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(181)
+msgctxt "Tortunabo,ShopTabBuggy"
+msgid "BUGGY"
+msgstr "バギー"
+
 #. Key:	ShopTabBodies
-#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(156)
-#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(156)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(182)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(182)
 msgctxt "Tortunabo,ShopTabBodies"
 msgid "COLORES"
 msgstr "カラー"
 
 #. Key:	BoothRowHelmet
-#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(164)
-#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(164)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(190)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(190)
 msgctxt "Tortunabo,BoothRowHelmet"
 msgid "CASCO"
 msgstr "かぶりもの"
 
 #. Key:	BoothRowShell
-#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(165)
-#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(165)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(191)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(191)
 msgctxt "Tortunabo,BoothRowShell"
 msgid "CAPARAZÓN"
 msgstr "甲羅"
 
 #. Key:	BoothRowEyes
-#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(166)
-#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(166)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(192)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(192)
 msgctxt "Tortunabo,BoothRowEyes"
 msgid "OJOS"
 msgstr "目"
 
+#. Key:	BoothRowBuggyModel
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(193)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(193)
+msgctxt "Tortunabo,BoothRowBuggyModel"
+msgid "BUGGY"
+msgstr "バギー"
+
+#. Key:	BoothRowBuggyPaint
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(194)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(194)
+msgctxt "Tortunabo,BoothRowBuggyPaint"
+msgid "PINTURA"
+msgstr "ペイント"
+
 #. Key:	BoothRowBody
-#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(167)
-#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(167)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(195)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(195)
 msgctxt "Tortunabo,BoothRowBody"
 msgid "COLOR"
 msgstr "カラー"
 
 #. Key:	PreviewHint
-#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(434)
-#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(434)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(473)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(473)
 msgctxt "Tortunabo,PreviewHint"
 msgid "Arrastra para girar"
 msgstr "ドラッグして回転"
 
 #. Key:	ShopExit
-#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(580)
-#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(580)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(619)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(619)
 msgctxt "Tortunabo,ShopExit"
 msgid "SALIR"
 msgstr "出る"
 
 #. Key:	ShopKeys
-#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(584)
-#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(584)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(623)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(623)
 msgctxt "Tortunabo,ShopKeys"
 msgid "Flechas: elegir · Q/E: pestaña · Intro: comprar · Esc: salir"
 msgstr "矢印キー：選ぶ · Q/E：タブ · Enter：買う · Esc：出る"
 
 #. Key:	ShopDefaultName
-#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(594)
-#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(594)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(633)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(633)
 msgctxt "Tortunabo,ShopDefaultName"
 msgid "La Concha Dorada"
 msgstr "金の貝がら屋"
 
 #. Key:	ShopSailor
-#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(602)
-#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(602)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(641)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(641)
 msgctxt "Tortunabo,ShopSailor"
 msgid "marinero"
 msgstr "船乗り"
 
-#. Key:	ShopHello
-#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(603)
-#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(603)
-msgctxt "Tortunabo,ShopHello"
-msgid "¡Hola, {0}! Pasa, pasa: hoy en La Concha Dorada todo es gratis. Elige lo que quieras y pruébatelo luego en las botellas."
-msgstr "いらっしゃい、{0}！ さあさあ、入って入って。今日の金の貝がら屋は全部タダだよ！ 好きなものを選んで、あとで試着室のボトルで着てみてね。"
+#. Key:	ShopHelloBuggy
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(642)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(642)
+msgctxt "Tortunabo,ShopHelloBuggy"
+msgid "¡Hola, {0}! Pasa, pasa: hoy los cascos, caparazones, colores y ojos son gratis. Los buggies del Rally y sus pinturas van por conchas. Pruébatelo todo luego en las botellas."
+msgstr "やあ、{0}！さあさあ、入って入って。今日はかぶりもの、甲羅、カラー、目がぜんぶタダだよ。ラリーのバギーとペイントは貝がらで買ってね。あとで試着室のボトルで、ぜんぶ試してごらん。"
 
 #. Key:	ShopTagWorn
-#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(640)
-#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(640)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(709)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(709)
 msgctxt "Tortunabo,ShopTagWorn"
 msgid "PUESTO"
 msgstr "装備中"
 
 #. Key:	ShopTagOwned
-#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(645)
-#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(645)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(714)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(714)
 msgctxt "Tortunabo,ShopTagOwned"
 msgid "¡TUYO!"
 msgstr "持ってる！"
 
 #. Key:	ShopTagFree
-#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(649)
-#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(649)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(718)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(718)
 msgctxt "Tortunabo,ShopTagFree"
 msgid "GRATIS"
 msgstr "無料"
 
 #. Key:	ShopTagPrice
-#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(650)
-#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(650)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(719)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(719)
 msgctxt "Tortunabo,ShopTagPrice"
 msgid "{0} {0}|plural(one=concha,other=conchas)"
 msgstr "貝がら{0}個"
 
 #. Key:	ShopBuyOwned
-#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(671)
-#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(671)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(740)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(740)
 msgctxt "Tortunabo,ShopBuyOwned"
 msgid "¡YA ES TUYO!"
 msgstr "もう持ってるよ！"
 
 #. Key:	ShopBuyFree
-#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(676)
-#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(676)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(745)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(745)
 msgctxt "Tortunabo,ShopBuyFree"
 msgid "COMPRAR · GRATIS"
 msgstr "買う・無料"
 
 #. Key:	ShopBuyPrice
-#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(677)
-#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(677)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(746)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(746)
 msgctxt "Tortunabo,ShopBuyPrice"
 msgid "COMPRAR · {0}"
 msgstr "買う・{0}"
 
+#. Key:	ShopSerieBuggy
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(800)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(800)
+msgctxt "Tortunabo,ShopSerieBuggy"
+msgid "Ese viene con el carnet de conducir: todas las tortugas del Rally lo tienen de serie."
+msgstr "それは運転免許といっしょにもらえるよ。ラリーのカメなら、みんな最初から持ってるのさ！"
+
 #. Key:	ShopSerie
-#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(719)
-#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(719)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(801)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(801)
 msgctxt "Tortunabo,ShopSerie"
 msgid "Eso ya viene de serie con tu caparazón. ¡Gratis desde que naciste!"
 msgstr "それは甲羅に最初からついてくるよ。生まれたときからタダさ！"
 
 #. Key:	ShopAlready
-#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(724)
-#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(724)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(806)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(806)
 msgctxt "Tortunabo,ShopAlready"
 msgid "Ese ya es tuyo. Pruébatelo en las botellas: te queda de maravilla."
 msgstr "それはもうキミのだよ。ボトルで試してごらん。ばっちり似合うよ！"
 
+#. Key:	ShopBoughtBuggy
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(812)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(812)
+msgctxt "Tortunabo,ShopBoughtBuggy"
+msgid "¡Hecho! {0} ya es tuyo. En la botella del probador, pasa a la página del buggy y póntelo."
+msgstr "まいど！ {0}はキミのものだ。試着室のボトルでバギーのページに切り替えて、セットしてみてね。"
+
 #. Key:	ShopBought
-#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(730)
-#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(730)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(813)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(813)
 msgctxt "Tortunabo,ShopBought"
 msgid "¡Hecho! {0} ya es tuyo. Ve a una botella del probador y póntelo."
 msgstr "まいど！ {0}はキミのものだ。試着室のボトルに行って着てみてね。"
 
 #. Key:	ShopNoMoney
-#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(739)
-#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(739)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(822)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(822)
 msgctxt "Tortunabo,ShopNoMoney"
 msgid "Uy, te faltan conchas para esto. ¡Vuelve después de otra carrera!"
 msgstr "おっと、貝がらが足りないね。次のレースのあとでまたおいで！"
 
 #. Key:	BoothTitle
-#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(804)
-#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(804)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(887)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(887)
 msgctxt "Tortunabo,BoothTitle"
 msgid "PROBADOR"
 msgstr "試着室"
 
+#. Key:	BoothPageBuggy
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(898)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(898)
+msgctxt "Tortunabo,BoothPageBuggy"
+msgid "BUGGY"
+msgstr "バギー"
+
+#. Key:	BoothPageTurtle
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(898)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(898)
+msgctxt "Tortunabo,BoothPageTurtle"
+msgid "TORTUGA"
+msgstr "カメ"
+
 #. Key:	BoothDone
-#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(850)
-#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(850)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(947)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(947)
 msgctxt "Tortunabo,BoothDone"
 msgid "¡LISTO!"
 msgstr "完了！"
 
 #. Key:	BoothCancel
-#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(853)
-#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(853)
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(950)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(950)
 msgctxt "Tortunabo,BoothCancel"
 msgid "CANCELAR"
 msgstr "キャンセル"
 
-#. Key:	BoothKeys
-#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(857)
-#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(857)
-msgctxt "Tortunabo,BoothKeys"
-msgid "Arriba/abajo: fila · Izquierda/derecha: cambiar · Intro: listo · Esc: cancelar"
-msgstr "上下：行 · 左右：変更 · Enter：完了 · Esc：キャンセル"
+#. Key:	BoothKeysPages
+#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(954)
+#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(954)
+msgctxt "Tortunabo,BoothKeysPages"
+msgid "Arriba/abajo: fila · Izquierda/derecha: cambiar · Q/E: tortuga o buggy · Intro: listo · Esc: cancelar"
+msgstr "上下：項目 · 左右：変更 · Q/E：カメ/バギー · Enter：完了 · Esc：キャンセル"
 
-#. Key:	BoothCount
-#. SourceLocation:	Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(915)
-#: Source/Tortunabo/Private/UI/Shop/TN_ShopWidgets.cpp(915)
-msgctxt "Tortunabo,BoothCount"
-msgid "{0} de {1}"
-msgstr "{0} / {1}"
+#. Key:	BuggyPaintMariquita
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(102)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(102)
+msgctxt "Tortunabo,BuggyPaintMariquita"
+msgid "Mariquita"
+msgstr "テントウムシ"
+
+#. Key:	BuggyPaintMariquitaDesc
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(103)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(103)
+msgctxt "Tortunabo,BuggyPaintMariquitaDesc"
+msgid "Rojo con lunares negros. Trae suerte, o eso dice mi abuela, que tiene ciento veinte años."
+msgstr "赤に黒い水玉。幸運を呼ぶんだって。120歳になるうちのばあちゃんが言ってました。"
+
+#. Key:	BuggyPaintMedusa
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(106)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(106)
+msgctxt "Tortunabo,BuggyPaintMedusa"
+msgid "Medusa Rosa"
+msgstr "ピンククラゲ"
+
+#. Key:	BuggyPaintMedusaDesc
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(107)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(107)
+msgctxt "Tortunabo,BuggyPaintMedusaDesc"
+msgid "Rosa medusa con burbujitas. No pica, te lo prometo."
+msgstr "クラゲのピンクに小さなあわ。刺しません、約束します。"
+
+#. Key:	BuggyPaintOro
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(110)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(110)
+msgctxt "Tortunabo,BuggyPaintOro"
+msgid "Oro Pirata"
+msgstr "海賊ゴールド"
+
+#. Key:	BuggyPaintOroDesc
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(111)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(111)
+msgctxt "Tortunabo,BuggyPaintOroDesc"
+msgid "Oro del galeón hundido, pulido a mano. Es lo más caro de la tienda, y se nota desde la luna."
+msgstr "沈没船の金を、手でみがきあげました。店でいちばんの高級品。月からでもわかります。"
+
+#. Key:	BuggyPaintPlata
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(114)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(114)
+msgctxt "Tortunabo,BuggyPaintPlata"
+msgid "Plata Pulida"
+msgstr "ピカピカシルバー"
+
+#. Key:	BuggyPaintPlataDesc
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(115)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(115)
+msgctxt "Tortunabo,BuggyPaintPlataDesc"
+msgid "Brilla como un espejo. Peinarse antes de cada carrera es obligatorio."
+msgstr "鏡みたいにピカピカ。レースの前に髪をとかすのは必須です。"
+
+#. Key:	BuggyPaintAlga
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(118)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(118)
+msgctxt "Tortunabo,BuggyPaintAlga"
+msgid "Camuflaje de Alga"
+msgstr "海藻迷彩"
+
+#. Key:	BuggyPaintAlgaDesc
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(119)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(119)
+msgctxt "Tortunabo,BuggyPaintAlgaDesc"
+msgid "Para esconderse entre las algas. Los cangrejos no te verán venir."
+msgstr "海藻にまぎれて隠れるために。カニには近づいても気づかれません。"
+
+#. Key:	BuggyPaintLlamas
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(122)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(122)
+msgctxt "Tortunabo,BuggyPaintLlamas"
+msgid "Llamas Infernales"
+msgstr "メラメラファイヤー"
+
+#. Key:	BuggyPaintLlamasDesc
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(123)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(123)
+msgctxt "Tortunabo,BuggyPaintLlamasDesc"
+msgid "Llamas de hot rod que salen del morro. No queman, pero dan muchísimo miedo."
+msgstr "フロントから吹き出すホットロッドの炎。熱くはないけど、めちゃくちゃコワいです。"
+
+#. Key:	BuggyPaintCarreras
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(126)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(126)
+msgctxt "Tortunabo,BuggyPaintCarreras"
+msgid "Rayas de Carreras"
+msgstr "レーシングストライプ"
+
+#. Key:	BuggyPaintCarrerasDesc
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(127)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(127)
+msgctxt "Tortunabo,BuggyPaintCarrerasDesc"
+msgid "Azul con dos rayas blancas, como los coches de carreras de antes. Más rápido no va, pero lo parece."
+msgstr "青に白い2本線、昔のレーシングカーみたい。速くはならないけど、速そうに見えます。"
+
+#. Key:	BuggyPaintAbisal
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(130)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(130)
+msgctxt "Tortunabo,BuggyPaintAbisal"
+msgid "Abisal Luminosa"
+msgstr "ひかる深海"
+
+#. Key:	BuggyPaintAbisalDesc
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(131)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(131)
+msgctxt "Tortunabo,BuggyPaintAbisalDesc"
+msgid "Como los peces del fondo del mar: lunares que brillan en la oscuridad. Ideal para los túneles."
+msgstr "深海の魚みたいに、暗いところで光る水玉。トンネルにぴったり。"
+
+#. Key:	BuggyPaintCarey
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(134)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(134)
+msgctxt "Tortunabo,BuggyPaintCarey"
+msgid "Carey"
+msgstr "べっこう"
+
+#. Key:	BuggyPaintCareyDesc
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(135)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(135)
+msgctxt "Tortunabo,BuggyPaintCareyDesc"
+msgid "El dibujo de la tortuga carey, con su brillo de caramelo. Un clásico de la familia."
+msgstr "タイマイの甲羅もように、あめ色のツヤ。カメ一家の定番です。"
+
+#. Key:	BuggyPaintHielo
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(138)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(138)
+msgctxt "Tortunabo,BuggyPaintHielo"
+msgid "Hielo Polar"
+msgstr "ポーラーアイス"
+
+#. Key:	BuggyPaintHieloDesc
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(139)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(139)
+msgctxt "Tortunabo,BuggyPaintHieloDesc"
+msgid "Blanco y azul hielo. Para las tortugas que se escaparon del Ártico."
+msgstr "白とアイスブルー。北極から逃げてきたカメにどうぞ。"
+
+#. Key:	BuggyPaintAtardecer
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(142)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(142)
+msgctxt "Tortunabo,BuggyPaintAtardecer"
+msgid "Atardecer Tropical"
+msgstr "トロピカルサンセット"
+
+#. Key:	BuggyPaintAtardecerDesc
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(143)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(143)
+msgctxt "Tortunabo,BuggyPaintAtardecerDesc"
+msgid "Naranja, oro y morado de puesta de sol. Queda precioso en las fotos de la meta."
+msgstr "夕焼けのオレンジ、金、むらさき。ゴールの写真でバッチリ映えます。"
+
+#. Key:	BuggyPaintTiburon
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(146)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(146)
+msgctxt "Tortunabo,BuggyPaintTiburon"
+msgid "Tiburón"
+msgstr "サメ"
+
+#. Key:	BuggyPaintTiburonDesc
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(147)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(147)
+msgctxt "Tortunabo,BuggyPaintTiburonDesc"
+msgid "Gris tiburón con la barriga blanca. Los demás buggies se apartan solos."
+msgstr "サメのグレーに白いおなか。ほかのバギーが勝手に道をあけてくれます。"
+
+#. Key:	BuggyPaintPulpo
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(150)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(150)
+msgctxt "Tortunabo,BuggyPaintPulpo"
+msgid "Pulpo Morado"
+msgstr "むらさきダコ"
+
+#. Key:	BuggyPaintPulpoDesc
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(151)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(151)
+msgctxt "Tortunabo,BuggyPaintPulpoDesc"
+msgid "Morado de pulpo con ventosas de mentira. Ocho brazos para el volante, por si acaso."
+msgstr "タコのむらさきに、ニセモノの吸盤つき。念のため、ハンドルを握る腕は8本です。"
+
+#. Key:	BuggyPaintCaramelo
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(154)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(154)
+msgctxt "Tortunabo,BuggyPaintCaramelo"
+msgid "Caramelo de Feria"
+msgstr "縁日キャンディ"
+
+#. Key:	BuggyPaintCarameloDesc
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(155)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(155)
+msgctxt "Tortunabo,BuggyPaintCarameloDesc"
+msgid "Rosa y blanco como un algodón de azúcar. Pegajoso no es: lo he comprobado."
+msgstr "わたあめみたいなピンクと白。ベタベタはしません。ちゃんと確かめました。"
+
+#. Key:	BuggyModelStock
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(49)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(49)
+msgctxt "Tortunabo,BuggyModelStock"
+msgid "Buggy de Serie"
+msgstr "スタンダードバギー"
+
+#. Key:	BuggyModelStockDesc
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(50)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(50)
+msgctxt "Tortunabo,BuggyModelStockDesc"
+msgid "El buggy oficial del Rally: chasis de tubos, pontones con dorsal y el color de tu equipo. Gratis y a prueba de cocos."
+msgstr "ラリー公式のバギー。パイプフレームに、ゼッケンつきのサイドポッド、そしてチームカラー。タダで、ココナッツにも負けません。"
+
+#. Key:	BuggyModelClassic
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(52)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(52)
+msgctxt "Tortunabo,BuggyModelClassic"
+msgid "Buggy Clásico"
+msgstr "クラシックバギー"
+
+#. Key:	BuggyModelClassicDesc
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(53)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(53)
+msgctxt "Tortunabo,BuggyModelClassicDesc"
+msgid "Un buggy que es una tortuga: caparazón de placas, aletas por guardabarros y unos ojos que alumbran la pista."
+msgstr "カメそのもののバギー。甲羅のプレート、泥よけがわりのヒレ、そしてコースを照らす目。"
+
+#. Key:	BuggyModelCaiman
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(55)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(55)
+msgctxt "Tortunabo,BuggyModelCaiman"
+msgid "Caimán Todoterreno"
+msgstr "ワニガメ・オフロード"
+
+#. Key:	BuggyModelCaimanDesc
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(56)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(56)
+msgctxt "Tortunabo,BuggyModelCaimanDesc"
+msgid "Como la tortuga caimán: placas con pinchos, pico de hierro y un tubo de buceo por si toca cruzar un río."
+msgstr "ワニガメそっくり。トゲトゲのプレートに鉄のクチバシ、川を渡るとき用のシュノーケルつき。"
+
+#. Key:	BuggyModelLaud
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(58)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(58)
+msgctxt "Tortunabo,BuggyModelLaud"
+msgid "Laúd Bólido"
+msgstr "オサガメ・レーサー"
+
+#. Key:	BuggyModelLaudDesc
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(59)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(59)
+msgctxt "Tortunabo,BuggyModelLaudDesc"
+msgid "La tortuga laúd es la más rápida del mar, y este bólido también: caparazón de crestas, alerón gigante y escapes laterales."
+msgstr "オサガメは海でいちばん速いカメ。このマシンも負けてません。すじの入った甲羅、巨大なウイング、サイドマフラー。"
+
+#. Key:	BuggyPaintSerie
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(70)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(70)
+msgctxt "Tortunabo,BuggyPaintSerie"
+msgid "Pintura de serie"
+msgstr "初期ペイント"
+
+#. Key:	BuggyPaintSerieDesc
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(71)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(71)
+msgctxt "Tortunabo,BuggyPaintSerieDesc"
+msgid "La de fábrica: el buggy de serie lleva el color de tu equipo y las tortugas, su verde natural."
+msgstr "工場から出たままの色。スタンダードバギーはチームカラー、カメのバギーは自然な緑になります。"
+
+#. Key:	BuggyPaintCoral
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(74)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(74)
+msgctxt "Tortunabo,BuggyPaintCoral"
+msgid "Coral Bravo"
+msgstr "勝負コーラル"
+
+#. Key:	BuggyPaintCoralDesc
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(75)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(75)
+msgctxt "Tortunabo,BuggyPaintCoralDesc"
+msgid "Rojo coral para las que salen a ganar. Dicen que corre un diez por ciento más. Lo dicen."
+msgstr "勝ちにいくカメのコーラルレッド。10%速くなるらしいです。……あくまで、らしいです。"
+
+#. Key:	BuggyPaintMarino
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(78)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(78)
+msgctxt "Tortunabo,BuggyPaintMarino"
+msgid "Azul Marino"
+msgstr "マリンブルー"
+
+#. Key:	BuggyPaintMarinoDesc
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(79)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(79)
+msgctxt "Tortunabo,BuggyPaintMarinoDesc"
+msgid "Azul de alta mar con olas de espuma. Para tortugas que echan de menos el océano."
+msgstr "沖合いの青に、白い波しぶき。海が恋しいカメにどうぞ。"
+
+#. Key:	BuggyPaintArena
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(82)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(82)
+msgctxt "Tortunabo,BuggyPaintArena"
+msgid "Arena Dorada"
+msgstr "ゴールデンサンド"
+
+#. Key:	BuggyPaintArenaDesc
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(83)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(83)
+msgctxt "Tortunabo,BuggyPaintArenaDesc"
+msgid "Del color de la playa donde naciste. Disimula de maravilla el barro."
+msgstr "キミが生まれた浜辺の色。泥よごれがぜんぜん目立ちません。"
+
+#. Key:	BuggyPaintSandia
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(86)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(86)
+msgctxt "Tortunabo,BuggyPaintSandia"
+msgid "Sandía Veraniega"
+msgstr "夏のスイカ"
+
+#. Key:	BuggyPaintSandiaDesc
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(87)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(87)
+msgctxt "Tortunabo,BuggyPaintSandiaDesc"
+msgid "Rayas de sandía y aletas rosas. Huele a verano, pero no se come."
+msgstr "スイカのしまもようにピンクのヒレ。夏のにおいがするけど、食べられません。"
+
+#. Key:	BuggyPaintMeta
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(90)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(90)
+msgctxt "Tortunabo,BuggyPaintMeta"
+msgid "Ajedrez de Meta"
+msgstr "チェッカーフラッグ"
+
+#. Key:	BuggyPaintMetaDesc
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(91)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(91)
+msgctxt "Tortunabo,BuggyPaintMetaDesc"
+msgid "Cuadros de bandera de meta. Para que todos sepan dónde vas a acabar: delante."
+msgstr "ゴールの旗のチェック柄。キミがどこでゴールするか、みんなにわかります。そう、いちばん前で。"
+
+#. Key:	BuggyPaintLava
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(94)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(94)
+msgctxt "Tortunabo,BuggyPaintLava"
+msgid "Lava Volcánica"
+msgstr "火山マグマ"
+
+#. Key:	BuggyPaintLavaDesc
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(95)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(95)
+msgctxt "Tortunabo,BuggyPaintLavaDesc"
+msgid "Grietas de lava que brillan de verdad. No apto para tortugas frioleras... ni para las calurosas."
+msgstr "本当に光る溶岩のひび割れ。寒がりのカメには向きません……暑がりのカメにも。"
+
+#. Key:	BuggyPaintEstrellas
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(98)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(98)
+msgctxt "Tortunabo,BuggyPaintEstrellas"
+msgid "Noche Estrellada"
+msgstr "星降る夜"
+
+#. Key:	BuggyPaintEstrellasDesc
+#. SourceLocation:	Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(99)
+#: Source/Tortunabo/Private/Vehicles/TN_BuggyCosmetics.cpp(99)
+msgctxt "Tortunabo,BuggyPaintEstrellasDesc"
+msgid "Un cielo de estrellas pintado a mano. De noche brilla tanto que casi no hacen falta los faros."
+msgstr "手描きの星空。夜はまぶしすぎて、ライトがほとんどいりません。"
 
 #. Key:	BarbedWireOuch
 #. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachBarbedWire.cpp(314)
@@ -9387,8 +9800,8 @@ msgid "¡CATAPULTA!"
 msgstr "カタパルト！"
 
 #. Key:	BeachChestPrompt
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachChest.cpp(659)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachChest.cpp(659)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachChest.cpp(660)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachChest.cpp(660)
 msgctxt "Tortunabo,BeachChestPrompt"
 msgid "Mantén para abrir el cofre"
 msgstr "長押しで宝箱を開ける"
@@ -9408,85 +9821,85 @@ msgid "¡ÑAM!"
 msgstr "パクッ！"
 
 #. Key:	EnemyBonk
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachEnemy.cpp(1130)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachEnemy.cpp(1130)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachEnemy.cpp(1164)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachEnemy.cpp(1164)
 msgctxt "TNBeach,EnemyBonk"
 msgid "¡TOING!"
 msgstr "ボヨン！"
 
 #. Key:	CrabRam
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachGiantCrab.cpp(1279)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachGiantCrab.cpp(1279)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachGiantCrab.cpp(1280)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachGiantCrab.cpp(1280)
 msgctxt "TNBeach,CrabRam"
 msgid "¡EMBESTIDA!"
 msgstr "体当たり！"
 
 #. Key:	CrabCrash
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachGiantCrab.cpp(1297)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachGiantCrab.cpp(1297)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachGiantCrab.cpp(1298)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachGiantCrab.cpp(1298)
 msgctxt "TNBeach,CrabCrash"
 msgid "¡CATAPLÁN!"
 msgstr "ガシャーン！"
 
 #. Key:	GullGrab
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1481)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1481)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1502)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1502)
 msgctxt "TNBeach,GullGrab"
 msgid "¡ÑAC!"
 msgstr "ガシッ！"
 
 #. Key:	GullSplat
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1511)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1511)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1532)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1532)
 msgctxt "TNBeach,GullSplat"
 msgid "¡PLOF!"
 msgstr "ベチャッ！"
 
 #. Key:	GullPeck
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1911)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1911)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1932)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachGullZone.cpp(1932)
 msgctxt "TNBeach,GullPeck"
 msgid "¡PIC!"
 msgstr "ツンッ！"
 
 #. Key:	HermitPin
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachHermitCrab.cpp(701)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachHermitCrab.cpp(701)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachHermitCrab.cpp(702)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachHermitCrab.cpp(702)
 msgctxt "TNBeach,HermitPin"
 msgid "¡BOLO!"
 msgstr "ピン！"
 
 #. Key:	HermitStrike
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachHermitCrab.cpp(701)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachHermitCrab.cpp(701)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachHermitCrab.cpp(702)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachHermitCrab.cpp(702)
 msgctxt "TNBeach,HermitStrike"
 msgid "¡STRIKE!"
 msgstr "ストライク！"
 
 #. Key:	LizardBite
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachLizard.cpp(892)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachLizard.cpp(892)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachLizard.cpp(905)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachLizard.cpp(905)
 msgctxt "TNBeach,LizardBite"
 msgid "¡ÑAM!"
 msgstr "ガブッ！"
 
 #. Key:	LizardPrize
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachLizard.cpp(910)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachLizard.cpp(910)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachLizard.cpp(923)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachLizard.cpp(923)
 msgctxt "TNBeach,LizardPrize"
 msgid "¡UN REGALO!"
 msgstr "プレゼント！"
 
 #. Key:	MineClick
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachMine.cpp(589)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachMine.cpp(589)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachMine.cpp(590)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachMine.cpp(590)
 msgctxt "TNBeach,MineClick"
 msgid "¡clic!"
 msgstr "カチッ！"
 
 #. Key:	MineBoom
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachMine.cpp(604)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachMine.cpp(604)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachMine.cpp(605)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachMine.cpp(605)
 msgctxt "TNBeach,MineBoom"
 msgid "¡BUM!"
 msgstr "ドカーン！"
@@ -9506,8 +9919,8 @@ msgid "¡FUERA!"
 msgstr "あっちいけ！"
 
 #. Key:	QuadRunOver
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachQuadLane.cpp(318)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachQuadLane.cpp(318)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachQuadLane.cpp(358)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachQuadLane.cpp(358)
 msgctxt "TNBeach,QuadRunOver"
 msgid "¡ATROPELLO!"
 msgstr "ひかれた！"
@@ -9527,8 +9940,8 @@ msgid "¡QUÉ PICOR!"
 msgstr "かゆすぎる！"
 
 #. Key:	SandWormNom
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachSandWorm.cpp(1255)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachSandWorm.cpp(1255)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachSandWorm.cpp(1266)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachSandWorm.cpp(1266)
 msgctxt "TNBeach,SandWormNom"
 msgid "¡ÑAM!"
 msgstr "ガブリ！"
@@ -9540,30 +9953,30 @@ msgctxt "TNBeach,UrchinPrick"
 msgid "¡PINCHAZO!"
 msgstr "チクッ！"
 
+#. Key:	StormKick
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachStorm.cpp(1149)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachStorm.cpp(1149)
+msgctxt "TNBeach,StormKick"
+msgid "¡PATADA!"
+msgstr "ドカッ！"
+
 #. Key:	StormRun
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachStorm.cpp(1300)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachStorm.cpp(1300)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachStorm.cpp(1455)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachStorm.cpp(1455)
 msgctxt "TNBeach,StormRun"
 msgid "¡CORRE!"
 msgstr "走れ！"
 
 #. Key:	StormWarn
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachStorm.cpp(1313)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachStorm.cpp(1313)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachStorm.cpp(1468)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachStorm.cpp(1468)
 msgctxt "TNBeach,StormWarn"
 msgid "¡QUE VIENE LA TORMENTA!"
 msgstr "嵐が来るぞ！"
 
-#. Key:	StormKick
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachStorm.cpp(994)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachStorm.cpp(994)
-msgctxt "TNBeach,StormKick"
-msgid "¡PATADA!"
-msgstr "ドカッ！"
-
 #. Key:	TankFoamHit
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachToyTank.cpp(528)
-#: Source/Tortunabo/Private/World/Beach/TN_BeachToyTank.cpp(528)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_BeachToyTank.cpp(587)
+#: Source/Tortunabo/Private/World/Beach/TN_BeachToyTank.cpp(587)
 msgctxt "TNBeach,TankFoamHit"
 msgid "¡PAF!"
 msgstr "バフッ！"
@@ -9583,8 +9996,8 @@ msgid "¡CRAC!"
 msgstr "ミシッ！"
 
 #. Key:	FrisbeeBonk
-#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceFrisbee.cpp(538)
-#: Source/Tortunabo/Private/World/Beach/TN_RaceFrisbee.cpp(538)
+#. SourceLocation:	Source/Tortunabo/Private/World/Beach/TN_RaceFrisbee.cpp(544)
+#: Source/Tortunabo/Private/World/Beach/TN_RaceFrisbee.cpp(544)
 msgctxt "TNRace,FrisbeeBonk"
 msgid "¡BONK!"
 msgstr "ボコッ！"
@@ -9716,22 +10129,22 @@ msgid "¡TAXI!"
 msgstr "タクシー！"
 
 #. Key:	ProcSwitchPrompt
-#. SourceLocation:	Source/Tortunabo/Private/World/ProcMap/TN_ProcPuzzleActors.cpp(211)
-#: Source/Tortunabo/Private/World/ProcMap/TN_ProcPuzzleActors.cpp(211)
+#. SourceLocation:	Source/Tortunabo/Private/World/ProcMap/TN_ProcPuzzleActors.cpp(217)
+#: Source/Tortunabo/Private/World/ProcMap/TN_ProcPuzzleActors.cpp(217)
 msgctxt "Tortunabo,ProcSwitchPrompt"
 msgid "Pulsar"
 msgstr "押す"
 
 #. Key:	SearchSpotPrompt
-#. SourceLocation:	Source/Tortunabo/Private/World/ProcMap/TN_ProcSearchSpot.cpp(688)
-#: Source/Tortunabo/Private/World/ProcMap/TN_ProcSearchSpot.cpp(688)
+#. SourceLocation:	Source/Tortunabo/Private/World/ProcMap/TN_ProcSearchSpot.cpp(701)
+#: Source/Tortunabo/Private/World/ProcMap/TN_ProcSearchSpot.cpp(701)
 msgctxt "Tortunabo,SearchSpotPrompt"
 msgid "Mantén para rebuscar"
 msgstr "長押しであさる"
 
 #. Key:	ProcStartGateName
-#. SourceLocation:	Source/Tortunabo/Private/World/ProcMap/TN_ProcStartStructure.cpp(551)
-#: Source/Tortunabo/Private/World/ProcMap/TN_ProcStartStructure.cpp(551)
+#. SourceLocation:	Source/Tortunabo/Private/World/ProcMap/TN_ProcStartStructure.cpp(562)
+#: Source/Tortunabo/Private/World/ProcMap/TN_ProcStartStructure.cpp(562)
 msgctxt "Tortunabo,ProcStartGateName"
 msgid "TORTUNAVY"
 msgstr "TORTUNAVY"
@@ -9772,8 +10185,8 @@ msgid "Activar Tótem"
 msgstr "トーテムを作動"
 
 #. Key:	ReplayPrompt
-#. SourceLocation:	Source/Tortunabo/Private/World/TN_TutorialEntryInteractable.cpp(11)
-#: Source/Tortunabo/Private/World/TN_TutorialEntryInteractable.cpp(11)
+#. SourceLocation:	Source/Tortunabo/Private/World/TN_TutorialEntryInteractable.cpp(12)
+#: Source/Tortunabo/Private/World/TN_TutorialEntryInteractable.cpp(12)
 msgctxt "TNTutorial,ReplayPrompt"
 msgid "Repetir el tutorial"
 msgstr "チュートリアルをもう一度"
@@ -9826,4 +10239,3 @@ msgstr "{0}:{1}"
 msgctxt "Tortunabo,CastleGateName"
 msgid "TORTUNAVY"
 msgstr "TORTUNAVY"
-
