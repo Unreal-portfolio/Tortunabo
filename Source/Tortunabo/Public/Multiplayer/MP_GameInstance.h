@@ -524,7 +524,7 @@ private:
 	/** @brief Persiste el UTN_CosmeticSaveGame en disco. */
 	void SaveCosmeticProfile() const;
 
-	/** @brief Ranura del perfil cosmético: la de la cuenta de Steam o, sin ella, la de la máquina (TNCosmeticSlot). */
+	/** @brief Construye el nombre de slot del save (incluye sufijo de Steam ID si está disponible). */
 	FString BuildCosmeticSaveSlot() const;
 
 	/** @brief Carga el UTN_TutorialSaveGame del disco. */
